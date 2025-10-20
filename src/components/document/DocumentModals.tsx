@@ -20,6 +20,8 @@ interface DocumentModalsProps {
   onCloseMoveDocument: () => void;
   onVersionUploadSuccess?: () => void;
   onMoveSuccess?: () => void;
+  onOptimisticFileUpdate?: (file: File) => void;
+  onRestoreVersion?: (versionId: number, versionNumber: number) => Promise<void>;
 }
 
 export default function DocumentModals({
@@ -33,7 +35,9 @@ export default function DocumentModals({
   onCloseUploadVersion,
   onCloseMoveDocument,
   onVersionUploadSuccess,
-  onMoveSuccess
+  onMoveSuccess,
+  onOptimisticFileUpdate,
+  onRestoreVersion
 }: DocumentModalsProps) {
   if (!document) return null;
 
@@ -44,6 +48,7 @@ export default function DocumentModals({
         document={document}
         isOpen={showVersionHistory}
         onClose={onCloseVersionHistory}
+        onRestoreVersion={onRestoreVersion}
       />
 
       {/* Edit Document Modal (for sharing/permissions) */}
@@ -78,6 +83,7 @@ export default function DocumentModals({
         onClose={onCloseUploadVersion}
         documentId={document.documentId}
         onSuccess={onVersionUploadSuccess}
+        onOptimisticUpdate={onOptimisticFileUpdate}
       />
     </>
   );

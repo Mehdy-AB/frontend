@@ -94,11 +94,13 @@ export enum SearchResultType {
 }
 
 export enum MetadataType {
-  TEXT = 'TEXT',
+  LIST = 'LIST',
+  STRING = 'STRING',
   NUMBER = 'NUMBER',
+  DATETIME = 'DATETIME',
   DATE = 'DATE',
-  BOOLEAN = 'BOOLEAN',
-  LIST = 'LIST'
+  FLOAT = 'FLOAT',
+  BOOLEAN = 'BOOLEAN'
 }
 
 // User types
@@ -218,6 +220,7 @@ export interface DocumentResponseDto {
   isPublic: boolean;
   metadata: string[];
   filingCategory?: DocumentFilingCategoryResponseDto;
+  metadataDefinitions: CategoryMetadataDefinitionDto[];
   userPermissions: DocumentPermissionResDto;
 }
 
@@ -269,6 +272,215 @@ export interface FilingCategoryDocDto {
 
 export interface UpdateDocumentMetadataRequestDto {
   filingCategory: FilingCategoryDocDto;
+}
+
+// ==================== TAG TYPES ====================
+
+export interface CreateTagRequestDto {
+  name: string;
+  description?: string;
+  color?: string;
+}
+
+export interface UpdateTagRequestDto {
+  name: string;
+  description?: string;
+  color?: string;
+}
+
+export interface AddTagToDocumentRequestDto {
+  tagId: number;
+}
+
+export interface TagResponseDto {
+  id: number;
+  name: string;
+  description?: string;
+  color?: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  isSystem?: boolean;
+  documentCount?: number;
+}
+
+export interface DocumentTagResponseDto {
+  documentId: number;
+  tagId: number;
+  tagName: string;
+  tagColor?: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+// ==================== LINK RULE TYPES ====================
+
+// Enums for link rules
+export enum ConditionLogic {
+  AND = 'AND',
+  OR = 'OR'
+}
+
+export enum ConditionOperator {
+  EQUAL = 'EQUAL',
+  NOT_EQUAL = 'NOT_EQUAL',
+  GREATER_THAN = 'GREATER_THAN',
+  LESS_THAN = 'LESS_THAN',
+  GREATER_THAN_OR_EQUAL = 'GREATER_THAN_OR_EQUAL',
+  LESS_THAN_OR_EQUAL = 'LESS_THAN_OR_EQUAL',
+  CONTAINS = 'CONTAINS',
+  STARTS_WITH = 'STARTS_WITH',
+  ENDS_WITH = 'ENDS_WITH',
+  IN = 'IN',
+  NOT_IN = 'NOT_IN'
+}
+
+export interface LinkRuleConditionRequestDto {
+  sourceMetadataId: number;
+  targetMetadataId: number;
+  operator: ConditionOperator;
+  caseSensitive?: boolean;
+}
+
+export interface MetadataInfoDto {
+  metadataId: number;
+  metadataName: string;
+  categoryId: number;
+  categoryName: string;
+  dataType: string;
+}
+
+export interface LinkRuleConditionResponseDto {
+  id: number;
+  sourceMetadata: MetadataInfoDto;
+  targetMetadata: MetadataInfoDto;
+  operator: ConditionOperator;
+  caseSensitive: boolean;
+}
+
+export interface LinkRuleRequestDto {
+  name: string;
+  description?: string;
+  linkType: string;
+  conditionsLogic: ConditionLogic;
+  conditions: LinkRuleConditionRequestDto[];
+  enabled?: boolean;
+  bidirectional?: boolean;
+}
+
+export interface LinkRuleResponseDto {
+  id: number;
+  name: string;
+  description?: string;
+  linkType: string;
+  conditions: LinkRuleConditionResponseDto[];
+  enabled: boolean;
+  bidirectional: boolean;
+  createdBy: UserDto;
+  createdAt: string;
+  updatedAt: string;
+  activeLinksCount?: number;
+}
+
+export interface DocumentLinkRequestDto {
+  sourceDocumentId: number;
+  targetDocumentId: number;
+  linkType: string;
+  description?: string;
+}
+
+export interface DocumentLinkResponseDto {
+  id: number;
+  // Source document
+  sourceDocumentId: number;
+  sourceDocumentName: string;
+  sourceDocumentTitle: string;
+  // Target document
+  targetDocumentId: number;
+  targetDocumentName: string;
+  targetDocumentTitle: string;
+  // Link details
+  linkType: string;
+  description?: string;
+  isManual: boolean; // Changed from isAutomatic - INVERTED LOGIC!
+  // Rule info (if automatic)
+  ruleId?: number;
+  ruleName?: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface RelatedDocumentResponseDto {
+  documentId: number;
+  versionId: number;
+  documentName: string;
+  documentTitle: string;
+  documentDescription?: string;
+  path: string;
+  folderId: number;
+  sizeBytes: number;
+  mimeType: string;
+  versionNumber: number;
+  activeVersion: number;
+  documentCreatedAt: string;
+  documentUpdatedAt: string;
+  isPublic: boolean;
+  // User information
+  createdBy: UserDto;
+  ownedBy: UserDto;
+  // Link information
+  linkType: string;
+  description?: string;
+  isManual: boolean;
+  ruleName?: string;
+  ruleId?: number;
+  linkedAt: string;
+  // Document metadata for frontend display
+  metadata: RelatedDocumentMetadataDto[];
+  // Category information
+  filingCategory?: RelatedDocumentFilingCategoryDto;
+  // User permissions
+  userPermissions?: RelatedDocumentUserPermissionsDto;
+}
+
+export interface RelatedDocumentMetadataDto {
+  metadataId: number;
+  metadataName: string;
+  value: string;
+  categoryName: string;
+  categoryId: number;
+}
+
+export interface RelatedDocumentFilingCategoryDto {
+  id: number;
+  name: string;
+  description?: string;
+  metadata: RelatedDocumentMetadataDto[];
+  metadataDefinitions: RelatedDocumentMetadataDefinitionDto[];
+}
+
+export interface RelatedDocumentMetadataDefinitionDto {
+  id: number;
+  key: string;
+  dataType: string;
+  mandatory: boolean;
+  listId?: number;
+  list?: RelatedDocumentListMetaDataDto;
+}
+
+export interface RelatedDocumentListMetaDataDto {
+  id: number;
+  name: string;
+  description?: string;
+  mandatory: boolean;
+  option: string[];
+}
+
+export interface RelatedDocumentUserPermissionsDto {
+  canView: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+  canManagePermissions: boolean;
 }
 
 export interface TypeShareAccessDocWithTypeReq {
@@ -446,6 +658,298 @@ export interface DocumentVersionInfo {
   updatedAt: string;
 }
 
+// ==================== UNIFIED SEARCH TYPES ====================
+
+export interface UnifiedSearchRequestDto {
+  // Basic search parameters
+  query?: string;
+  page?: number;
+  size?: number;
+
+  // Content type filters
+  includeFolders?: boolean;
+  includeDocuments?: boolean;
+
+  // Simple filters (triggers DB search when no text query)
+  ownerId?: string; // Search by owner (user ID)
+
+  // Creation date - supports both single date and date range
+  createdAt?: string; // Single creation date
+  createdAtFrom?: string; // Start of date range
+  createdAtTo?: string; // End of date range
+  
+  // Search field toggles (for Elasticsearch)
+  lookUpNames?: boolean;
+  lookUpMetadataValue?: boolean;
+  lookUpOcrContent?: boolean;
+  lookUpDescription?: boolean;
+  lookUpTags?: boolean;
+
+  // Sorting
+  sortBy?: string;
+  sortDesc?: boolean;
+
+  // Advanced search features (always triggers Elasticsearch)
+  metadataOperations?: MetadataOperationDto; // AND/OR metadata search
+}
+
+export interface CategoryMetadataSearchDto {
+  // Category selection
+  categoryId?: number;
+  categoryName?: string;
+  
+  // Metadata field filters
+  metadataFilters?: MetadataFilter[];
+}
+
+export interface MetadataFilter {
+  // Field identification
+  metadataDefinitionId?: number;
+  
+  // Filter operation
+  operator: FilterOperator;
+  
+  // Values
+  value?: string;
+  fromValue?: any;
+  toValue?: any;
+  values?: string[];
+}
+
+export interface MetadataOperationDto {
+  // Operation type between metadata conditions
+  operationType: 'AND' | 'OR';
+  
+  // List of metadata conditions
+  conditions: MetadataCondition[];
+}
+
+export interface MetadataCondition {
+  // Model and metadata field identification
+  metadataDefinitionId: number;  // ID of the CategoryMetadataDefinition
+  
+  // Filter operation
+  operator: FilterOperator;    // EQUALS, CONTAINS, RANGE, GT, LT, GTE, LTE, IN, NOT_IN
+  
+  // Values
+  value?: string;               // For EQUALS, CONTAINS
+  fromValue?: any;              // For RANGE, GTE
+  toValue?: any;                // For RANGE, LTE
+  values?: string[];            // For IN, NOT_IN (for LIST type)
+}
+
+// ==================== SEARCH REQUEST TYPES ====================
+
+export interface ModelMetadataFilterDto {
+  modelId: number;
+  modelName?: string;
+  metadataFieldFilters?: Record<string, any>;
+  metadataFieldRanges?: Record<string, any>;
+  metadataFieldTypes?: Record<string, string>;
+  metadataFilters?: MetadataFieldFilter[];
+}
+
+export interface MetadataFieldFilter {
+  fieldName: string;
+  fieldType: string;
+  value?: any;
+  fromValue?: any;
+  toValue?: any;
+  operator: string; // "equals", "contains", "startsWith", "endsWith", "range", "gt", "lt", "gte", "lte"
+}
+
+export interface SearchRequestDto {
+  // Basic search parameters
+  query?: string;
+  page?: number;
+  size?: number;
+
+  // Search field toggles
+  lookUpFolderName?: boolean;
+  lookUpDocumentName?: boolean;
+  lookUpMetadataKey?: boolean;
+  lookUpMetadataValue?: boolean;
+  lookUpCategoryName?: boolean;
+  lookUpOcrContent?: boolean;
+  lookUpDescription?: boolean;
+  lookUpTags?: boolean;
+  lookUpModel?: boolean;
+  lookUpCreatedAt?: boolean;
+
+  // Content type filters
+  includeFolders?: boolean;
+  includeDocuments?: boolean;
+
+  // Model-based metadata filtering
+  modelMetadataFilter?: ModelMetadataFilterDto;
+  
+  // Legacy ID-based filtering (kept for backward compatibility)
+  modelId?: number;
+  modelIds?: number[];
+  metadataId?: number;
+  metadataIds?: number[];
+  categoryId?: number;
+  categoryIds?: number[];
+
+  // Metadata search parameters
+  metadataKey?: string;
+  metadataValue?: string;
+  metadataKeyValue?: string;
+  metadataCategory?: string;
+  metadataType?: string;
+  
+  // Range search for metadata
+  metadataRangeField?: string;
+  metadataRangeFrom?: any;
+  metadataRangeTo?: any;
+  metadataRangeInclusive?: boolean;
+  
+  // Creation date range search
+  createdAtFrom?: string;
+  createdAtTo?: string;
+  createdAtInclusive?: boolean;
+  
+  // Model/Type filtering
+  modelType?: string;
+  modelTypes?: string[];
+  mimeType?: string;
+  mimeTypes?: string[];
+
+  // Sorting
+  sortBy?: string; // "score", "name", "createdAt", "updatedAt"
+  sortDesc?: boolean;
+}
+
+// ==================== ADVANCED SEARCH TYPES ====================
+
+export enum FilterOperator {
+  EQUALS = 'EQUALS',
+  NOT_EQUALS = 'NOT_EQUALS',
+  CONTAINS = 'CONTAINS',
+  STARTS_WITH = 'STARTS_WITH',
+  ENDS_WITH = 'ENDS_WITH',
+  RANGE = 'RANGE',
+  GT = 'GT',
+  LT = 'LT',
+  GTE = 'GTE',
+  LTE = 'LTE',
+  IN = 'IN',
+  NOT_IN = 'NOT_IN',
+  IS_NULL = 'IS_NULL',
+  IS_NOT_NULL = 'IS_NOT_NULL'
+}
+
+export enum FilterLogic {
+  AND = 'AND',
+  OR = 'OR'
+}
+
+export enum SortOption {
+  RELEVANCE = 'RELEVANCE',
+  NAME = 'NAME',
+  CREATED_DATE = 'CREATED_DATE',
+  UPDATED_DATE = 'UPDATED_DATE',
+  SIZE = 'SIZE',
+  TYPE = 'TYPE'
+}
+
+export enum SortDirection {
+  ASC = 'ASC',
+  DESC = 'DESC'
+}
+
+export interface MetadataFilter {
+  metadataDefinitionId?: number;
+  fieldName: string;
+  fieldType: string;
+  operator: FilterOperator;
+  value?: string;
+  fromValue?: any;
+  toValue?: any;
+  values?: string[];
+  caseInsensitive?: boolean;
+  inclusive?: boolean;
+}
+
+export interface CategoryMetadataSearchDto {
+  categoryId?: number;
+  categoryName?: string;
+  metadataFilters?: MetadataFilter[];
+}
+
+export interface SearchScope {
+  searchInName?: boolean;
+  searchInDescription?: boolean;
+  searchInMetadata?: boolean;
+  searchInOcrText?: boolean;
+  searchInTags?: boolean;
+  searchInPath?: boolean;
+}
+
+export interface DateRangeFilter {
+  from?: string;
+  to?: string;
+  inclusive?: boolean;
+}
+
+export interface AdvancedSearchRequestDto {
+  // Basic search
+  query?: string;
+  searchScope?: SearchScope;
+  page?: number;
+  size?: number;
+  
+  // Category-based filtering
+  categoryFilter?: CategoryMetadataSearchDto;
+  categoryFilters?: CategoryMetadataSearchDto[];
+  categoryFilterLogic?: FilterLogic;
+  
+  // Content type filters
+  includeFolders?: boolean;
+  includeDocuments?: boolean;
+  
+  // Document type filters
+  mimeTypes?: string[];
+  fileExtensions?: string[];
+  
+  // Date filters
+  createdAt?: DateRangeFilter;
+  updatedAt?: DateRangeFilter;
+  
+  // Folder filters
+  folderIds?: number[];
+  includeSubfolders?: boolean;
+  
+  // Tag filters
+  tags?: string[];
+  tagFilterLogic?: FilterLogic;
+  
+  // Advanced options
+  searchInOcrContent?: boolean;
+  searchInAllVersions?: boolean;
+  sortBy?: SortOption;
+  sortDirection?: SortDirection;
+}
+
+export interface AdvancedSearchResponseDto {
+  documents: any[];
+  folders: any[];
+  pagination: {
+    currentPage: number;
+    pageSize: number;
+    totalPages: number;
+    totalElements: number;
+    hasNext: boolean;
+    hasPrevious: boolean;
+  };
+  metadata: {
+    query?: string;
+    searchTimeMs: number;
+    hasMore: boolean;
+    appliedFilters?: string;
+  };
+}
+
 export interface Filters {
   lookUpFolderName: boolean;
   lookUpDocumentName: boolean;
@@ -604,43 +1108,30 @@ export interface RecycleBinCountResponse {
   count: number;
 }
 
-// ==================== LINK RULE TYPES ====================
 
-export interface ManualLinkRequest {
-  sourceDocumentId: number;
-  targetDocumentId: number;
-  linkType: string; // e.g., "RELATED", "SUPERSEDES", "REFERENCES", "CONTAINS"
-  description?: string;
-}
-
-export interface ManualLinkResponse {
+// Document search types
+export interface DocumentSearchItem {
   id: number;
-  sourceDocumentId: number;
-  targetDocumentId: number;
-  linkType: string;
-  description?: string;
-  createdBy: string;
-  createdAt: string;
-  updatedAt: string;
+  title: string;
+  name: string;
+  description: string;
+  type: string;
+  ownerName: string;
+  mimeType: string;
+  sizeBytes: number;
+  path: string;
 }
 
-export interface RelatedDocumentResponse {
-  documentId: number;
-  documentName: string;
-  documentTitle: string;
-  linkType: string;
-  score: number; // Relevance score (1.0 for manual links)
-  isManual: boolean; // true for manual links, false for automatic
-  ruleName?: string; // Only for automatic links
-  linkedAt: string;
+export interface DocumentSearchResponse {
+  documents: DocumentSearchItem[];
+  totalElements: number;
+  totalPages: number;
+  currentPage: number;
+  size: number;
+  hasNext: boolean;
+  hasPrevious: boolean;
 }
 
-export interface LinkRuleCacheStatistics {
-  totalCachedLinks: number;
-  activeRules: number;
-  lastRevalidation: string;
-  cacheHitRate: number;
-}
 
 // ==================== DOCUMENT VERSION TYPES ====================
 
@@ -652,4 +1143,53 @@ export interface DocumentVersionResponse {
   sizeBytes: number;
   mimeType: string;
   createdAt: string;
+}
+
+// ==================== RULE EXECUTION TYPES ====================
+
+export interface RuleExecutionRequest {
+  ruleId: number;
+  documentId?: number; // Optional: execute rule for specific document
+  forceRevalidation?: boolean;
+}
+
+export interface RuleExecutionResponse {
+  ruleId: number;
+  documentsProcessed: number;
+  linksCreated: number;
+  executionTime: number;
+  success: boolean;
+  message?: string;
+}
+
+export interface RuleStatistics {
+  ruleId: number;
+  ruleName: string;
+  totalExecutions: number;
+  lastExecutedAt?: string;
+  linksCreated: number;
+  successRate: number;
+  averageExecutionTime: number;
+}
+
+export interface BulkRuleExecutionRequest {
+  ruleIds: number[];
+  documentId?: number;
+  forceRevalidation?: boolean;
+}
+
+export interface BulkRuleExecutionResponse {
+  totalRules: number;
+  successfulRules: number;
+  failedRules: number;
+  totalLinksCreated: number;
+  executionTime: number;
+  results: RuleExecutionResponse[];
+}
+
+export interface LinkRuleCacheStatistics {
+  totalCachedLinks: number;
+  activeRules: number;
+  lastRevalidation: string;
+  cacheHitRate: number;
 }

@@ -19,6 +19,18 @@ import {
   DocumentPermissionResDto,
   FilingCategoryDocDto,
   UpdateDocumentMetadataRequestDto,
+  // Tag types
+  CreateTagRequestDto,
+  UpdateTagRequestDto,
+  AddTagToDocumentRequestDto,
+  TagResponseDto,
+  DocumentTagResponseDto,
+  // Link Rule types
+  LinkRuleRequestDto,
+  LinkRuleResponseDto,
+  DocumentLinkRequestDto,
+  DocumentLinkResponseDto,
+  RelatedDocumentResponseDto,
   TypeShareAccessDocWithTypeReq,
   TypeShareAccessDocumentRes,
   // Folder types
@@ -35,7 +47,13 @@ import {
   MetaDataListRes,
   // Search types
   GlobalSearchResultDto,
+  AdvancedSearchResponseDto,
+  UnifiedSearchRequestDto,
+  AdvancedSearchRequestDto,
+  SearchRequestDto,
   Filters,
+  ModelMetadataFilterDto,
+  MetadataFieldFilter,
   // Common types
   PageResponse,
   SortFields,
@@ -64,10 +82,14 @@ import {
   RecycleBinPermanentDeleteReq,
   RecycleBinCheckResponse,
   RecycleBinCountResponse,
-  // Link Rule types
-  ManualLinkRequest,
-  ManualLinkResponse,
-  RelatedDocumentResponse,
+  // Document search types
+  DocumentSearchResponse,
+  // Rule execution types
+  RuleExecutionRequest,
+  RuleExecutionResponse,
+  RuleStatistics,
+  BulkRuleExecutionRequest,
+  BulkRuleExecutionResponse,
   LinkRuleCacheStatistics
 } from '../types/api';
 
@@ -471,7 +493,7 @@ class ApiClient {
     folderId: number,
     title: string,
     lang: ExtractorLanguage,
-    filingCategoryDto: FilingCategoryDocDto[]
+    filingCategoryDto: FilingCategoryDocDto
   ): Promise<DocumentResponseDto> {
     const formData = new FormData();
     formData.append('file', file);
@@ -479,7 +501,7 @@ class ApiClient {
     formData.append('title', title);
     formData.append('lang', lang);
     
-    // Send filingCategory as a Blob with proper Content-Type for @RequestPart
+    // Create a Blob with JSON content type for the filing category
     const filingCategoryBlob = new Blob([JSON.stringify(filingCategoryDto)], {
       type: 'application/json'
     });
@@ -886,73 +908,15 @@ class ApiClient {
   // ==================== SEARCH ENDPOINTS ====================
 
   /**
-   * Global search
+   * Unified smart search (POST endpoint with smart routing)
    */
-  async globalSearch(params: {
-    page?: number;
-    size?: number;
-    query?: string;
-    lookUpFolderName?: boolean;
-    lookUpDocumentName?: boolean;
-    lookUpMetadataKey?: boolean;
-    lookUpMetadataValue?: boolean;
-    lookUpCategoryName?: boolean;
-    lookUpOcrContent?: boolean;
-    lookUpDescription?: boolean;
-    includeFolders?: boolean;
-    includeDocuments?: boolean;
-    sortBy?: string;
-    sortDesc?: boolean;
-  } = {}): Promise<GlobalSearchResultDto> {
-    const response: AxiosResponse<GlobalSearchResultDto> = await this.client.get('/api/v1/search', { params });
+  async unifiedSearch(data: UnifiedSearchRequestDto): Promise<GlobalSearchResultDto> {
+    const response: AxiosResponse<GlobalSearchResultDto> = await this.client.post('/api/v1/search', data);
     return response.data;
   }
 
-  /**
-   * Enhanced search with version support
-   */
-  async enhancedSearch(query: string, params: {
-    page?: number;
-    size?: number;
-    lookUpFolderName?: boolean;
-    lookUpDocumentName?: boolean;
-    lookUpMetadataKey?: boolean;
-    lookUpMetadataValue?: boolean;
-    lookUpCategoryName?: boolean;
-    lookUpOcrContent?: boolean;
-    lookUpDescription?: boolean;
-    includeFolders?: boolean;
-    includeDocuments?: boolean;
-  } = {}): Promise<GlobalSearchResultDto> {
-    const response: AxiosResponse<GlobalSearchResultDto> = await this.client.get('/api/v1/search/enhanced', { 
-      params: { query, ...params } 
-    });
-    return response.data;
-  }
 
-  /**
-   * Search in document versions
-   */
-  async searchInVersions(query: string, params: {
-    page?: number;
-    size?: number;
-    lookUpDocumentName?: boolean;
-    lookUpOcrContent?: boolean;
-  } = {}): Promise<GlobalSearchResultDto> {
-    const response: AxiosResponse<GlobalSearchResultDto> = await this.client.get('/api/v1/search/versions', { 
-      params: { query, ...params } 
-    });
-    return response.data;
-  }
 
-  /**
-   * Get document versions
-   */
-  async getDocumentVersions(documentId: number, query?: string): Promise<GlobalSearchResultDto> {
-    const params = query ? { query } : {};
-    const response: AxiosResponse<GlobalSearchResultDto> = await this.client.get(`/api/v1/search/document/${documentId}/versions`, { params });
-    return response.data;
-  }
 
   /**
    * Set active version for a document
@@ -973,6 +937,410 @@ class ApiClient {
    */
   async updateDocumentFilingCategory(documentId: number, filingCategoryDto: FilingCategoryDocDto[]): Promise<DocumentResponseDto> {
     const response: AxiosResponse<DocumentResponseDto> = await this.client.put(`/api/v1/document/${documentId}/filing-category`, filingCategoryDto);
+    return response.data;
+  }
+
+  // ==================== TAG ENDPOINTS ====================
+
+  /**
+   * Create a new tag
+   */
+  async createTag(request: CreateTagRequestDto): Promise<TagResponseDto> {
+    const response: AxiosResponse<TagResponseDto> = await this.client.post('/api/v1/tags', request);
+    return response.data;
+  }
+
+  /**
+   * Get tag by ID
+   */
+  async getTagById(id: number): Promise<TagResponseDto> {
+    const response: AxiosResponse<TagResponseDto> = await this.client.get(`/api/v1/tags/${id}`);
+    return response.data;
+  }
+
+  /**
+   * Get tag by name
+   */
+  async getTagByName(name: string): Promise<TagResponseDto> {
+    const response: AxiosResponse<TagResponseDto> = await this.client.get(`/api/v1/tags/name/${name}`);
+    return response.data;
+  }
+
+  /**
+   * Get all tags
+   */
+  async getAllTags(): Promise<TagResponseDto[]> {
+    const response: AxiosResponse<TagResponseDto[]> = await this.client.get('/api/v1/tags');
+    return response.data;
+  }
+
+  /**
+   * Get tags by user ID
+   */
+  async getTagsByUser(userId: string): Promise<TagResponseDto[]> {
+    const response: AxiosResponse<TagResponseDto[]> = await this.client.get(`/api/v1/tags/user/${userId}`);
+    return response.data;
+  }
+
+  /**
+   * Get current user's tags
+   */
+  async getMyTags(): Promise<TagResponseDto[]> {
+    const response: AxiosResponse<TagResponseDto[]> = await this.client.get('/api/v1/tags/my-tags');
+    return response.data;
+  }
+
+  /**
+   * Get available tags for current user
+   */
+  async getAvailableTags(): Promise<TagResponseDto[]> {
+    const response: AxiosResponse<TagResponseDto[]> = await this.client.get('/api/v1/tags/available');
+    return response.data;
+  }
+
+  /**
+   * Get system tags
+   */
+  async getSystemTags(): Promise<TagResponseDto[]> {
+    const response: AxiosResponse<TagResponseDto[]> = await this.client.get('/api/v1/tags/system');
+    return response.data;
+  }
+
+  /**
+   * Search tags by name
+   */
+  async searchTags(name: string, page: number = 0, size: number = 20): Promise<PageResponse<TagResponseDto>> {
+    const response: AxiosResponse<PageResponse<TagResponseDto>> = await this.client.post('/api/v1/tags/search', {
+      name,
+      page,
+      size
+    });
+    return response.data;
+  }
+
+  /**
+   * Update tag
+   */
+  async updateTag(id: number, request: UpdateTagRequestDto): Promise<TagResponseDto> {
+    const response: AxiosResponse<TagResponseDto> = await this.client.put(`/api/v1/tags/${id}`, request);
+    return response.data;
+  }
+
+  /**
+   * Delete tag
+   */
+  async deleteTag(id: number): Promise<void> {
+    await this.client.delete(`/api/v1/tags/${id}`);
+  }
+
+  /**
+   * Add tag to document
+   */
+  async addTagToDocument(documentId: number, request: AddTagToDocumentRequestDto): Promise<DocumentTagResponseDto> {
+    const response: AxiosResponse<DocumentTagResponseDto> = await this.client.post(`/api/v1/tags/documents/${documentId}/tags`, request);
+    return response.data;
+  }
+
+  /**
+   * Remove tag from document
+   */
+  async removeTagFromDocument(documentId: number, tagId: number): Promise<void> {
+    await this.client.delete(`/api/v1/tags/documents/${documentId}/tags/${tagId}`);
+  }
+
+  /**
+   * Remove all tags from document
+   */
+  async removeAllTagsFromDocument(documentId: number): Promise<void> {
+    await this.client.delete(`/api/v1/tags/documents/${documentId}/tags`);
+  }
+
+  /**
+   * Get tags by document ID
+   */
+  async getTagsByDocumentId(documentId: number): Promise<TagResponseDto[]> {
+    const response: AxiosResponse<TagResponseDto[]> = await this.client.get(`/api/v1/tags/documents/${documentId}/tags`);
+    return response.data;
+  }
+
+  /**
+   * Get document IDs by tag ID
+   */
+  async getDocumentIdsByTagId(tagId: number): Promise<number[]> {
+    const response: AxiosResponse<number[]> = await this.client.get(`/api/v1/tags/${tagId}/documents`);
+    return response.data;
+  }
+
+  /**
+   * Get tag statistics
+   */
+  async getTagStatistics(): Promise<{ totalTags: number; userTags: number }> {
+    const response: AxiosResponse<{ totalTags: number; userTags: number }> = await this.client.get('/api/v1/tags/statistics');
+    return response.data;
+  }
+
+  /**
+   * Get tag statistics by tag ID
+   */
+  async getTagStatisticsById(tagId: number): Promise<{ tagId: number; documentCount: number }> {
+    const response: AxiosResponse<{ tagId: number; documentCount: number }> = await this.client.get(`/api/v1/tags/${tagId}/statistics`);
+    return response.data;
+  }
+
+  // ==================== LINK RULE ENDPOINTS ====================
+
+  /**
+   * Create a link rule
+   */
+  async createLinkRule(request: LinkRuleRequestDto): Promise<LinkRuleResponseDto> {
+    const response: AxiosResponse<LinkRuleResponseDto> = await this.client.post('/api/link-rules', request);
+    return response.data;
+  }
+
+  /**
+   * Update a link rule
+   */
+  async updateLinkRule(ruleId: number, request: LinkRuleRequestDto): Promise<LinkRuleResponseDto> {
+    const response: AxiosResponse<LinkRuleResponseDto> = await this.client.put(`/api/link-rules/${ruleId}`, request);
+    return response.data;
+  }
+
+  /**
+   * Delete a link rule
+   */
+  async deleteLinkRule(ruleId: number): Promise<void> {
+    await this.client.delete(`/api/link-rules/${ruleId}`);
+  }
+
+  /**
+   * Get link rule by ID
+   */
+  async getLinkRule(ruleId: number): Promise<LinkRuleResponseDto> {
+    const response: AxiosResponse<LinkRuleResponseDto> = await this.client.get(`/api/link-rules/${ruleId}`);
+    return response.data;
+  }
+
+  /**
+   * Get all link rules
+   */
+  async getAllLinkRules(): Promise<LinkRuleResponseDto[]> {
+    const response: AxiosResponse<LinkRuleResponseDto[]> = await this.client.get('/api/link-rules');
+    return response.data;
+  }
+
+  /**
+   * Get all link rules with pagination and filters
+   */
+  async getAllLinkRulesPaginated(params: {
+    page?: number;
+    size?: number;
+    enabled?: boolean;
+    linkType?: string;
+    name?: string;
+  } = {}): Promise<PageResponse<LinkRuleResponseDto>> {
+    const queryParams = new URLSearchParams();
+    if (params.page !== undefined) queryParams.append('page', params.page.toString());
+    if (params.size !== undefined) queryParams.append('size', params.size.toString());
+    if (params.enabled !== undefined) queryParams.append('enabled', params.enabled.toString());
+    if (params.linkType) queryParams.append('linkType', params.linkType);
+    if (params.name) queryParams.append('name', params.name);
+    
+    const response: AxiosResponse<PageResponse<LinkRuleResponseDto>> = await this.client.get(`/api/link-rules?${queryParams.toString()}`);
+    return response.data;
+  }
+
+  /**
+   * Toggle rule enabled/disabled
+   */
+  async toggleLinkRule(ruleId: number, enabled: boolean): Promise<void> {
+    await this.client.put(`/api/link-rules/${ruleId}/toggle?enabled=${enabled}`);
+  }
+
+  /**
+   * Apply a specific rule to all documents (async)
+   */
+  async applyLinkRule(ruleId: number): Promise<{ message: string; status: string; ruleId: number }> {
+    const response: AxiosResponse<{ message: string; status: string; ruleId: number }> = 
+      await this.client.post(`/api/link-rules/${ruleId}/apply`);
+    return response.data;
+  }
+
+  /**
+   * Apply all enabled rules to a specific document (async)
+   */
+  async applyRulesToDocument(documentId: number): Promise<{ message: string; status: string; documentId: number }> {
+    const response: AxiosResponse<{ message: string; status: string; documentId: number }> = 
+      await this.client.post(`/api/link-rules/apply-to-document/${documentId}`);
+    return response.data;
+  }
+
+  /**
+   * Reapply all enabled rules (async)
+   */
+  async reapplyAllLinkRules(): Promise<{ message: string; status: string }> {
+    const response: AxiosResponse<{ message: string; status: string }> = 
+      await this.client.post('/api/link-rules/reapply-all');
+    return response.data;
+  }
+
+  /**
+   * Get link rules by category
+   */
+  async getLinkRulesByCategory(categoryId: number): Promise<LinkRuleResponseDto[]> {
+    const response: AxiosResponse<LinkRuleResponseDto[]> = await this.client.get(`/api/link-rules/category/${categoryId}`);
+    return response.data;
+  }
+
+  /**
+   * Get link rules by metadata
+   */
+  async getLinkRulesByMetadata(metadataId: number): Promise<LinkRuleResponseDto[]> {
+    const response: AxiosResponse<LinkRuleResponseDto[]> = await this.client.get(`/api/link-rules/metadata/${metadataId}`);
+    return response.data;
+  }
+
+  // ==================== RULE EXECUTION ENDPOINTS ====================
+
+  /**
+   * Execute a specific link rule
+   */
+  async executeRule(request: RuleExecutionRequest): Promise<RuleExecutionResponse> {
+    const response: AxiosResponse<RuleExecutionResponse> = await this.client.post(`/api/link-rules/${request.ruleId}/execute`, request);
+    return response.data;
+  }
+
+  /**
+   * Execute multiple link rules in bulk
+   */
+  async executeBulkRules(request: BulkRuleExecutionRequest): Promise<BulkRuleExecutionResponse> {
+    const response: AxiosResponse<BulkRuleExecutionResponse> = await this.client.post('/api/link-rules/execute-bulk', request);
+    return response.data;
+  }
+
+  /**
+   * Revalidate all link rules
+   */
+  async revalidateAllRules(): Promise<{ message: string; rulesProcessed: number }> {
+    const response: AxiosResponse<{ message: string; rulesProcessed: number }> = await this.client.post('/api/link-rules/revalidate-all');
+    return response.data;
+  }
+
+  /**
+   * Revalidate a specific link rule
+   */
+  async revalidateRule(ruleId: number): Promise<RuleExecutionResponse> {
+    const response: AxiosResponse<RuleExecutionResponse> = await this.client.post(`/api/link-rules/${ruleId}/revalidate`);
+    return response.data;
+  }
+
+  /**
+   * Get rule execution statistics
+   */
+  async getRuleStatistics(ruleId: number): Promise<RuleStatistics> {
+    const response: AxiosResponse<RuleStatistics> = await this.client.get(`/api/link-rules/${ruleId}/statistics`);
+    return response.data;
+  }
+
+  /**
+   * Get all rule statistics
+   */
+  async getAllRuleStatistics(): Promise<RuleStatistics[]> {
+    const response: AxiosResponse<RuleStatistics[]> = await this.client.get('/api/link-rules/statistics');
+    return response.data;
+  }
+
+  /**
+   * Get link rule cache statistics
+   */
+  async getLinkRuleCacheStatistics(): Promise<LinkRuleCacheStatistics> {
+    const response: AxiosResponse<LinkRuleCacheStatistics> = await this.client.get('/api/link-rules/cache/statistics');
+    return response.data;
+  }
+
+  /**
+   * Clear cache for a specific document
+   */
+  async clearDocumentCache(documentId: number): Promise<void> {
+    await this.client.delete(`/api/link-rules/cache/document/${documentId}`);
+  }
+
+  /**
+   * Clear cache for a specific rule
+   */
+  async clearRuleCache(ruleId: number): Promise<void> {
+    await this.client.delete(`/api/link-rules/cache/rule/${ruleId}`);
+  }
+
+  /**
+   * Clear all link rule cache
+   */
+  async clearAllRuleCache(): Promise<void> {
+    await this.client.delete('/api/link-rules/cache/all');
+  }
+
+  /**
+   * Enable a link rule
+   */
+  async enableLinkRule(ruleId: number): Promise<void> {
+    await this.client.put(`/api/link-rules/${ruleId}/enable`);
+  }
+
+  /**
+   * Disable a link rule
+   */
+  async disableLinkRule(ruleId: number): Promise<void> {
+    await this.client.put(`/api/link-rules/${ruleId}/disable`);
+  }
+
+  // ==================== DOCUMENT LINK ENDPOINTS ====================
+
+  /**
+   * Create a document link
+   */
+  async createDocumentLink(request: DocumentLinkRequestDto): Promise<DocumentLinkResponseDto> {
+    const response: AxiosResponse<DocumentLinkResponseDto> = await this.client.post('/api/document-links', request);
+    return response.data;
+  }
+
+  /**
+   * Delete a document link
+   */
+  async deleteDocumentLink(linkId: number): Promise<void> {
+    await this.client.delete(`/api/document-links/${linkId}`);
+  }
+
+
+  /**
+   * Get outgoing links for a document
+   */
+  async getOutgoingLinks(documentId: number): Promise<DocumentLinkResponseDto[]> {
+    const response: AxiosResponse<DocumentLinkResponseDto[]> = await this.client.get(`/api/document-links/document/${documentId}/outgoing`);
+    return response.data;
+  }
+
+  /**
+   * Get incoming links for a document
+   */
+  async getIncomingLinks(documentId: number): Promise<DocumentLinkResponseDto[]> {
+    const response: AxiosResponse<DocumentLinkResponseDto[]> = await this.client.get(`/api/document-links/document/${documentId}/incoming`);
+    return response.data;
+  }
+
+  /**
+   * Get related documents for a document with search and filters
+   */
+  async getRelatedDocuments(documentId: number, params: {
+    search?: string;
+    linkType?: string;
+    isManual?: boolean;
+    fromDate?: string;
+    toDate?: string;
+    mimeType?: string;
+    page?: number;
+    size?: number;
+  } = {}): Promise<PageResponse<RelatedDocumentResponseDto>> {
+    const response: AxiosResponse<PageResponse<RelatedDocumentResponseDto>> = 
+      await this.client.post(`/api/document-links/document/${documentId}/related`, params);
     return response.data;
   }
 
@@ -1020,8 +1388,9 @@ class ApiClient {
     page?: number;
     size?: number;
   } = {}): Promise<PageResponse<AuditLog>> {
-    const response: AxiosResponse<PageResponse<AuditLog>> = await this.client.get('/api/v1/admin/audit-logs/search', { 
-      params: { searchTerm, ...params } 
+    const response: AxiosResponse<PageResponse<AuditLog>> = await this.client.post('/api/v1/admin/audit-logs/search', {
+      searchTerm,
+      ...params
     });
     return response.data;
   }
@@ -1547,98 +1916,6 @@ class ApiClient {
     return response.data;
   }
 
-  // ==================== LINK RULE ENDPOINTS ====================
-
-  /**
-   * Create a manual link between two documents
-   */
-  async createManualLink(data: ManualLinkRequest): Promise<ManualLinkResponse> {
-    const response: AxiosResponse<ManualLinkResponse> = await this.client.post('/api/v1/link-rules/manual-links', data);
-    return response.data;
-  }
-
-  /**
-   * Get all manual links for a document
-   */
-  async getDocumentManualLinks(documentId: number): Promise<ManualLinkResponse[]> {
-    const response: AxiosResponse<ManualLinkResponse[]> = await this.client.get(`/api/v1/link-rules/documents/${documentId}/manual-links`);
-    return response.data;
-  }
-
-  /**
-   * Get outgoing manual links for a document
-   */
-  async getOutgoingManualLinks(documentId: number): Promise<ManualLinkResponse[]> {
-    const response: AxiosResponse<ManualLinkResponse[]> = await this.client.get(`/api/v1/link-rules/documents/${documentId}/manual-links/outgoing`);
-    return response.data;
-  }
-
-  /**
-   * Get incoming manual links for a document
-   */
-  async getIncomingManualLinks(documentId: number): Promise<ManualLinkResponse[]> {
-    const response: AxiosResponse<ManualLinkResponse[]> = await this.client.get(`/api/v1/link-rules/documents/${documentId}/manual-links/incoming`);
-    return response.data;
-  }
-
-  /**
-   * Update a manual link
-   */
-  async updateManualLink(linkId: number, data: ManualLinkRequest): Promise<ManualLinkResponse> {
-    const response: AxiosResponse<ManualLinkResponse> = await this.client.put(`/api/v1/link-rules/manual-links/${linkId}`, data);
-    return response.data;
-  }
-
-  /**
-   * Delete a manual link
-   */
-  async deleteManualLink(linkId: number): Promise<void> {
-    await this.client.delete(`/api/v1/link-rules/manual-links/${linkId}`);
-  }
-
-  /**
-   * Get all related documents (manual + automatic) for a document
-   */
-  async getRelatedDocuments(documentId: number): Promise<RelatedDocumentResponse[]> {
-    const response: AxiosResponse<RelatedDocumentResponse[]> = await this.client.get(`/api/v1/link-rules/documents/${documentId}/related`);
-    return response.data;
-  }
-
-  /**
-   * Trigger manual revalidation of all rules (admin only)
-   */
-  async triggerLinkRuleRevalidation(): Promise<void> {
-    await this.client.post('/api/v1/link-rules/admin/revalidate');
-  }
-
-  /**
-   * Revalidate a specific rule (admin only)
-   */
-  async revalidateLinkRule(ruleId: number): Promise<void> {
-    await this.client.post(`/api/v1/link-rules/admin/rules/${ruleId}/revalidate`);
-  }
-
-  /**
-   * Get cache statistics (admin only)
-   */
-  async getLinkRuleCacheStatistics(): Promise<LinkRuleCacheStatistics> {
-    const response: AxiosResponse<LinkRuleCacheStatistics> = await this.client.get('/api/v1/link-rules/admin/cache/statistics');
-    return response.data;
-  }
-
-  /**
-   * Clear cache for a specific document (admin only)
-   */
-  async clearDocumentLinkCache(documentId: number): Promise<void> {
-    await this.client.delete(`/api/v1/link-rules/admin/documents/${documentId}/cache`);
-  }
-
-  /**
-   * Clear cache for a specific rule (admin only)
-   */
-  async clearRuleLinkCache(ruleId: number): Promise<void> {
-    await this.client.delete(`/api/v1/link-rules/admin/rules/${ruleId}/cache`);
-  }
 }
 
 // Create and export a singleton instance

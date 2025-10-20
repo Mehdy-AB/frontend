@@ -260,3 +260,33 @@
 .viewer-table tr:hover {
   background-color: rgb(var(--muted) / 0.5);
 }
+/* ==== Custom Scrollbar Style ==== */
+::-webkit-scrollbar {
+  width: 6px;               /* scrollbar width */
+  height: 6px;              /* scrollbar height (for horizontal) */
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;  /* transparent track */
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(120, 120, 120, 0.4); /* soft gray thumb */
+  border-radius: 4px;                         /* rounded corners */
+  transition: background-color 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(120, 120, 120, 0.7); /* darker on hover */
+}
+
+/* For Firefox */
+* {
+  scrollbar-width: thin;              /* "auto" or "thin" */
+  scrollbar-color: rgba(120,120,120,0.4) transparent;
+}
+
+/* Optional: smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}

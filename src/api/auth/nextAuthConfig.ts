@@ -5,7 +5,7 @@ export const authOptions: NextAuthOptions = {
   providers: [
     KeycloakProvider({
       clientId: process.env.KEYCLOAK_ID || 'dms-front-app',
-      clientSecret: process.env.KEYCLOAK_SECRET || 'your-keycloak-secret',
+      clientSecret: process.env.KEYCLOAK_SECRET || 'fbOTgjSIZPHi1Cl6tQ2pFGPFa9fPr6Zi',
       issuer: process.env.KEYCLOAK_ISSUER || 'http://localhost:9090/realms/AeB_Dms',
     }),
   ],
@@ -81,7 +81,7 @@ async function refreshAccessToken(token: any) {
   try {
     const issuer = process.env.KEYCLOAK_ISSUER || 'http://localhost:9090/realms/AeB_Dms';
     const clientId = process.env.KEYCLOAK_ID || 'dms-backend-app';
-    const clientSecret = process.env.KEYCLOAK_SECRET || '';
+    const clientSecret = 'fbOTgjSIZPHi1Cl6tQ2pFGPFa9fPr6Zi';
 
     const response = await fetch(`${issuer}/protocol/openid-connect/token`, {
       method: 'POST',

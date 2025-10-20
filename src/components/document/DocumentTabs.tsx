@@ -1,6 +1,6 @@
 'use client';
 
-import { Settings, Database, Tag, History } from 'lucide-react';
+import { Settings, Database, Tag, History, Workflow } from 'lucide-react';
 import { DocumentTab } from '../../types/documentView';
 
 interface DocumentTabsProps {
@@ -16,9 +16,9 @@ export default function DocumentTabs({ activeTab, onTabChange }: DocumentTabsPro
       icon: Settings
     },
     {
-      id: 'models' as DocumentTab,
-      label: 'AI Models',
-      icon: Database
+      id: 'workflows' as DocumentTab,
+      label: 'Workflow',
+      icon: Workflow
     },
     {
       id: 'metadata' as DocumentTab,

@@ -9,6 +9,7 @@ interface UploadVersionModalProps {
   onClose: () => void;
   documentId: number;
   onSuccess?: () => void;
+  onOptimisticUpdate?: (file: File) => void;
 }
 
 const SUPPORTED_LANGUAGES = [
@@ -38,7 +39,8 @@ export default function UploadVersionModal({
   isOpen,
   onClose,
   documentId,
-  onSuccess
+  onSuccess,
+  onOptimisticUpdate
 }: UploadVersionModalProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -90,6 +92,15 @@ export default function UploadVersionModal({
       setIsUploading(true);
       setError(null);
 
+      // Optimistic update - immediately show the new file in the viewer
+      if (onOptimisticUpdate) {
+        onOptimisticUpdate(selectedFile);
+      }
+
+      // Close modal immediately for better UX
+      onClose();
+
+      // Upload in background
       await notificationApiClient.uploadDocumentVersion(
         selectedFile,
         documentId,
@@ -99,13 +110,14 @@ export default function UploadVersionModal({
       setSelectedFile(null);
       setError(null);
       
-      onClose();
       if (onSuccess) {
         onSuccess();
       }
     } catch (err) {
       console.error('Error uploading document version:', err);
       setError('Failed to upload document version. Please try again.');
+      // Note: The optimistic update will remain in the viewer
+      // In a real app, you might want to show a toast notification about the error
     } finally {
       setIsUploading(false);
     }

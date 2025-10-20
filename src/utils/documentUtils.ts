@@ -54,3 +54,50 @@ export const downloadFile = (url: string, filename: string): void => {
   link.click();
   window.document.body.removeChild(link);
 };
+
+/**
+ * Get link type color classes for UI display
+ */
+export const getLinkTypeColor = (linkType: string): string => {
+  const colors: Record<string, string> = {
+    'related': 'bg-blue-100 text-blue-800',
+    'reference': 'bg-green-100 text-green-800',
+    'attachment': 'bg-purple-100 text-purple-800',
+    'version': 'bg-orange-100 text-orange-800',
+    'duplicate': 'bg-red-100 text-red-800',
+    'parent': 'bg-indigo-100 text-indigo-800',
+    'child': 'bg-pink-100 text-pink-800',
+    'similar': 'bg-yellow-100 text-yellow-800',
+    'dependency': 'bg-teal-100 text-teal-800'
+  };
+  return colors[linkType.toLowerCase()] || 'bg-gray-100 text-gray-800';
+};
+
+/**
+ * Get file extension from filename
+ */
+export const getFileExtension = (filename: string): string => {
+  return filename.split('.').pop()?.toLowerCase() || '';
+};
+
+/**
+ * Check if file type is viewable in browser
+ */
+export const isViewableFileType = (mimeType: string): boolean => {
+  const viewableTypes = [
+    'application/pdf',
+    'image/',
+    'text/',
+    'application/json',
+    'application/xml'
+  ];
+  return viewableTypes.some(type => mimeType.includes(type));
+};
+
+/**
+ * Generate document preview URL
+ */
+export const getDocumentPreviewUrl = (documentId: number, version?: number): string => {
+  const baseUrl = `/api/documents/${documentId}/preview`;
+  return version ? `${baseUrl}?version=${version}` : baseUrl;
+};

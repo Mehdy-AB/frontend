@@ -13,7 +13,9 @@ import {
   Clock,
   ChevronDown,
   ChevronRight,
-  Plus
+  Plus,
+  Share2,
+  User
 } from 'lucide-react';
 import { useState } from 'react';
 import Link from 'next/link';
@@ -22,6 +24,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { isAdmin } from '../../utils/adminUtils';
 
 interface SidebarItem {
   id: string;
@@ -36,8 +39,12 @@ export default function Sidebar() {
   const [expandedItems, setExpandedItems] = useState<string[]>(['files']);
   const pathname = usePathname();
   const { t } = useLanguage();
+  
+  // Check if user is admin
+  const userIsAdmin = isAdmin();
 
-  const sidebarItems: SidebarItem[] = [
+  // Base navigation items for all users
+  const baseItems: SidebarItem[] = [
     {
       id: 'dashboard',
       label: t('common.dashboard'),
@@ -45,11 +52,18 @@ export default function Sidebar() {
       href: '/',
     },
     {
-      id: 'files',
-      label: t('common.allFiles'),
+      id: 'myrepo',
+      label: 'My Repository',
       icon: Folder,
-      href: '/files',
-      count: 124,
+      href: '/folders',
+      count: 12,
+    },
+    {
+      id: 'shared',
+      label: 'Shared with Me',
+      icon: Share2,
+      href: '/shared',
+      count: 8,
     },
     {
       id: 'favorites',
@@ -59,44 +73,6 @@ export default function Sidebar() {
       count: 8,
     },
     {
-      id: 'recent',
-      label: t('common.recent'),
-      icon: Clock,
-      href: '/recent',
-      count: 24,
-    },
-    {
-      id: 'folders',
-      label: t('common.myFolders'),
-      icon: Folder,
-      href: '/folders',
-      count: 12,
-    },
-    {
-      id: 'models',
-      label: t('common.documentModels'),
-      icon: FolderTree,
-      href: '/models',
-      count: 5,
-    },
-    {
-      id: 'tags',
-      label: t('common.tags'),
-      icon: Tag,
-      href: '/tags',
-      children: [
-        { id: 'tag-1', label: 'Finance', icon: Tag, href: '/tags/finance', count: 45 },
-        { id: 'tag-2', label: 'Legal', icon: Tag, href: '/tags/legal', count: 23 },
-        { id: 'tag-3', label: 'Projects', icon: Tag, href: '/tags/projects', count: 67 },
-      ],
-    },
-    {
-      id: 'administration',
-      label: t('common.administration'),
-      icon: Users,
-      href: '/administration',
-    },
-    {
       id: 'trash',
       label: t('common.trash'),
       icon: Trash2,
@@ -104,6 +80,9 @@ export default function Sidebar() {
       count: 4,
     },
   ];
+
+  // Admin items are now accessible through the admin dropdown, so we only show base items
+  const sidebarItems = baseItems;
 
   const toggleExpand = (itemId: string) => {
     setExpandedItems(prev =>

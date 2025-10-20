@@ -13,7 +13,6 @@ import AdvancedSearchModal from '@/components/modals/AdvancedSearchModal';
 import { DocumentResponseDto, FolderRepoResDto, FolderResDto, SortFields, AuditLog } from '@/types/api';
 import AuditLogService from '@/api/services/auditLogService';
 import { favoriteService } from '@/api/services/favoriteService';
-import { useSessionContext } from '../../../contexts/SessionContext';
 import FolderActionModal from '@/components/modals/FolderActionModal';
 import DeleteConfirmationModal from '@/components/modals/DeleteConfirmationModal';
 import { CommentsModal } from '@/components/modals/CommentsModal';
@@ -38,7 +37,6 @@ type SortOption = 'name' | 'createdAt' | 'updatedAt' | 'size' | 'type';
 
 export default function FolderDetailsPage() {
   const { t } = useLanguage();
-  const { session } = useSessionContext();
   const params = useParams();
   const router = useRouter();
   const folderId = params.folderId as string;
@@ -232,16 +230,14 @@ export default function FolderDetailsPage() {
       const processedSegments = pathSegments.map((segment, index) => {
         // If it's the first segment and looks like a user ID, replace with username
         if (index === 0 && data.folder.ownedBy ) {
-          if (data.folder.ownedBy.id === (session as any)?.user?.id) {
-            return "My Folders";
-          }
+          // For now, just use the username from the folder data
           return data.folder.ownedBy.username;
         }
         return segment;
       });
       setBreadcrumbPath(processedSegments);
     }
-  }, [data, session]);
+  }, [data]);
 
   // Fetch audit logs for the folder
   const fetchAuditLogs = async (folderId: number) => {

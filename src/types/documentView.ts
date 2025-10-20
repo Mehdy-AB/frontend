@@ -48,4 +48,4 @@ export interface AccessLog {
   ipAddress: string;
 }
 
-export type DocumentTab = 'config' | 'models' | 'metadata' | 'activity' | 'comments';
+export type DocumentTab = 'config' | 'workflows' | 'metadata' | 'activity' | 'comments';

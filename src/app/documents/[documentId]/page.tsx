@@ -1,13 +1,13 @@
 // app/documents/[documentId]/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useState, useEffect, useRef } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { notificationApiClient } from '../../../api/notificationClient';
 import { DocumentViewDto, DocumentTab } from '../../../types/documentView';
 import { useDocumentOperations } from '../../../hooks/useDocumentOperations';
-import { copyToClipboard, downloadFile } from '../../../utils/documentUtils';
+import { copyToClipboard } from '../../../utils/documentUtils';
 import FileViewer from '../../../components/viewers/FileViewer';
 import {
   DocumentHeader,
@@ -17,12 +17,15 @@ import {
   DocumentModals,
   DocumentViewSkeleton
 } from '../../../components/document';
+import DeleteConfirmationModal from '../../../components/modals/DeleteConfirmationModal';
 
 export default function DocumentViewPage() {
   const { t } = useLanguage();
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const documentId = params.documentId as string;
+  const versionParam = searchParams.get('version');
 
   const [document, setDocument] = useState<DocumentViewDto | null>(null);
   const [loading, setLoading] = useState(true);
@@ -35,7 +38,12 @@ export default function DocumentViewPage() {
   const [showManagePermissions, setShowManagePermissions] = useState<boolean>(false);
   const [showUploadVersion, setShowUploadVersion] = useState<boolean>(false);
   const [showMoveDocument, setShowMoveDocument] = useState<boolean>(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
   const [versions, setVersions] = useState<any[]>([]);
+  const [optimisticFile, setOptimisticFile] = useState<File | null>(null);
+  const [currentVersion, setCurrentVersion] = useState<number | null>(null);
+  const [fileViewerKey, setFileViewerKey] = useState<number>(0);
+  const fileViewerRefreshRef = useRef<(() => void) | null>(null);
 
   // Use custom hook for document operations
   const {
@@ -62,11 +70,22 @@ export default function DocumentViewPage() {
         setLoading(true);
         setError(null);
         
-        // Get document data and download URL
+        // Fetch document data and download URL in parallel
+        const versionToFetch = versionParam ? parseInt(versionParam) : null;
+        
+        // If no version param, just fetch without version (backend returns active version automatically)
+        // If version param exists, fetch that specific version
         const [docData, downloadUrl] = await Promise.all([
           notificationApiClient.getDocument(parseInt(documentId), { silent: true }),
-          notificationApiClient.downloadDocument(parseInt(documentId), {}, { silent: true })
+          notificationApiClient.downloadDocument(
+            parseInt(documentId), 
+            versionToFetch ? { version: versionToFetch } : {}, 
+            { silent: true }
+          )
         ]);
+        
+        // Set current version from URL param or from the document's active version
+        setCurrentVersion(versionToFetch || docData.activeVersion || null);
         
         // Extend the document with viewing-specific data
         const documentView: DocumentViewDto = {
@@ -143,22 +162,26 @@ export default function DocumentViewPage() {
     if (documentId) {
       fetchDocument();
     }
-  }, [documentId, fetchAuditLogs, fetchComments, checkFavoriteStatus]);
+  }, [documentId, versionParam, fetchAuditLogs, fetchComments, checkFavoriteStatus]);
 
   // Fetch document versions
   const fetchVersions = async () => {
     if (!document) return;
     
     try {
-      const response = await notificationApiClient.getDocumentVersions(document.documentId);
-      const versionInfos = response.documents.map(doc => ({
-        versionId: doc.document.documentId,
-        versionNumber: doc.document.versionNumber,
-        sizeBytes: doc.document.sizeBytes,
-        mimeType: doc.document.mimeType,
-        createdAt: doc.document.createdAt,
-        updatedAt: doc.document.updatedAt,
-        createdBy: doc.document.createdBy
+      const versions = await notificationApiClient.getDocumentVersionsList(document.documentId);
+      // Sort versions by version number
+      const sortedVersions = versions.sort((a, b) => a.versionNumber - b.versionNumber);
+      
+      const versionInfos = sortedVersions.map((version, index) => ({
+        versionId: version.id,
+        versionNumber: version.versionNumber,
+        sequentialNumber: index + 1, // Map to sequential numbers (1, 2, 3, etc.)
+        sizeBytes: version.sizeBytes,
+        mimeType: version.mimeType,
+        createdAt: version.createdAt,
+        updatedAt: version.updatedAt,
+        createdBy: version.createdBy
       }));
       setVersions(versionInfos);
     } catch (error) {
@@ -171,7 +194,6 @@ export default function DocumentViewPage() {
     if (!document || !newName.trim() || newName === document.name) return;
     
     try {
-      setIsUpdatingDocument(true);
       // Use the actual API to rename the document
       await notificationApiClient.renameDocument(document.documentId, newName.trim());
       // Update local state
@@ -179,8 +201,6 @@ export default function DocumentViewPage() {
     } catch (error) {
       console.error('Error updating document name:', error);
       throw error;
-    } finally {
-      setIsUpdatingDocument(false);
     }
   };
 
@@ -189,7 +209,6 @@ export default function DocumentViewPage() {
     if (!document || newTitle === document.title) return;
     
     try {
-      setIsUpdatingDocument(true);
       // Use the actual API to update the document title
       await notificationApiClient.editDocumentTitle(document.documentId, { title: newTitle.trim() });
       // Update local state
@@ -197,9 +216,7 @@ export default function DocumentViewPage() {
     } catch (error) {
       console.error('Error updating document title:', error);
       throw error;
-    } finally {
-      setIsUpdatingDocument(false);
-    }
+    } 
   };
 
   // Update document description
@@ -207,7 +224,6 @@ export default function DocumentViewPage() {
     if (!document || newDescription === document.description) return;
     
     try {
-      setIsUpdatingDocument(true);
       // Use the actual API to update the document description
       await notificationApiClient.editDocumentDescription(document.documentId, newDescription.trim());
       // Update local state
@@ -215,21 +231,18 @@ export default function DocumentViewPage() {
     } catch (error) {
       console.error('Error updating document description:', error);
       throw error;
-    } finally {
-      setIsUpdatingDocument(false);
     }
   };
 
   // Set active version
-  const handleSetActiveVersion = async (versionNumber: number) => {
+  const handleSetActiveVersion = async (versionId: number) => {
     if (!document) return;
     
     try {
       setIsUpdatingDocument(true);
-      // For now, just update the local state since the API method doesn't exist
-      setDocument(prev => prev ? { ...prev, versionNumber } : null);
-      // In a real implementation, you would call the API here
-      // await notificationApiClient.setActiveVersion(document.documentId, versionNumber);
+      // Update URL to show the selected version
+      const newUrl = `/documents/${documentId}?version=${versionId}`;
+      router.push(newUrl);
     } catch (error) {
       console.error('Error setting active version:', error);
     } finally {
@@ -238,15 +251,14 @@ export default function DocumentViewPage() {
   };
 
   // Revert to old version
-  const handleRevertToVersion = async (versionNumber: number) => {
+  const handleRevertToVersion = async (versionId: number) => {
     if (!document) return;
     
     try {
       setIsUpdatingDocument(true);
-      // For now, just update the local state since the API method doesn't exist
-      setDocument(prev => prev ? { ...prev, versionNumber } : null);
-      // In a real implementation, you would call the API here
-      // await notificationApiClient.revertToVersion(document.documentId, versionNumber);
+      // Update URL to show the reverted version
+      const newUrl = `/documents/${documentId}?version=${versionId}`;
+      router.push(newUrl);
     } catch (error) {
       console.error('Error reverting to version:', error);
     } finally {
@@ -257,7 +269,8 @@ export default function DocumentViewPage() {
 
   // Copy document link
   const copyDocumentLink = () => {
-    const link = `${window.location.origin}/documents/${document?.documentId}`;
+    const baseLink = `${window.location.origin}/documents/${document?.documentId}`;
+    const link = currentVersion ? `${baseLink}?version=${currentVersion}` : baseLink;
     copyToClipboard(link);
     // You could add a toast notification here
   };
@@ -267,17 +280,25 @@ export default function DocumentViewPage() {
     if (!document) return;
     
     try {
-      // Download the current active version
-      const downloadUrl = await notificationApiClient.downloadDocument(document.documentId, { version: document.versionNumber });
+      // Download the current version (use versionId if available, otherwise latest)
+      const versionToDownload = currentVersion || document.documentId;
+      const downloadUrl = await notificationApiClient.downloadDocument(document.documentId, { version: versionToDownload });
       
       // Log the download operation
       try {
-        await notificationApiClient.fileDownloaded(document.documentId, { version: document.versionNumber });
+        await notificationApiClient.fileDownloaded(document.documentId, { version: versionToDownload });
       } catch (logError) {
         console.warn('Failed to log download operation:', logError);
       }
       
-      downloadFile(downloadUrl, `${document.name}_v${document.versionNumber}`);
+      // Create download link that starts in browser download section
+      const link = window.document.createElement('a');
+      link.href = downloadUrl;
+      link.download = document.name;
+      link.target = '_blank';
+      window.document.body.appendChild(link);
+      link.click();
+      window.document.body.removeChild(link);
     } catch (error) {
       console.error('Download failed:', error);
       setError('Failed to download document');
@@ -288,6 +309,95 @@ export default function DocumentViewPage() {
   const handleToggleFavorite = async () => {
     if (!document) return;
     await toggleFavorite(document);
+  };
+
+  // Handle optimistic file update
+  const handleOptimisticFileUpdate = (file: File) => {
+    setOptimisticFile(file);
+    // Update document metadata optimistically
+    setDocument(prev => prev ? {
+      ...prev,
+      name: file.name,
+      sizeBytes: file.size,
+      mimeType: file.type,
+      updatedAt: new Date().toISOString()
+    } : null);
+  };
+
+  // Handle delete document
+  const handleDeleteDocument = async () => {
+    if (!document) return;
+    
+    try {
+      setIsUpdatingDocument(true);
+      await notificationApiClient.deleteDocument(document.documentId);
+      
+      // Redirect to parent folder or home after successful deletion
+      if (document.folderId) {
+        router.push(`/folders/${document.folderId}`);
+      } else {
+        router.push('/folders');
+      }
+    } catch (error) {
+      console.error('Error deleting document:', error);
+      setError('Failed to delete document');
+    } finally {
+      setIsUpdatingDocument(false);
+      setShowDeleteConfirm(false);
+    }
+  };
+
+  // Handle restore version
+  const handleRestoreVersion = async (versionId: number, versionNumber: number): Promise<void> => {
+    if (!document) return;
+    
+    try {
+      setIsUpdatingDocument(true);
+      
+      // Call API to set the version as active (this sets it in the backend)
+      await notificationApiClient.setActiveVersion(document.documentId, versionId);
+      
+      // Fetch the specific version content with version parameter
+      const newDownloadUrl = await notificationApiClient.downloadDocument(
+        document.documentId, 
+        { version: versionId }, // Explicitly fetch the restored version
+        { silent: true }
+      );
+      
+      // Update local state with the restored version
+      setCurrentVersion(versionId);
+      setOptimisticFile(null);
+      
+      // Find the version info from versions list
+      const version = versions.find(v => v.versionId === versionId);
+      
+      // Update document state with restored version info
+      setDocument(prev => prev ? {
+        ...prev,
+        activeVersion: versionId,
+        versionNumber: versionNumber,
+        sizeBytes: version?.sizeBytes || prev.sizeBytes,
+        mimeType: version?.mimeType || prev.mimeType,
+        updatedAt: new Date().toISOString(),
+        contentUrl: newDownloadUrl
+      } : null);
+      
+      // Force FileViewer to re-render with new content
+      setFileViewerKey(prev => prev + 1);
+      
+      // Manually trigger FileViewer refresh
+      setTimeout(() => {
+        if (fileViewerRefreshRef.current) {
+          fileViewerRefreshRef.current();
+        }
+      }, 100);
+      
+    } catch (error) {
+      console.error('Error restoring version:', error);
+      setError('Failed to restore version');
+    } finally {
+      setIsUpdatingDocument(false);
+    }
   };
 
   if (loading) {
@@ -318,6 +428,7 @@ export default function DocumentViewPage() {
         <DocumentHeader
           document={document}
           versions={versions}
+          currentVersion={currentVersion}
           isUpdatingDocument={isUpdatingDocument}
           isFavorite={isFavorite}
           onBack={() => router.back()}
@@ -334,14 +445,21 @@ export default function DocumentViewPage() {
           onMove={() => setShowMoveDocument(true)}
           onShowComments={() => setActiveTab('comments')}
           onCopyLink={copyDocumentLink}
+          onDelete={() => setShowDeleteConfirm(true)}
         />
 
         {/* Document Content Area */}
         <div className="flex-1 overflow-hidden">
           <FileViewer 
+            key={`${document.documentId}-${currentVersion || 'latest'}-${fileViewerKey}`}
             document={document} 
             downloadUrl={document.contentUrl}
             onError={(error) => setError(error)}
+            optimisticFile={optimisticFile || undefined}
+            refreshTrigger={fileViewerKey}
+            onRef={(refreshFn) => {
+              fileViewerRefreshRef.current = refreshFn;
+            }}
           />
         </div>
       </div>
@@ -398,15 +516,52 @@ export default function DocumentViewPage() {
         onCloseManagePermissions={() => setShowManagePermissions(false)}
         onCloseUploadVersion={() => setShowUploadVersion(false)}
         onCloseMoveDocument={() => setShowMoveDocument(false)}
-        onVersionUploadSuccess={() => {
-          // Refresh document data after successful version upload
-          window.location.reload();
+        onVersionUploadSuccess={async () => {
+          // Fetch the updated document data first
+          try {
+            const [docData, downloadUrl] = await Promise.all([
+              notificationApiClient.getDocument(parseInt(documentId), { silent: true }),
+              notificationApiClient.downloadDocument(parseInt(documentId), {}, { silent: true })
+            ]);
+            
+            // Update document with new data
+            setDocument(prev => prev ? {
+              ...prev,
+              ...docData,
+              contentUrl: downloadUrl,
+              thumbnailUrl: `${process.env.NEXT_PUBLIC_API_URL}/api/v1/document/${docData.documentId}/thumbnail`
+            } : null);
+            
+            // Update current version based on activeVersion from response
+            setCurrentVersion(docData.activeVersion || null);
+            
+            // Now clear optimistic file and refresh versions
+            setOptimisticFile(null);
+            fetchVersions();
+          } catch (error) {
+            console.error('Error refreshing document after upload:', error);
+            // Keep optimistic file if refresh fails
+          }
         }}
         onMoveSuccess={() => {
           // Refresh document data after successful move
           window.location.reload();
         }}
+        onOptimisticFileUpdate={handleOptimisticFileUpdate}
+        onRestoreVersion={handleRestoreVersion}
       />
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <DeleteConfirmationModal
+          isOpen={showDeleteConfirm}
+          onClose={() => setShowDeleteConfirm(false)}
+          onConfirm={handleDeleteDocument}
+          itemName={document?.name || 'document'}
+          itemType="document"
+          isLoading={isUpdatingDocument}
+        />
+      )}
     </div>
   );
 }

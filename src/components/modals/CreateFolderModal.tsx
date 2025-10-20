@@ -26,7 +26,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 interface CreateFolderModalProps {
   isOpen: boolean;
   onClose: () => void;
-  parentId?: number;
+  parentId?: number | null;
   parentName?: string;
   onSuccess?: () => void;
 }
@@ -106,7 +106,7 @@ const presetPermissions = {
 export default function CreateFolderModal({ 
   isOpen, 
   onClose, 
-  parentId = 0, 
+  parentId = null, 
   parentName,
   onSuccess 
 }: CreateFolderModalProps) {
@@ -114,7 +114,7 @@ export default function CreateFolderModal({
   const [folderData, setFolderData] = useState<CreateFolderDto>({
     name: '',
     description: '',
-    parentId: parentId,
+    parentId: parentId === null ? undefined : parentId,
     usersGevenPermission: [],
     goupesGevenPermission: [],
     rolesGevenPermission: [],
@@ -125,6 +125,7 @@ export default function CreateFolderModal({
   const [groups, setGroups] = useState<GroupDto[]>([]);
   const [roles, setRoles] = useState<RoleDto[]>([]);
   const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<'basic' | 'permissions' | 'subfolders'>('basic');
   const [expandedSubfolders, setExpandedSubfolders] = useState<number[]>([]);
   
@@ -465,14 +466,14 @@ export default function CreateFolderModal({
     }
 
     try {
-      setLoading(true);
+      setSubmitting(true);
       await notificationApiClient.createFolder(folderData);
       
       // Reset form
       setFolderData({
         name: '',
         description: '',
-        parentId: parentId,
+        parentId: parentId === null ? undefined : parentId,
         usersGevenPermission: [],
         goupesGevenPermission: [],
         rolesGevenPermission: [],
@@ -485,18 +486,17 @@ export default function CreateFolderModal({
       onClose();
     } catch (error: any) {
       console.error('Error creating folder:', error);
-      alert('Failed to create folder: ' + (error.message || 'Unknown error'));
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
   const handleClose = () => {
-    if (!loading) {
+    if (!submitting) {
       setFolderData({
         name: '',
         description: '',
-        parentId: parentId,
+        parentId: parentId === null ? undefined : parentId,
         usersGevenPermission: [],
         goupesGevenPermission: [],
         rolesGevenPermission: [],
@@ -742,7 +742,7 @@ export default function CreateFolderModal({
               <BasicInfoTab 
                 folderData={folderData} 
                 onChange={setFolderData} 
-                loading={loading}
+                loading={submitting}
               />
             )}
 
@@ -780,7 +780,7 @@ export default function CreateFolderModal({
                 onUpdateRolePermission={updateRolePermission}
                 onRemoveRolePermission={removeRolePermission}
                 onApplyPreset={applyPresetPermission}
-                loading={loading}
+                loading={submitting}
                 collapsedPermissions={collapsedPermissions}
                 togglePermissionPanel={togglePermissionPanel}
               />
@@ -794,7 +794,7 @@ export default function CreateFolderModal({
                 onRemoveSubfolder={removeSubfolder}
                 expandedSubfolders={expandedSubfolders}
                 onToggleExpand={setExpandedSubfolders}
-                loading={loading}
+                loading={submitting}
               />
             )}
           </form>
@@ -817,10 +817,10 @@ export default function CreateFolderModal({
             <button
               type="submit"
               onClick={handleSubmit}
-              disabled={loading || !folderData.name.trim()}
+              disabled={submitting || !folderData.name.trim()}
               className="flex items-center gap-2 bg-primary text-surface px-4 py-2 rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? (
+              {submitting ? (
                 <>
                   <div className="h-4 w-4 border-2 border-surface border-t-transparent rounded-full animate-spin"></div>
                   Creating...
@@ -1445,16 +1445,16 @@ function SubfoldersTab({
           className="flex items-center gap-3 p-3 border border-ui rounded-lg hover:bg-neutral-background transition-colors"
           style={{ marginLeft: `${level * 24}px` }}
         >
-          <button
-            type="button"
-            onClick={() => onToggleExpand(
-              isExpanded 
-                ? expandedSubfolders.filter((i: number) => i !== parseInt(pathKey))
-                : [...expandedSubfolders, parseInt(pathKey)]
-            )}
-            className="p-1 rounded hover:bg-ui transition-colors disabled:opacity-50"
-            disabled={loading}
-          >
+            <button
+              type="button"
+              onClick={() => onToggleExpand(
+                isExpanded 
+                  ? expandedSubfolders.filter((i: number) => i !== parseInt(pathKey))
+                  : [...expandedSubfolders, parseInt(pathKey)]
+              )}
+              className="p-1 rounded hover:bg-ui transition-colors disabled:opacity-50"
+              disabled={loading}
+            >
             {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
           </button>
           

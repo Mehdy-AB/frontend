@@ -158,7 +158,7 @@ export class TokenManager {
 
       const issuer = process.env.NEXT_PUBLIC_KEYCLOAK_ISSUER || 'http://localhost:9090/realms/AeB_Dms';
       const clientId = process.env.NEXT_PUBLIC_KEYCLOAK_ID || 'dms-backend-app';
-      const clientSecret = process.env.NEXT_PUBLIC_KEYCLOAK_SECRET || '';
+      const clientSecret = process.env.KEYCLOAK_SECRET || 'fbOTgjSIZPHi1Cl6tQ2pFGPFa9fPr6Zi';
 
       const res = await fetch(`${issuer}/protocol/openid-connect/token`, {
         method: 'POST',

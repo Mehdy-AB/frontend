@@ -136,9 +136,23 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
   // Loading and error states
   const [loading, setLoading] = useState(false);
   const [loadingPermissions, setLoadingPermissions] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   
   // Collapsed panels state
   const [collapsedPermissions, setCollapsedPermissions] = useState<Record<string, boolean>>({});
+  
+  // Pending changes tracking
+  const [pendingChanges, setPendingChanges] = useState<{
+    new: Map<string, TypeShareAccessWithTypeReq>;
+    updated: Map<string, TypeShareAccessWithTypeReq>;
+    deleted: Set<string>;
+  }>({
+    new: new Map(),
+    updated: new Map(),
+    deleted: new Set()
+  });
+  
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   
 
   // Load initial data
@@ -427,8 +441,8 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
     setSearchQuery('');
   };
 
-  // Permission management functions with immediate API calls
-  const addPermission = async (entity: UserDto | GroupDto | RoleDto) => {
+  // Permission management functions - NO immediate API calls
+  const addPermission = (entity: UserDto | GroupDto | RoleDto) => {
     try {
       // Determine entity type
       let granteeType: GranteeType;
@@ -446,30 +460,62 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
         type: granteeType
       };
 
-      // Send API request immediately
-      const newGrant = await notificationApiClient.createOrUpdateFolderShared(folder.id, permissionData);
+      // Create a mock grant for UI display
+      const mockGrant: TypeShareAccessRes = {
+        grantee: entity,
+        permission: PERMISSION_PRESETS.viewOnly
+      };
+
+      // Add to local state
+      setAllGrants(prev => [...prev, mockGrant]);
       
-      // Update local state
-      setAllGrants(prev => [...prev, newGrant]);
+      // Track as pending new change
+      setPendingChanges(prev => ({
+        ...prev,
+        new: new Map(prev.new).set(entity.id, permissionData)
+      }));
+      
+      setHasUnsavedChanges(true);
       handleCloseDropdown();
     } catch (error) {
       console.error('Error adding permission:', error);
     }
   };
 
-  const removePermission = async (granteeId: string, inherits: boolean) => {
+  const removePermission = (granteeId: string, inherits: boolean) => {
     try {
-      // Send API request immediately
-      await notificationApiClient.deleteFolderShared(folder.id, granteeId, inherits);
-      
-      // Update local state
+      // Update local state immediately for UI
       setAllGrants(prev => prev.filter(grant => grant.grantee.id !== granteeId));
+      
+      // Check if this was a new grant (not yet saved)
+      setPendingChanges(prev => {
+        const newMap = new Map(prev.new);
+        const updatedMap = new Map(prev.updated);
+        const deletedSet = new Set(prev.deleted);
+        
+        if (newMap.has(granteeId)) {
+          // If it was a new grant, just remove it from pending new
+          newMap.delete(granteeId);
+        } else {
+          // If it was an existing grant, mark for deletion
+          deletedSet.add(granteeId);
+          updatedMap.delete(granteeId); // Remove from updated if it was there
+        }
+        
+        return {
+          new: newMap,
+          updated: updatedMap,
+          deleted: deletedSet
+        };
+      });
+      
+      setHasUnsavedChanges(true);
     } catch (error) {
       console.error('Error removing permission:', error);
     }
   };
 
-  const updatePermission = async (granteeId: string, permission: FolderPermissionReq, granteeType: GranteeType) => {
+  const updatePermission = (granteeId: string, permission: FolderPermissionReq, granteeType: GranteeType) => {
     try {
       const permissionData: TypeShareAccessWithTypeReq = {
         granteeId,
@@ -477,15 +523,93 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
         type: granteeType
       };
 
-      // Send API request immediately
-      const updatedGrant = await notificationApiClient.createOrUpdateFolderShared(folder.id, permissionData);
-      
-      // Update local state
+      // Update local state for UI
       setAllGrants(prev => prev.map(grant => 
-        grant.grantee.id === granteeId ? updatedGrant : grant
+        grant.grantee.id === granteeId 
+          ? { ...grant, permission } 
+          : grant
       ));
+      
+      // Track the change
+      setPendingChanges(prev => {
+        const newMap = new Map(prev.new);
+        const updatedMap = new Map(prev.updated);
+        
+        // If this is a new grant, update it in the new map
+        if (newMap.has(granteeId)) {
+          newMap.set(granteeId, permissionData);
+        } else {
+          // Otherwise, track it as an update
+          updatedMap.set(granteeId, permissionData);
+        }
+        
+        return {
+          ...prev,
+          new: newMap,
+          updated: updatedMap
+        };
+      });
+      
+      setHasUnsavedChanges(true);
     } catch (error) {
       console.error('Error updating permission:', error);
+    }
+  };
+
+  // Save all pending changes to the server
+  const saveAllChanges = async () => {
+    try {
+      setIsSaving(true);
+      
+      // Save new grants
+      for (const [granteeId, permissionData] of pendingChanges.new) {
+        await notificationApiClient.createOrUpdateFolderShared(folder.id, permissionData);
+      }
+      
+      // Save updated grants
+      for (const [granteeId, permissionData] of pendingChanges.updated) {
+        await notificationApiClient.createOrUpdateFolderShared(folder.id, permissionData);
+      }
+      
+      // Delete removed grants
+      for (const granteeId of pendingChanges.deleted) {
+        await notificationApiClient.deleteFolderShared(folder.id, granteeId, false);
+      }
+      
+      // Clear pending changes
+      setPendingChanges({
+        new: new Map(),
+        updated: new Map(),
+        deleted: new Set()
+      });
+      
+      setHasUnsavedChanges(false);
+      
+      // Reload permissions to sync with server
+      await loadInitialData();
+      
+    } catch (error) {
+      console.error('Error saving permissions:', error);
+      alert('Failed to save some permissions. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleClose = () => {
+    if (hasUnsavedChanges) {
+      if (confirm('You have unsaved changes. Are you sure you want to close without saving?')) {
+        // Reset pending changes
+        setPendingChanges({
+          new: new Map(),
+          updated: new Map(),
+          deleted: new Set()
+        });
+        setHasUnsavedChanges(false);
+        onClose();
+      }
+    } else {
+      onClose();
     }
   };
 
@@ -628,9 +752,6 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
     );
   };
 
-  const handleClose = () => {
-    onClose();
-  };
 
   const handleSavePermission = async () => {
     if (!editingGrant || !tempPermission) return;
@@ -782,8 +903,22 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
                         )}
                         <IconComponent className="h-5 w-5 text-neutral-text-light" />
                         <div className="flex-1">
-                          <div className="font-medium text-neutral-text-dark">
-                            {displayName}
+                          <div className="flex items-center gap-2">
+                            <div className="font-medium text-neutral-text-dark">
+                              {displayName}
+                            </div>
+                            {pendingChanges.new.has(grantee.id) && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-800 text-xs font-medium rounded-full border border-green-200">
+                                <div className="h-1.5 w-1.5 bg-green-600 rounded-full"></div>
+                                New
+                              </span>
+                            )}
+                            {pendingChanges.updated.has(grantee.id) && !pendingChanges.new.has(grantee.id) && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-yellow-100 text-yellow-800 text-xs font-medium rounded-full border border-yellow-200">
+                                <div className="h-1.5 w-1.5 bg-yellow-600 rounded-full"></div>
+                                Modified
+                              </span>
+                            )}
                           </div>
                           <div className="text-sm text-neutral-text-light">
                             {displaySubtitle}
@@ -818,13 +953,45 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end items-center p-6 border-t border-ui bg-neutral-background">
-          <button
-            onClick={handleClose}
-            className="px-4 py-2 border border-ui rounded-lg text-neutral-text-dark hover:bg-surface transition-colors"
-          >
-            Close
-          </button>
+        <div className="flex justify-between items-center p-6 border-t border-ui bg-neutral-background">
+          <div className="flex items-center gap-2">
+            {hasUnsavedChanges && (
+              <div className="flex items-center gap-2 text-sm text-yellow-600 bg-yellow-50 px-3 py-1.5 rounded-lg border border-yellow-200">
+                <div className="h-2 w-2 bg-yellow-600 rounded-full animate-pulse"></div>
+                <span className="font-medium">
+                  {pendingChanges.new.size + pendingChanges.updated.size + pendingChanges.deleted.size} unsaved change(s)
+                </span>
+              </div>
+            )}
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={handleClose}
+              disabled={isSaving}
+              className="px-4 py-2 border border-ui rounded-lg text-neutral-text-dark hover:bg-surface transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {hasUnsavedChanges ? 'Cancel' : 'Close'}
+            </button>
+            {hasUnsavedChanges && (
+              <button
+                onClick={saveAllChanges}
+                disabled={isSaving}
+                className="flex items-center gap-2 bg-primary text-surface px-4 py-2 rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSaving ? (
+                  <>
+                    <div className="h-4 w-4 border-2 border-surface border-t-transparent rounded-full animate-spin"></div>
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4" />
+                    Save All Changes
+                  </>
+                )}
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

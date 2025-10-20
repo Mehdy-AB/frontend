@@ -5,7 +5,6 @@ export { default as MetadataTab } from './MetadataTab';
 export { default as ActivityTab } from './ActivityTab';
 export { default as CommentsTab } from './CommentsTab';
 export { default as VersionHistoryModal } from './VersionHistoryModal';
-export { default as ManagePermissionsModal } from './ManagePermissionsModal';
 export { default as DocumentViewSkeleton } from './DocumentViewSkeleton';
 
 // New split components

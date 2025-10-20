@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import ImageGallery from 'react-image-gallery';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
@@ -17,6 +17,9 @@ interface FileViewerProps {
   document: DocumentResponseDto;
   downloadUrl: string;
   onError?: (error: string) => void;
+  optimisticFile?: File;
+  refreshTrigger?: number;
+  onRef?: (refreshFn: () => void) => void;
 }
 
 interface FileContent {
@@ -25,20 +28,119 @@ interface FileContent {
   error?: string;
 }
 
-export default function FileViewer({ document, downloadUrl, onError }: FileViewerProps) {
+export default function FileViewer({ document, downloadUrl, onError, optimisticFile, refreshTrigger, onRef }: FileViewerProps) {
   const [fileContent, setFileContent] = useState<FileContent | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Manual refresh function
+  const refreshContent = useCallback(() => {
+    console.log('Manual refresh triggered');
+    // Clear current content first
+    setFileContent(null);
+    setLoading(true);
+    setError(null);
+    
+    if (optimisticFile) {
+      loadOptimisticFileContent(optimisticFile);
+    } else {
+      loadFileContent();
+    }
+  }, [optimisticFile, downloadUrl, document.mimeType]);
+
+  // Expose refresh function to parent
   useEffect(() => {
-    loadFileContent();
-  }, [downloadUrl]);
+    if (onRef) {
+      onRef(refreshContent);
+    }
+  }, [onRef, refreshContent]);
+
+  useEffect(() => {
+    console.log('FileViewer useEffect triggered:', { downloadUrl, optimisticFile: !!optimisticFile, mimeType: document.mimeType, refreshTrigger });
+    refreshContent();
+  }, [downloadUrl, optimisticFile, document.mimeType, refreshTrigger, refreshContent]);
+
+  const loadOptimisticFileContent = async (file: File) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const mimeType = file.type.toLowerCase();
+      let content: FileContent;
+
+      if (mimeType.includes('pdf')) {
+        const fileUrl = URL.createObjectURL(file);
+        content = {
+          type: 'pdf',
+          content: fileUrl
+        };
+      } else if (mimeType.includes('image')) {
+        const imageUrl = URL.createObjectURL(file);
+        content = {
+          type: 'image',
+          content: [{
+            original: imageUrl,
+            thumbnail: imageUrl
+          }]
+        };
+      } else if (mimeType.includes('text/plain') || mimeType.includes('text/csv')) {
+        const text = await file.text();
+        if (mimeType.includes('csv')) {
+          const parsed = Papa.parse(text, { header: true });
+          content = {
+            type: 'csv',
+            content: parsed.data
+          };
+        } else {
+          content = {
+            type: 'text',
+            content: text
+          };
+        }
+      } else if (mimeType.includes('word') || mimeType.includes('docx')) {
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.convertToHtml({ arrayBuffer });
+        content = {
+          type: 'docx',
+          content: result.value
+        };
+      } else if (mimeType.includes('excel') || mimeType.includes('spreadsheet') || 
+                 mimeType.includes('xlsx') || mimeType.includes('xls')) {
+        const arrayBuffer = await file.arrayBuffer();
+        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+        const sheets = workbook.SheetNames.map(name => ({
+          name,
+          data: XLSX.utils.sheet_to_json(workbook.Sheets[name])
+        }));
+        content = {
+          type: 'xlsx',
+          content: sheets
+        };
+      } else {
+        content = {
+          type: 'unsupported',
+          content: null,
+          error: `File type ${mimeType} is not supported for preview`
+        };
+      }
+
+      console.log('Setting file content:', { type: content.type, content: content.content });
+      setFileContent(content);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load file';
+      setError(errorMessage);
+      onError?.(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const loadFileContent = async () => {
     try {
       setLoading(true);
       setError(null);
 
+      console.log('Loading file content from URL:', downloadUrl);
       const response = await fetch(downloadUrl);
       if (!response.ok) {
         throw new Error(`Failed to load file: ${response.statusText}`);
@@ -103,6 +205,7 @@ export default function FileViewer({ document, downloadUrl, onError }: FileViewe
         };
       }
 
+      console.log('Setting file content:', { type: content.type, content: content.content });
       setFileContent(content);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load file';
@@ -174,6 +277,7 @@ export default function FileViewer({ document, downloadUrl, onError }: FileViewe
           <div className="flex justify-center h-full">
             <div className="w-full h-full">
               <iframe
+                key={fileContent.content}
                 src={fileContent.content}
                 className="pdf-viewer-iframe"
                 title={`PDF Viewer - ${document.name}`}
@@ -190,6 +294,7 @@ export default function FileViewer({ document, downloadUrl, onError }: FileViewe
         {fileContent.type === 'image' && (
           <div className="flex justify-center">
             <ImageGallery
+              key={JSON.stringify(fileContent.content)}
               items={fileContent.content}
               showThumbnails={true}
               showFullscreenButton={true}
@@ -202,7 +307,7 @@ export default function FileViewer({ document, downloadUrl, onError }: FileViewe
 
         {fileContent.type === 'text' && (
           <div className="max-w-4xl mx-auto">
-            <pre className="whitespace-pre-wrap font-mono text-sm bg-neutral-background p-4 rounded-lg border border-ui">
+            <pre key={fileContent.content} className="whitespace-pre-wrap font-mono text-sm bg-neutral-background p-4 rounded-lg border border-ui">
               {fileContent.content}
             </pre>
           </div>
@@ -211,6 +316,7 @@ export default function FileViewer({ document, downloadUrl, onError }: FileViewe
         {fileContent.type === 'docx' && (
           <div className="max-w-4xl mx-auto">
             <div 
+              key={fileContent.content}
               className="prose max-w-none p-6 rounded-lg border border-ui shadow-sm"
               dangerouslySetInnerHTML={{ __html: fileContent.content }}
             />

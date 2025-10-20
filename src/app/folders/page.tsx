@@ -19,14 +19,17 @@ import {
   Grid,
   List,
   Search,
-  Filter,
   Settings,
   Eye,
-  MessageSquare
+  MessageSquare,
+  RefreshCw,
+  Filter,
+  SortAsc,
+  SortDesc
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
   Select,
@@ -43,9 +46,7 @@ import CreateFolderModal from '@/components/modals/CreateFolderModal';
 import FolderCommentModal from '@/components/modals/FolderCommentModal';
 import RenameFolderModal from '@/components/modals/RenameFolderModal';
 import EditFolderModal from '@/components/modals/EditFolderModal';
-import AdvancedSearchModal from '@/components/modals/AdvancedSearchModal';
 import { useRouter } from 'next/navigation';
-import { useSessionContext } from '../../contexts/SessionContext';
 
 // Types from API
 type SortOption = 'name' | 'createdAt' | 'updatedAt' | 'size';
@@ -53,7 +54,6 @@ type FilterOption = 'all' | 'my' | 'shared' | 'public';
 
 export default function FoldersPage() {
   const { t } = useLanguage();
-  const { session } = useSessionContext();
   const [folders, setFolders] = useState<FolderResDto[]>([]);
   const [allFolders, setAllFolders] = useState<FolderResDto[]>([]); // Store all folders for local filtering
   const [localSearchResults, setLocalSearchResults] = useState<FolderResDto[]>([]); // Store local search results
@@ -62,11 +62,11 @@ export default function FoldersPage() {
   const [tableLoading, setTableLoading] = useState(false); // For table-only loading
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(0); // API uses 0-based pagination
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>('name');
   const [sortDesc, setSortDesc] = useState(false);
-  const [filterBy, setFilterBy] = useState<FilterOption>('all');
   const [pageSize] = useState(12);
   const [isLocalFiltering, setIsLocalFiltering] = useState(false);
   const router = useRouter();
@@ -80,12 +80,22 @@ export default function FoldersPage() {
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [showFolderActionModal, setShowFolderActionModal] = useState(false);
   const [folderAction, setFolderAction] = useState<'rename' | 'move' | null>(null);
-  const [showAdvancedSearchModal, setShowAdvancedSearchModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteFolder, setDeleteFolder] = useState<FolderResDto | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showCommentModal, setShowCommentModal] = useState(false);
   const [commentingFolder, setCommentingFolder] = useState<FolderResDto | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Refresh function
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await fetchFolders();
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   // Real API call to fetch folders
     const fetchFolders = async (isSearchRequest = false) => {
@@ -101,48 +111,14 @@ export default function FoldersPage() {
       
       let response: PageResponse<FolderResDto>;
       
-      if (filterBy === 'shared') {
-        // Get shared folders
-        const sharedData = await notificationApiClient.getSharedFolders({
-          page: currentPage,
-          size: pageSize,
-          name: searchQuery || undefined,
-          desc: sortDesc,
-          sort: sortField,
-          showFolder: true
-        });
-        
-        // Convert to PageResponse format
-        response = {
-          content: sharedData.folders || [],
-          pageable: {
-            pageNumber: currentPage,
-            pageSize: pageSize,
-            sort: { empty: false, sorted: true, unsorted: false },
-            offset: currentPage * pageSize,
-            paged: true,
-            unpaged: false
-          },
-          totalPages: sharedData.page?.totalPages || 0,
-          totalElements: sharedData.page?.totalElements || 0,
-          last: currentPage >= (sharedData.page?.totalPages || 1) - 1,
-          size: pageSize,
-          number: currentPage,
-          sort: { empty: false, sorted: true, unsorted: false },
-          numberOfElements: (sharedData.folders || []).length,
-          first: currentPage === 0,
-          empty: (sharedData.folders || []).length === 0
-        };
-      } else {
         // Get regular folders (repository)
         response = await notificationApiClient.getRepository({
           page: currentPage,
           size: pageSize,
-          name: searchQuery || undefined,
+          name: debouncedSearchQuery || undefined,
           desc: sortDesc,
           sort: sortField
         });
-      }
       
       setFolders(response.content);
       setAllFolders(response.content); // Store all folders for local filtering
@@ -159,24 +135,47 @@ export default function FoldersPage() {
       }
     };
 
-  // Local filtering function
+  // Local filtering function - prioritize startsWith matches
   const filterFoldersLocally = (query: string, allFoldersData: FolderResDto[]) => {
     if (!query.trim()) {
       return allFoldersData;
     }
     
-    return allFoldersData.filter(folder => 
-      folder.name.toLowerCase().includes(query.toLowerCase()) ||
-      folder.description.toLowerCase().includes(query.toLowerCase())
+    const lowerQuery = query.toLowerCase().trim();
+    
+    // First, get folders that start with the query (highest priority)
+    const startsWithMatches = allFoldersData.filter(folder => 
+      folder.name.toLowerCase().startsWith(lowerQuery) ||
+      (folder.description && folder.description.toLowerCase().startsWith(lowerQuery))
     );
+    
+    // Then, get folders that contain the query (lower priority)
+    const containsMatches = allFoldersData.filter(folder => 
+      !folder.name.toLowerCase().startsWith(lowerQuery) &&
+      !(folder.description && folder.description.toLowerCase().startsWith(lowerQuery)) &&
+      (folder.name.toLowerCase().includes(lowerQuery) ||
+       (folder.description && folder.description.toLowerCase().includes(lowerQuery)))
+    );
+    
+    // Combine results with startsWith matches first
+    return [...startsWithMatches, ...containsMatches];
   };
+
+  // Debounce search query for API calls
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300); // 300ms debounce for API calls
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   // Fetch folders when dependencies change (excluding searchQuery)
   useEffect(() => {
     // Use full page loading for initial load, table loading for filter changes
-    const isInitialLoad = currentPage === 0 && sortBy === 'name' && sortDesc === false && filterBy === 'all';
+    const isInitialLoad = currentPage === 0 && sortBy === 'name' && sortDesc === false;
     fetchFolders(!isInitialLoad);
-  }, [currentPage, sortBy, sortDesc, filterBy]);
+  }, [currentPage, sortBy, sortDesc]);
   
   // Get display folders (local search results or API results)
   const getDisplayFolders = (): FolderResDto[] => {
@@ -186,7 +185,7 @@ export default function FoldersPage() {
     return folders;
   };
 
-  // Handle search with local filtering first, then API fetch
+  // Handle local filtering immediately when search query changes
   useEffect(() => {
     if (!searchQuery.trim()) {
       // If no search query, show all folders
@@ -197,20 +196,29 @@ export default function FoldersPage() {
     }
 
     // First, filter locally for immediate response
-    setIsLocalFiltering(true);
     const localResults = filterFoldersLocally(searchQuery, allFolders);
     setLocalSearchResults(localResults);
+    setIsLocalFiltering(false); // Local filtering is done immediately
+  }, [searchQuery, allFolders]);
 
-    // Then, after a delay, fetch from API for more comprehensive results
+  // Handle API fetch with debounced search query
+  useEffect(() => {
+    if (!debouncedSearchQuery.trim()) {
+      return;
+    }
+
+    // After debounce delay, fetch from API for more comprehensive results
     const timer = setTimeout(() => {
-      fetchFolders(true).finally(() => {
-        setIsLocalFiltering(false);
-        setLocalSearchResults([]); // Clear local results when API results come in
-      });
-    }, 800); // Increased delay for better UX
+      // Only fetch if we still have a search query (user hasn't cleared it)
+      if (debouncedSearchQuery.trim()) {
+        fetchFolders(true).finally(() => {
+          setLocalSearchResults([]); // Clear local results when API results come in
+        });
+      }
+    }, 500); // Additional delay after debounce for API call
     
     return () => clearTimeout(timer);
-  }, [searchQuery]);
+  }, [debouncedSearchQuery]);
 
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return '0 Bytes';
@@ -228,11 +236,6 @@ export default function FoldersPage() {
     });
   };
 
-  // Folder operations
-  const handleCreateFolder = () => {
-    setShowCreateModal(true);
-  };
-  
 
   const handleRenameFolder = (folderId: number, currentName: string) => {
     const folder = folders.find(f => f.id === folderId);
@@ -367,35 +370,8 @@ export default function FoldersPage() {
 
 
 
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <div className="h-8 bg-muted rounded w-64 animate-pulse shimmer"></div>
-          <div className="flex gap-3">
-            <div className="h-10 bg-muted rounded w-32 animate-pulse shimmer"></div>
-            <div className="h-10 bg-muted rounded w-10 animate-pulse shimmer"></div>
-            <div className="h-10 bg-muted rounded w-10 animate-pulse shimmer"></div>
-          </div>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {[...Array(8)].map((_, i) => (
-            <Card key={i} className="animate-pulse">
-              <CardContent className="p-4">
-                <div className="h-6 bg-muted rounded w-3/4 mb-2 shimmer"></div>
-                <div className="h-4 bg-muted rounded w-full mb-4 shimmer"></div>
-              <div className="flex justify-between">
-                  <div className="h-4 bg-muted rounded w-20 shimmer"></div>
-                  <div className="h-4 bg-muted rounded w-16 shimmer"></div>
-              </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-    );
-  }
+  // Show loading skeleton only in table rows, not full page
+  const showSkeletonRows = loading && folders.length === 0;
 
   if (error) {
     return (
@@ -413,112 +389,161 @@ export default function FoldersPage() {
   return (
     <div className="space-y-6">
       {/* Header Section */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">{t('folders.title')}</h1>
-          <p className="text-muted-foreground">
-            {pageData?.totalElements || 0} folders • {formatFileSize(folders.reduce((acc, folder) => acc + folder.size, 0))} total
-          </p>
+      <div className="space-y-6">
+        {/* Main Header */}
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+          <div className="space-y-3">
+            <div className="flex items-center gap-4">
+              <div className="h-12 w-12 bg-gradient-to-br from-primary/10 to-primary/20 rounded-xl flex items-center justify-center shadow-sm">
+                <Folder className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text text-transparent">
+                  {t('folders.title')}
+                </h1>
+                <p className="text-muted-foreground text-sm mt-1">
+                  Manage and organize your folders
+                </p>
+              </div>
+            </div>
+            
+            {/* Stats */}
+            <div className="flex items-center gap-6 text-sm">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-primary/5 rounded-lg">
+                <div className="h-2 w-2 rounded-full bg-primary"></div>
+                <span className="font-medium text-foreground">{pageData?.totalElements || 0}</span>
+                <span className="text-muted-foreground">folders</span>
+              </div>
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/5 rounded-lg">
+                <div className="h-2 w-2 rounded-full bg-blue-500"></div>
+                <span className="font-medium text-foreground">{formatFileSize(folders.reduce((acc, folder) => acc + folder.size, 0))}</span>
+                <span className="text-muted-foreground">total size</span>
+              </div>
+              {searchQuery && (
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/5 rounded-lg">
+                  <div className="h-2 w-2 rounded-full bg-green-500"></div>
+                  <span className="font-medium text-foreground">{getDisplayFolders().length}</span>
+                  <span className="text-muted-foreground">results</span>
+                </div>
+              )}
+            </div>
+          </div>
+          
+          {/* Action Buttons */}
+          <div className="flex items-center gap-3">
+            {/* Refresh Button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={isRefreshing || loading}
+              className="h-9 px-3"
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+            
+            {/* Create Folder Button */}
+            <Button
+              onClick={() => setShowCreateModal(true)}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm hover:shadow-md transition-all duration-200 h-9 px-4"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Create Folder
+            </Button>
+          </div>
         </div>
-        
-        <div className="flex items-center gap-3">
-          {/* Search */}
-          <div className="flex items-center gap-2">
-            <div className="relative w-64">
+
+        {/* Search and Controls Bar */}
+        <div className="flex flex-col lg:flex-row gap-4 p-4 bg-gradient-to-r from-muted/30 to-muted/50 rounded-xl border">
+          {/* Search Section */}
+          <div className="flex-1">
+            <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
               <Input
                 type="text"
                 placeholder={t('common.search')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
+                className="pl-10 pr-4 h-10 border-2 focus:border-primary/50 transition-all duration-200 shadow-sm hover:shadow-md bg-background"
                 onKeyDown={(e) => e.key === 'Enter' && fetchFolders(true)}
               />
+              {searchQuery && (
+                <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                  <div className="h-4 w-4 rounded-full bg-primary/20 flex items-center justify-center">
+                    <div className="h-2 w-2 rounded-full bg-primary animate-pulse"></div>
+                  </div>
+                </div>
+              )}
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowAdvancedSearchModal(true)}
-              className="gap-2"
-            >
-              <Filter className="h-4 w-4" />
-              Advanced
-            </Button>
           </div>
 
-          {/* View Toggle */}
-          <div className="flex bg-muted rounded-lg p-1">
-            <Button
-              variant={viewMode === 'grid' ? 'default' : 'ghost'}
-              size="sm"
-              onClick={() => setViewMode('grid')}
-              className="h-8 w-8 p-0"
-            >
-              <Grid className="h-4 w-4" />
-            </Button>
-            <Button
-              variant={viewMode === 'list' ? 'default' : 'ghost'}
-              size="sm"
-              onClick={() => setViewMode('list')}
-              className="h-8 w-8 p-0"
-            >
-              <List className="h-4 w-4" />
-            </Button>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex gap-2">
-
-            <Button className="gap-2" onClick={handleCreateFolder}>
-            <Plus className="h-4 w-4" />
-            New Folder
-            </Button>
+          {/* Sort and View Controls */}
+          <div className="flex items-center gap-3">
+            {/* Sort Dropdown */}
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-muted-foreground" />
+              <Select value={`${sortBy}-${sortDesc ? 'desc' : 'asc'}`} onValueChange={(value) => {
+                const [field, direction] = value.split('-');
+                setSortBy(field as SortOption);
+                setSortDesc(direction === 'desc');
+              }}>
+                <SelectTrigger className="w-48 h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="name-asc">Name A-Z</SelectItem>
+                  <SelectItem value="name-desc">Name Z-A</SelectItem>
+                  <SelectItem value="updatedAt-desc">Newest</SelectItem>
+                  <SelectItem value="updatedAt-asc">Oldest</SelectItem>
+                  <SelectItem value="size-desc">Size (Large)</SelectItem>
+                  <SelectItem value="size-asc">Size (Small)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            {/* View Toggle */}
+            <div className="flex bg-background rounded-lg p-1 border">
+              <Button
+                variant={viewMode === 'grid' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('grid')}
+                className="h-8 w-8 p-0"
+              >
+                <Grid className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={viewMode === 'list' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('list')}
+                className="h-8 w-8 p-0"
+              >
+                <List className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Filters */}
-      <Card>
-        <CardContent className="flex flex-wrap items-center gap-4 p-4">
-        <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">Filter:</span>
-        </div>
-          <Select value={filterBy} onValueChange={(value: FilterOption) => setFilterBy(value)}>
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Folders</SelectItem>
-              <SelectItem value="my">My Folders</SelectItem>
-              <SelectItem value="shared">Shared with me</SelectItem>
-              <SelectItem value="public">Public Folders</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={`${sortBy}-${sortDesc ? 'desc' : 'asc'}`} onValueChange={(value) => {
-            const [field, direction] = value.split('-');
-            setSortBy(field as SortOption);
-            setSortDesc(direction === 'desc');
-          }}>
-            <SelectTrigger className="w-48">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="name-asc">Sort by: Name A-Z</SelectItem>
-              <SelectItem value="name-desc">Sort by: Name Z-A</SelectItem>
-              <SelectItem value="updatedAt-desc">Sort by: Newest</SelectItem>
-              <SelectItem value="updatedAt-asc">Sort by: Oldest</SelectItem>
-              <SelectItem value="size-desc">Sort by: Size (Large)</SelectItem>
-              <SelectItem value="size-asc">Sort by: Size (Small)</SelectItem>
-            </SelectContent>
-          </Select>
-        </CardContent>
-      </Card>
-
       {/* Folders Grid/List */}
       {viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {getDisplayFolders().map((folder) => (
+          {/* Show skeleton cards when initially loading */}
+          {showSkeletonRows && [...Array(8)].map((_, i) => (
+            <Card key={`skeleton-${i}`} className="animate-pulse">
+              <CardContent className="p-4">
+                <div className="h-6 bg-muted rounded w-3/4 mb-2"></div>
+                <div className="h-4 bg-muted rounded w-full mb-4"></div>
+                <div className="flex justify-between">
+                  <div className="h-4 bg-muted rounded w-20"></div>
+                  <div className="h-4 bg-muted rounded w-16"></div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+          
+          {/* Show actual folder cards */}
+          {!showSkeletonRows && getDisplayFolders().map((folder) => (
             <FolderCard 
               key={folder.id} 
               folder={folder} 
@@ -536,7 +561,30 @@ export default function FoldersPage() {
               router={router}
             />
           ))}
-          {/* Loading skeleton cards - for both search and filter changes */}
+          
+          {/* Show empty state when no folders */}
+          {!showSkeletonRows && !loading && getDisplayFolders().length === 0 && (
+            <div className="col-span-full flex flex-col items-center justify-center py-12">
+              <div className="h-16 w-16 bg-muted rounded-full flex items-center justify-center mb-4">
+                <Folder className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <h3 className="text-lg font-medium text-foreground mb-2">No folders yet</h3>
+              <p className="text-muted-foreground mb-4 text-center">
+                {searchQuery ? `No folders found matching "${searchQuery}"` : "Create your first folder to get started"}
+              </p>
+              {!searchQuery && (
+                <Button
+                  onClick={() => setShowCreateModal(true)}
+                  className="bg-primary hover:bg-primary/90"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Folder
+                </Button>
+              )}
+            </div>
+          )}
+          
+          {/* Loading skeleton cards - for search and filter changes */}
           {tableLoading && [...Array(4)].map((_, i) => (
             <Card key={`loading-${i}`} className="animate-pulse">
               <CardContent className="p-4">
@@ -554,19 +602,49 @@ export default function FoldersPage() {
         <Card>
           <div>
             <table className="w-full relative" style={{ zIndex: 1 }}>
-              <thead className="bg-muted/50">
+              <thead className="bg-gradient-to-r from-muted/30 to-muted/50 border-b">
                 <tr>
-                  <th className="text-left p-4 text-sm font-medium">Name</th>
-                  <th className="text-left p-4 text-sm font-medium">Owner</th>
-                  <th className="text-left p-4 text-sm font-medium">Size</th>
-                  <th className="text-left p-4 text-sm font-medium">Last Modified</th>
-                  <th className="text-left p-4 text-sm font-medium">Visibility</th>
-                  <th className="text-left p-4 text-sm font-medium">Comments</th>
-                  <th className="text-left p-4 text-sm font-medium">Actions</th>
+                  <th className="text-left p-4 text-sm font-semibold text-foreground">Name</th>
+                  <th className="text-left p-4 text-sm font-semibold text-foreground">Owner</th>
+                  <th className="text-left p-4 text-sm font-semibold text-foreground">Size</th>
+                  <th className="text-left p-4 text-sm font-semibold text-foreground">Last Modified</th>
+                  <th className="text-left p-4 text-sm font-semibold text-foreground">Visibility</th>
+                  <th className="text-left p-4 text-sm font-semibold text-foreground">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {getDisplayFolders().map((folder) => (
+                {/* Show skeleton rows when initially loading */}
+                {showSkeletonRows && [...Array(5)].map((_, i) => (
+                  <tr key={`skeleton-${i}`} className="border-b last:border-b-0">
+                    <td className="p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 bg-muted rounded-lg animate-pulse"></div>
+                        <div className="space-y-2">
+                          <div className="h-4 bg-muted rounded w-32 animate-pulse"></div>
+                          <div className="h-3 bg-muted rounded w-24 animate-pulse"></div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="p-4">
+                      <div className="h-4 bg-muted rounded w-20 animate-pulse"></div>
+                    </td>
+                    <td className="p-4">
+                      <div className="h-4 bg-muted rounded w-16 animate-pulse"></div>
+                    </td>
+                    <td className="p-4">
+                      <div className="h-4 bg-muted rounded w-20 animate-pulse"></div>
+                    </td>
+                    <td className="p-4">
+                      <div className="h-6 bg-muted rounded w-16 animate-pulse"></div>
+                    </td>
+                    <td className="p-4">
+                      <div className="h-4 bg-muted rounded w-4 animate-pulse"></div>
+                    </td>
+                  </tr>
+                ))}
+                
+                {/* Show actual folder rows */}
+                {!showSkeletonRows && getDisplayFolders().map((folder) => (
                   <FolderRow 
                     key={folder.id} 
                     folder={folder} 
@@ -583,7 +661,36 @@ export default function FoldersPage() {
                     router={router}
                   />
                 ))}
-                {/* Loading skeleton rows - for both search and filter changes */}
+                
+                {/* Show empty state when no folders */}
+                {!showSkeletonRows && !loading && getDisplayFolders().length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="p-12 text-center">
+                      <div className="flex flex-col items-center gap-4">
+                        <div className="h-16 w-16 bg-muted rounded-full flex items-center justify-center">
+                          <Folder className="h-8 w-8 text-muted-foreground" />
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-medium text-foreground mb-2">No folders yet</h3>
+                          <p className="text-muted-foreground mb-4">
+                            {searchQuery ? `No folders found matching "${searchQuery}"` : "Create your first folder to get started"}
+                          </p>
+                          {!searchQuery && (
+                            <Button
+                              onClick={() => setShowCreateModal(true)}
+                              className="bg-primary hover:bg-primary/90"
+                            >
+                              <Plus className="h-4 w-4 mr-2" />
+                              Create Folder
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                
+                {/* Loading skeleton rows - for search and filter changes */}
                 {tableLoading && [...Array(3)].map((_, i) => (
                   <tr key={`loading-${i}`} className="border-b last:border-b-0">
                     <td className="p-4">
@@ -622,7 +729,18 @@ export default function FoldersPage() {
       {tableLoading && (
         <div className="flex items-center justify-center py-2 text-sm text-muted-foreground">
           <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2"></div>
-          {isLocalFiltering ? 'Fetching comprehensive results...' : 'Loading folders...'}
+          Loading comprehensive results...
+        </div>
+      )}
+      
+      {/* Search results indicator */}
+      {searchQuery && !tableLoading && (
+        <div className="flex items-center justify-center py-2 text-sm text-muted-foreground">
+          <div className="h-2 w-2 rounded-full bg-green-500 mr-2"></div>
+          Showing {getDisplayFolders().length} results for "{searchQuery}"
+          {debouncedSearchQuery !== searchQuery && (
+            <span className="ml-2 text-xs text-blue-500">(comprehensive search in progress...)</span>
+          )}
         </div>
       )}
 
@@ -672,7 +790,7 @@ export default function FoldersPage() {
       <CreateFolderModal 
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
-        parentId={0}
+        parentId={null}
         onSuccess={fetchFolders}
       />
       
@@ -712,11 +830,6 @@ export default function FoldersPage() {
         onSuccess={handleFolderActionSuccess}
       />
 
-      <AdvancedSearchModal
-        isOpen={showAdvancedSearchModal}
-        onClose={() => setShowAdvancedSearchModal(false)}
-        initialQuery={searchQuery}
-      />
 
       <DeleteConfirmationModal
         isOpen={showDeleteModal}
@@ -913,11 +1026,11 @@ function FolderCard({
   const showMenu = openDropdownId === folderId;
   
   return (
-    <Card className="group hover:shadow-md transition-all">
+    <Card className="group hover:shadow-lg transition-all duration-300 hover:scale-[1.02] border-2 hover:border-primary/20">
       <CardContent className="p-4">
       <div className="flex items-start justify-between mb-3">
-          <div className="h-12 w-12 bg-primary/10 rounded-lg flex items-center justify-center">
-          <Folder className="h-6 w-6 text-primary" />
+          <div className="h-12 w-12 bg-gradient-to-br from-primary/10 to-primary/20 rounded-lg flex items-center justify-center shadow-sm group-hover:shadow-md transition-all duration-200">
+          <Folder className="h-6 w-6 text-primary group-hover:scale-110 transition-transform duration-200" />
         </div>
           <div className="relative" style={{ zIndex: 10 }}>
             <button 
@@ -1012,11 +1125,11 @@ function FolderRow({
   const buttonRef = useRef<HTMLButtonElement>(null);
   
   return (
-    <tr className="border-b  last:border-b-0 hover:bg-muted/50 group" style={{ position: 'relative', zIndex: 1 }}>
+    <tr className="border-b last:border-b-0 hover:bg-gradient-to-r hover:from-muted/30 hover:to-muted/50 group transition-all duration-200" style={{ position: 'relative', zIndex: 1 }}>
       <td className="p-4">
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 bg-primary/10 rounded-lg flex items-center justify-center">
-            <Folder className="h-5 w-5 text-primary" />
+          <div className="h-10 w-10 bg-gradient-to-br from-primary/10 to-primary/20 rounded-lg flex items-center justify-center shadow-sm group-hover:shadow-md transition-all duration-200">
+            <Folder className="h-5 w-5 text-primary group-hover:scale-110 transition-transform duration-200" />
           </div>
           <div className='cursor-pointer group ' onClick={() => router.push(`/folders/${folder.id}`)}>
             <div className="font-medium group-hover:underline group-hover:text-primary">{folder.name}</div>
@@ -1041,14 +1154,6 @@ function FolderRow({
             <><Lock className="h-3 w-3 mr-1" />Private</>
           )}
         </Badge>
-      </td>
-      <td className="p-4">
-        <CommentCountBadge 
-          entityType="FOLDER" 
-          entityId={folder.id} 
-          showIcon={true}
-          className="text-sm"
-        />
       </td>
       <td className="p-4">
         <div className="relative" style={{ zIndex: 10 }}>
@@ -1103,14 +1208,14 @@ function FoldersLoadingSkeleton({ viewMode }: { viewMode: 'grid' | 'list' }) {
     <Card>
       <div>
         <table className="w-full relative" style={{ zIndex: 1 }}>
-          <thead className="bg-muted/50">
+          <thead className="bg-gradient-to-r from-muted/30 to-muted/50 border-b">
             <tr>
-              <th className="text-left p-4 text-sm font-medium">Name</th>
-              <th className="text-left p-4 text-sm font-medium">Owner</th>
-              <th className="text-left p-4 text-sm font-medium">Size</th>
-              <th className="text-left p-4 text-sm font-medium">Last Modified</th>
-              <th className="text-left p-4 text-sm font-medium">Visibility</th>
-              <th className="text-left p-4 text-sm font-medium">Actions</th>
+              <th className="text-left p-4 text-sm font-semibold text-foreground">Name</th>
+              <th className="text-left p-4 text-sm font-semibold text-foreground">Owner</th>
+              <th className="text-left p-4 text-sm font-semibold text-foreground">Size</th>
+              <th className="text-left p-4 text-sm font-semibold text-foreground">Last Modified</th>
+              <th className="text-left p-4 text-sm font-semibold text-foreground">Visibility</th>
+              <th className="text-left p-4 text-sm font-semibold text-foreground">Actions</th>
             </tr>
           </thead>
           <tbody>

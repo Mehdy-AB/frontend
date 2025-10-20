@@ -9,7 +9,13 @@ import {
   MessageSquare, 
   Star,
   Globe,
-  Lock
+  Lock,
+  User,
+  Mail,
+  Calendar,
+  Clock,
+  FileText,
+  Hash
 } from 'lucide-react';
 import { DocumentViewDto } from '../../types/documentView';
 import { formatFileSize, formatDate } from '../../utils/documentUtils';
@@ -51,50 +57,158 @@ export default function ConfigurationTab({
 
   return (
     <div className="p-4 space-y-6">
-      {/* Basic Info */}
+      {/* Document Information */}
       <div>
         <h3 className="font-medium text-neutral-text-dark mb-3 flex items-center gap-2">
           <Info className="h-4 w-4" />
           Document Information
         </h3>
-        <div className="space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-neutral-text-light">File Name:</span>
-            <span className="text-neutral-text-dark font-medium">{document.name}</span>
+        <div className="space-y-3 text-sm">
+          {/* File Details */}
+          <div className="space-y-2">
+            <div className="flex justify-between">
+              <span className="text-neutral-text-light flex items-center gap-1">
+                <FileText className="h-3 w-3" />
+                File Name:
+              </span>
+              <span className="text-neutral-text-dark font-medium">{document.name}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-neutral-text-light">File Size:</span>
+              <span className="text-neutral-text-dark font-medium">{formatFileSize(document.sizeBytes)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-neutral-text-light">MIME Type:</span>
+              <span className="text-neutral-text-dark font-medium">{document.mimeType}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-neutral-text-light">Version:</span>
+              <span className="text-neutral-text-dark font-medium">v{document.versionNumber}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-neutral-text-light">Document ID:</span>
+              <span className="text-neutral-text-dark font-medium">#{document.documentId}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-neutral-text-light">Visibility:</span>
+              <span className="flex items-center gap-1">
+                {document.isPublic ? (
+                  <>
+                    <Globe className="h-3 w-3 text-success" />
+                    <span className="text-success">Public</span>
+                  </>
+                ) : (
+                  <>
+                    <Lock className="h-3 w-3 text-neutral-text-light" />
+                    <span className="text-neutral-text-dark">Private</span>
+                  </>
+                )}
+              </span>
+            </div>
           </div>
-          <div className="flex justify-between">
-            <span className="text-neutral-text-light">File Size:</span>
-            <span className="text-neutral-text-dark font-medium">{formatFileSize(document.sizeBytes)}</span>
+
+          {/* Owner Information */}
+          <div className="border-t border-ui pt-3">
+            <h4 className="font-medium text-neutral-text-dark mb-2 flex items-center gap-1">
+              <User className="h-3 w-3" />
+              Owner
+            </h4>
+            <div className="flex items-center gap-3 p-2 bg-neutral-background rounded-lg">
+              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
+                {document.ownedBy.imageUrl && document.ownedBy.imageUrl.trim() !== '' ? (
+                  <img 
+                    src={document.ownedBy.imageUrl} 
+                    alt={document.ownedBy.username}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      // Hide image and show icon if image fails to load
+                      e.currentTarget.style.display = 'none';
+                      e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                    }}
+                  />
+                ) : null}
+                <User className={`h-4 w-4 text-primary ${document.ownedBy.imageUrl && document.ownedBy.imageUrl.trim() !== '' ? 'hidden' : ''}`} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-neutral-text-dark truncate">
+                  {document.ownedBy.firstName} {document.ownedBy.lastName}
+                </div>
+                <div className="text-xs text-neutral-text-light flex items-center gap-1">
+                  <Mail className="h-3 w-3" />
+                  {document.ownedBy.email}
+                </div>
+                <div className="text-xs text-neutral-text-light">
+                  @{document.ownedBy.username}
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="flex justify-between">
-            <span className="text-neutral-text-light">MIME Type:</span>
-            <span className="text-neutral-text-dark font-medium">{document.mimeType}</span>
+
+          {/* Creator Information */}
+          <div className="border-t border-ui pt-3">
+            <h4 className="font-medium text-neutral-text-dark mb-2 flex items-center gap-1">
+              <User className="h-3 w-3" />
+              Created By
+            </h4>
+            <div className="flex items-center gap-3 p-2 bg-neutral-background rounded-lg">
+              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
+                {document.createdBy.imageUrl && document.createdBy.imageUrl.trim() !== '' ? (
+                  <img 
+                    src={document.createdBy.imageUrl} 
+                    alt={document.createdBy.username}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      // Hide image and show icon if image fails to load
+                      e.currentTarget.style.display = 'none';
+                      e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                    }}
+                  />
+                ) : null}
+                <User className={`h-4 w-4 text-primary ${document.createdBy.imageUrl && document.createdBy.imageUrl.trim() !== '' ? 'hidden' : ''}`} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-neutral-text-dark truncate">
+                  {document.createdBy.firstName} {document.createdBy.lastName}
+                </div>
+                <div className="text-xs text-neutral-text-light flex items-center gap-1">
+                  <Mail className="h-3 w-3" />
+                  {document.createdBy.email}
+                </div>
+                <div className="text-xs text-neutral-text-light">
+                  @{document.createdBy.username}
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="flex justify-between">
-            <span className="text-neutral-text-light">Version:</span>
-            <span className="text-neutral-text-dark font-medium">v{document.versionNumber}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-neutral-text-light">Visibility:</span>
-            <span className="flex items-center gap-1">
-              {document.isPublic ? (
-                <>
-                  <Globe className="h-3 w-3 text-success" />
-                  <span className="text-success">Public</span>
-                </>
-              ) : (
-                <>
-                  <Lock className="h-3 w-3 text-neutral-text-light" />
-                  <span className="text-neutral-text-dark">Private</span>
-                </>
-              )}
-            </span>
+
+          {/* Timestamps */}
+          <div className="border-t border-ui pt-3">
+            <h4 className="font-medium text-neutral-text-dark mb-2 flex items-center gap-1">
+              <Clock className="h-3 w-3" />
+              Timeline
+            </h4>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-neutral-text-light flex items-center gap-1">
+                  <Calendar className="h-3 w-3" />
+                  Created:
+                </span>
+                <span className="text-neutral-text-dark font-medium">{formatDate(document.createdAt)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-neutral-text-light flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  Last Modified:
+                </span>
+                <span className="text-neutral-text-dark font-medium">{formatDate(document.updatedAt)}</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Model Configurations */}
-      <div>
+      {/* <div>
         <h3 className="font-medium text-neutral-text-dark mb-3 flex items-center gap-2">
           <Settings className="h-4 w-4" />
           Model Configurations
@@ -122,7 +236,7 @@ export default function ConfigurationTab({
             </div>
           ))}
         </div>
-      </div>
+      </div> */}
 
       {/* Quick Actions */}
       <div>

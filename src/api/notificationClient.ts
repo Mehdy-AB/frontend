@@ -1,6 +1,6 @@
 import { apiClient } from './client'
 import { AxiosResponse, AxiosError } from 'axios'
-import { MovingType, AllowedFoldersToMove, PageResponse } from '../types/api'
+import { MovingType, AllowedFoldersToMove, PageResponse, UpdateDocumentMetadataRequestDto, CreateTagRequestDto, UpdateTagRequestDto, AddTagToDocumentRequestDto, TagResponseDto, DocumentTagResponseDto, LinkRuleRequestDto, LinkRuleResponseDto, DocumentLinkRequestDto, DocumentLinkResponseDto, RelatedDocumentResponseDto, RuleExecutionRequest, RuleExecutionResponse, RuleStatistics, BulkRuleExecutionRequest, BulkRuleExecutionResponse, LinkRuleCacheStatistics, SearchRequestDto, AdvancedSearchRequestDto, AdvancedSearchResponseDto, UnifiedSearchRequestDto, FilingCategoryDocDto } from '../types/api'
 
 // Notification interface for API calls
 interface ApiNotificationOptions {
@@ -252,7 +252,7 @@ class NotificationApiClient {
 
   // ==================== DOCUMENT ENDPOINTS ====================
 
-  async uploadDocument(file: File, folderId: number, title: string, lang: any, filingCategoryDto: any[], options?: ApiNotificationOptions) {
+  async uploadDocument(file: File, folderId: number, title: string, lang: any, filingCategoryDto: FilingCategoryDocDto, options?: ApiNotificationOptions) {
     return this.withNotification(
       () => apiClient.uploadDocument(file, folderId, title, lang, filingCategoryDto),
       { 
@@ -303,12 +303,368 @@ class NotificationApiClient {
     )
   }
 
+  // Update document metadata
+  async updateDocumentMetadata(documentId: number, request: UpdateDocumentMetadataRequestDto, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.updateDocumentMetadata(documentId, request),
+      { successMessage: 'Document metadata updated successfully', errorMessage: 'Failed to update document metadata', ...options },
+      'update'
+    )
+  }
+
   // Update document filing category
   async updateDocumentFilingCategory(documentId: number, filingCategoryDto: any[], options?: ApiNotificationOptions) {
     return this.withNotification(
       () => apiClient.updateDocumentFilingCategory(documentId, filingCategoryDto),
       { successMessage: 'Document filing category updated successfully', errorMessage: 'Failed to update document filing category', ...options },
       'update'
+    )
+  }
+
+  // ==================== TAG METHODS ====================
+
+  // Create tag
+  async createTag(request: CreateTagRequestDto, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.createTag(request),
+      { successMessage: 'Tag created successfully', errorMessage: 'Failed to create tag', ...options },
+      'create'
+    )
+  }
+
+  // Get tag by ID
+  async getTagById(id: number, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.getTagById(id),
+      { silent: true, ...options }
+    )
+  }
+
+  // Get tag by name
+  async getTagByName(name: string, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.getTagByName(name),
+      { silent: true, ...options }
+    )
+  }
+
+  // Get all tags
+  async getAllTags(options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.getAllTags(),
+      { silent: true, ...options }
+    )
+  }
+
+  // Get tags by user
+  async getTagsByUser(userId: string, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.getTagsByUser(userId),
+      { silent: true, ...options }
+    )
+  }
+
+  // Get my tags
+  async getMyTags(options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.getMyTags(),
+      { silent: true, ...options }
+    )
+  }
+
+  // Get available tags
+  async getAvailableTags(options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.getAvailableTags(),
+      { silent: true, ...options }
+    )
+  }
+
+  // Get system tags
+  async getSystemTags(options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.getSystemTags(),
+      { silent: true, ...options }
+    )
+  }
+
+  // Search tags
+  async searchTags(name: string, page: number = 0, size: number = 20, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.searchTags(name, page, size),
+      { silent: true, ...options }
+    )
+  }
+
+  // Update tag
+  async updateTag(id: number, request: UpdateTagRequestDto, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.updateTag(id, request),
+      { successMessage: 'Tag updated successfully', errorMessage: 'Failed to update tag', ...options },
+      'update'
+    )
+  }
+
+  // Delete tag
+  async deleteTag(id: number, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.deleteTag(id),
+      { successMessage: 'Tag deleted successfully', errorMessage: 'Failed to delete tag', ...options },
+      'delete'
+    )
+  }
+
+  // Add tag to document
+  async addTagToDocument(documentId: number, request: AddTagToDocumentRequestDto, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.addTagToDocument(documentId, request),
+      { successMessage: 'Tag added to document successfully', errorMessage: 'Failed to add tag to document', ...options },
+      'create'
+    )
+  }
+
+  // Remove tag from document
+  async removeTagFromDocument(documentId: number, tagId: number, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.removeTagFromDocument(documentId, tagId),
+      { successMessage: 'Tag removed from document successfully', errorMessage: 'Failed to remove tag from document', ...options },
+      'delete'
+    )
+  }
+
+  // Remove all tags from document
+  async removeAllTagsFromDocument(documentId: number, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.removeAllTagsFromDocument(documentId),
+      { successMessage: 'All tags removed from document successfully', errorMessage: 'Failed to remove all tags from document', ...options },
+      'delete'
+    )
+  }
+
+  // Get tags by document ID
+  async getTagsByDocumentId(documentId: number, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.getTagsByDocumentId(documentId),
+      { silent: true, ...options }
+    )
+  }
+
+  // Get document IDs by tag ID
+  async getDocumentIdsByTagId(tagId: number, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.getDocumentIdsByTagId(tagId),
+      { silent: true, ...options }
+    )
+  }
+
+  // Get tag statistics
+  async getTagStatistics(options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.getTagStatistics(),
+      { silent: true, ...options }
+    )
+  }
+
+  // Get tag statistics by ID
+  async getTagStatisticsById(tagId: number, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.getTagStatisticsById(tagId),
+      { silent: true, ...options }
+    )
+  }
+
+  // ==================== LINK RULE METHODS ====================
+
+
+  // Get incoming links
+  async getIncomingLinks(documentId: number, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.getIncomingLinks(documentId),
+      { silent: true, ...options }
+    )
+  }
+
+  // Unified smart search
+  async unifiedSearch(data: UnifiedSearchRequestDto, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.unifiedSearch(data),
+      { silent: true, ...options }
+    )
+  }
+
+
+
+  // Get outgoing links
+  async getOutgoingLinks(documentId: number, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.getOutgoingLinks(documentId),
+      { silent: true, ...options }
+    )
+  }
+
+  // Get link rules by category
+  async getLinkRulesByCategory(categoryId: number, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.getLinkRulesByCategory(categoryId),
+      { silent: true, ...options }
+    )
+  }
+
+  // Get link rule by ID
+  async getLinkRule(ruleId: number, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.getLinkRule(ruleId),
+      { silent: true, ...options }
+    )
+  }
+
+  // Enable link rule
+  async enableLinkRule(ruleId: number, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.enableLinkRule(ruleId),
+      { successMessage: 'Link rule enabled successfully', errorMessage: 'Failed to enable link rule', ...options },
+      'update'
+    )
+  }
+
+  // Disable link rule
+  async disableLinkRule(ruleId: number, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.disableLinkRule(ruleId),
+      { successMessage: 'Link rule disabled successfully', errorMessage: 'Failed to disable link rule', ...options },
+      'update'
+    )
+  }
+
+  // Delete link rule
+  async deleteLinkRule(ruleId: number, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.deleteLinkRule(ruleId),
+      { successMessage: 'Link rule deleted successfully', errorMessage: 'Failed to delete link rule', ...options },
+      'delete'
+    )
+  }
+
+  // ==================== NEW LINK RULE METHODS ====================
+
+  // Create link rule
+  async createLinkRule(request: LinkRuleRequestDto, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.createLinkRule(request),
+      { successMessage: 'Link rule created successfully', errorMessage: 'Failed to create link rule', ...options },
+      'create'
+    )
+  }
+
+  // Update link rule
+  async updateLinkRule(ruleId: number, request: LinkRuleRequestDto, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.updateLinkRule(ruleId, request),
+      { successMessage: 'Link rule updated successfully', errorMessage: 'Failed to update link rule', ...options },
+      'update'
+    )
+  }
+
+  // Get all link rules
+  async getAllLinkRules(options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.getAllLinkRules(),
+      { silent: true, ...options }
+    )
+  }
+
+  // Get all link rules with pagination and filters
+  async getAllLinkRulesPaginated(params: {
+    page?: number;
+    size?: number;
+    enabled?: boolean;
+    linkType?: string;
+    name?: string;
+  } = {}, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.getAllLinkRulesPaginated(params),
+      { silent: true, ...options }
+    )
+  }
+
+  // Toggle rule enabled/disabled
+  async toggleLinkRule(ruleId: number, enabled: boolean, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.toggleLinkRule(ruleId, enabled),
+      { successMessage: `Link rule ${enabled ? 'enabled' : 'disabled'} successfully`, errorMessage: 'Failed to toggle link rule', ...options },
+      'update'
+    )
+  }
+
+  // Apply a specific rule to all documents (async)
+  async applyLinkRule(ruleId: number, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.applyLinkRule(ruleId),
+      { successMessage: 'Rule application job queued successfully', errorMessage: 'Failed to queue rule application', ...options },
+      'update'
+    )
+  }
+
+  // Apply all enabled rules to a specific document (async)
+  async applyRulesToDocument(documentId: number, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.applyRulesToDocument(documentId),
+      { successMessage: 'Rule application job queued successfully', errorMessage: 'Failed to queue rule application', ...options },
+      'update'
+    )
+  }
+
+  // Reapply all enabled rules (async)
+  async reapplyAllLinkRules(options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.reapplyAllLinkRules(),
+      { successMessage: 'Reapply all rules job queued successfully', errorMessage: 'Failed to queue reapply job', ...options },
+      'update'
+    )
+  }
+
+  // Get link rules by metadata
+  async getLinkRulesByMetadata(metadataId: number, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.getLinkRulesByMetadata(metadataId),
+      { silent: true, ...options }
+    )
+  }
+
+  // ==================== NEW DOCUMENT LINK METHODS ====================
+
+  // Create document link
+  async createDocumentLink(request: DocumentLinkRequestDto, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.createDocumentLink(request),
+      { successMessage: 'Document link created successfully', errorMessage: 'Failed to create document link', ...options },
+      'create'
+    )
+  }
+
+  // Delete document link
+  async deleteDocumentLink(linkId: number, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.deleteDocumentLink(linkId),
+      { successMessage: 'Document link deleted successfully', errorMessage: 'Failed to delete document link', ...options },
+      'delete'
+    )
+  }
+
+  // Get related documents with search and filters
+  async getRelatedDocuments(documentId: number, params: {
+    search?: string;
+    linkType?: string;
+    isManual?: boolean;
+    fromDate?: string;
+    toDate?: string;
+    mimeType?: string;
+    page?: number;
+    size?: number;
+  } = {}, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.getRelatedDocuments(documentId, params),
+      { silent: true, ...options }
     )
   }
 
@@ -528,35 +884,95 @@ class NotificationApiClient {
     )
   }
 
-  // ==================== SEARCH ENDPOINTS ====================
+  // ==================== RULE EXECUTION ENDPOINTS ====================
 
-  async globalSearch(params?: any, options?: ApiNotificationOptions) {
+  // Execute a specific link rule
+  async executeRule(request: RuleExecutionRequest, options?: ApiNotificationOptions) {
     return this.withNotification(
-      () => apiClient.globalSearch(params),
+      () => apiClient.executeRule(request),
+      { successMessage: 'Rule executed successfully', errorMessage: 'Failed to execute rule', ...options },
+      'create'
+    )
+  }
+
+  // Execute multiple link rules in bulk
+  async executeBulkRules(request: BulkRuleExecutionRequest, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.executeBulkRules(request),
+      { successMessage: 'Bulk rule execution completed', errorMessage: 'Failed to execute bulk rules', ...options },
+      'create'
+    )
+  }
+
+  // Revalidate all link rules
+  async revalidateAllRules(options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.revalidateAllRules(),
+      { successMessage: 'All rules revalidated successfully', errorMessage: 'Failed to revalidate rules', ...options },
+      'update'
+    )
+  }
+
+  // Revalidate a specific link rule
+  async revalidateRule(ruleId: number, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.revalidateRule(ruleId),
+      { successMessage: 'Rule revalidated successfully', errorMessage: 'Failed to revalidate rule', ...options },
+      'update'
+    )
+  }
+
+  // Get rule execution statistics
+  async getRuleStatistics(ruleId: number, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.getRuleStatistics(ruleId),
       { silent: true, ...options }
     )
   }
 
-  async enhancedSearch(query: string, params?: any, options?: ApiNotificationOptions) {
+  // Get all rule statistics
+  async getAllRuleStatistics(options?: ApiNotificationOptions) {
     return this.withNotification(
-      () => apiClient.enhancedSearch(query, params),
+      () => apiClient.getAllRuleStatistics(),
       { silent: true, ...options }
     )
   }
 
-  async searchInVersions(query: string, params?: any, options?: ApiNotificationOptions) {
+  // Get link rule cache statistics
+  async getLinkRuleCacheStatistics(options?: ApiNotificationOptions) {
     return this.withNotification(
-      () => apiClient.searchInVersions(query, params),
+      () => apiClient.getLinkRuleCacheStatistics(),
       { silent: true, ...options }
     )
   }
 
-  async getDocumentVersions(documentId: number, query?: string, options?: ApiNotificationOptions) {
+  // Clear cache for a specific document
+  async clearDocumentCache(documentId: number, options?: ApiNotificationOptions) {
     return this.withNotification(
-      () => apiClient.getDocumentVersions(documentId, query),
-      { silent: true, ...options }
+      () => apiClient.clearDocumentCache(documentId),
+      { successMessage: 'Document cache cleared', errorMessage: 'Failed to clear document cache', ...options },
+      'delete'
     )
   }
+
+  // Clear cache for a specific rule
+  async clearRuleCache(ruleId: number, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.clearRuleCache(ruleId),
+      { successMessage: 'Rule cache cleared', errorMessage: 'Failed to clear rule cache', ...options },
+      'delete'
+    )
+  }
+
+  // Clear all link rule cache
+  async clearAllRuleCache(options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.clearAllRuleCache(),
+      { successMessage: 'All rule cache cleared', errorMessage: 'Failed to clear all rule cache', ...options },
+      'delete'
+    )
+  }
+
 
   // ==================== SHARING ENDPOINTS ====================
 
@@ -1046,98 +1462,6 @@ class NotificationApiClient {
     )
   }
 
-  // ==================== LINK RULE ENDPOINTS ====================
-
-  async createManualLink(data: any, options?: ApiNotificationOptions) {
-    return this.withNotification(
-      () => apiClient.createManualLink(data),
-      { successMessage: 'Manual link created successfully', errorMessage: 'Failed to create manual link', ...options },
-      'create'
-    )
-  }
-
-  async getDocumentManualLinks(documentId: number, options?: ApiNotificationOptions) {
-    return this.withNotification(
-      () => apiClient.getDocumentManualLinks(documentId),
-      { silent: true, ...options }
-    )
-  }
-
-  async getOutgoingManualLinks(documentId: number, options?: ApiNotificationOptions) {
-    return this.withNotification(
-      () => apiClient.getOutgoingManualLinks(documentId),
-      { silent: true, ...options }
-    )
-  }
-
-  async getIncomingManualLinks(documentId: number, options?: ApiNotificationOptions) {
-    return this.withNotification(
-      () => apiClient.getIncomingManualLinks(documentId),
-      { silent: true, ...options }
-    )
-  }
-
-  async updateManualLink(linkId: number, data: any, options?: ApiNotificationOptions) {
-    return this.withNotification(
-      () => apiClient.updateManualLink(linkId, data),
-      { successMessage: 'Manual link updated successfully', errorMessage: 'Failed to update manual link', ...options },
-      'update'
-    )
-  }
-
-  async deleteManualLink(linkId: number, options?: ApiNotificationOptions) {
-    return this.withNotification(
-      () => apiClient.deleteManualLink(linkId),
-      { successMessage: 'Manual link deleted successfully', errorMessage: 'Failed to delete manual link', ...options },
-      'delete'
-    )
-  }
-
-  async getRelatedDocuments(documentId: number, options?: ApiNotificationOptions) {
-    return this.withNotification(
-      () => apiClient.getRelatedDocuments(documentId),
-      { silent: true, ...options }
-    )
-  }
-
-  async triggerLinkRuleRevalidation(options?: ApiNotificationOptions) {
-    return this.withNotification(
-      () => apiClient.triggerLinkRuleRevalidation(),
-      { successMessage: 'Link rule revalidation triggered successfully', errorMessage: 'Failed to trigger revalidation', ...options },
-      'update'
-    )
-  }
-
-  async revalidateLinkRule(ruleId: number, options?: ApiNotificationOptions) {
-    return this.withNotification(
-      () => apiClient.revalidateLinkRule(ruleId),
-      { successMessage: 'Link rule revalidated successfully', errorMessage: 'Failed to revalidate link rule', ...options },
-      'update'
-    )
-  }
-
-  async getLinkRuleCacheStatistics(options?: ApiNotificationOptions) {
-    return this.withNotification(
-      () => apiClient.getLinkRuleCacheStatistics(),
-      { silent: true, ...options }
-    )
-  }
-
-  async clearDocumentLinkCache(documentId: number, options?: ApiNotificationOptions) {
-    return this.withNotification(
-      () => apiClient.clearDocumentLinkCache(documentId),
-      { successMessage: 'Document link cache cleared successfully', errorMessage: 'Failed to clear document link cache', ...options },
-      'delete'
-    )
-  }
-
-  async clearRuleLinkCache(ruleId: number, options?: ApiNotificationOptions) {
-    return this.withNotification(
-      () => apiClient.clearRuleLinkCache(ruleId),
-      { successMessage: 'Rule link cache cleared successfully', errorMessage: 'Failed to clear rule link cache', ...options },
-      'delete'
-    )
-  }
 }
 
 // Create and export a singleton instance

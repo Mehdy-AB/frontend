@@ -30,8 +30,6 @@ This document summarizes all the updates made to synchronize the frontend API wi
 
 #### Search Endpoints
 - ✅ Added `enhancedSearch()` - Enhanced search with version support
-- ✅ Added `searchInVersions()` - Search in document versions
-- ✅ Added `getDocumentVersions()` - Get all versions of a document
 
 #### Audit Log Endpoints
 - ✅ Updated `getAuditLogsBySearchTerm()` - Search audit logs by term (replaced getAuditLogsByAction)
@@ -58,8 +56,6 @@ All endpoints from the API client have been wrapped with notification support:
 
 #### Search Endpoints
 - ✅ `enhancedSearch()` - Silent (no notifications)
-- ✅ `searchInVersions()` - Silent
-- ✅ `getDocumentVersions()` - Silent
 
 #### Audit Log Endpoints
 - ✅ `getAuditLogsBySearchTerm()` - Silent
@@ -86,8 +82,6 @@ All endpoints from the API client have been wrapped with notification support:
 
 **SearchService** (`frontend/src/api/services/searchService.ts`) - NEW
 - ✅ `enhancedSearch()` - Enhanced search with version support
-- ✅ `searchInVersions()` - Search in document versions
-- ✅ `getDocumentVersions()` - Get document versions
 - ✅ `globalSearch()` - Legacy global search
 
 **FavoriteService** (`frontend/src/api/services/favoriteService.ts`)
@@ -233,7 +227,7 @@ const versionResults = await SearchService.searchInVersions("query", {
 });
 
 // Get document versions
-const versions = await SearchService.getDocumentVersions(documentId, "query");
+const versions = await DocumentService.getDocumentVersionsList(documentId);
 ```
 
 ### Folder Favorites

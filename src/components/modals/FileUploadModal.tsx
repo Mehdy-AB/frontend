@@ -42,6 +42,7 @@ interface FileUploadModalProps {
 interface FileWithMetadata {
   file: File;
   name: string;
+  title: string;
   description: string;
   filingCategory: FilingCategoryResponseDto | null;
   metadata: Record<string, string>;
@@ -91,23 +92,23 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
 
   // Load filing categories
   useEffect(() => {
-  const loadFilingCategories = async () => {
-    try {
-      setLoadingCategories(true);
+    const loadFilingCategories = async () => {
+      try {
+        setLoadingCategories(true);
         const response = await notificationApiClient.getAllFilingCategories({ size: 100 }, { silent: true });
-      setFilingCategories(response.content);
-    } catch (error) {
-      console.error('Error loading filing categories:', error);
+        setFilingCategories(response.content);
+      } catch (error) {
+        console.error('Error loading filing categories:', error);
         showError('Failed to load filing categories', 'Please try again later');
-    } finally {
-      setLoadingCategories(false);
-    }
-  };
+      } finally {
+        setLoadingCategories(false);
+      }
+    };
 
     if (isOpen) {
       loadFilingCategories();
     }
-  }, [isOpen]); // Removed showError from dependencies
+  }, [isOpen]);
 
   // Debounced search function for filing categories
   const performCategorySearch = async (query: string) => {
@@ -208,10 +209,11 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
     if (fileList.length > 0) {
       const file = fileList[0]; // Only take the first file
       setCurrentFile({
-      file,
+        file,
         name: file.name.replace(/\.[^/.]+$/, ""), // Remove extension for display name
-      description: '',
-      filingCategory: null,
+        title: file.name.replace(/\.[^/.]+$/, ""), // Default title to filename without extension
+        description: '',
+        filingCategory: null,
         metadata: {},
         metadataErrors: {},
         isValid: false
@@ -292,7 +294,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
             ))
           ) : (
             <div className="px-4 py-2 text-sm text-neutral-text-light text-center">
-              No filing categories found
+              No document models found
             </div>
           )}
         </div>
@@ -302,6 +304,11 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
 
   const validateMetadata = (): boolean => {
     if (!currentFile) return false;
+    // Title is required
+    if (!currentFile.title || currentFile.title.trim() === '') {
+      updateFile({ isValid: false });
+      return false;
+    }
     if (!currentFile.filingCategory) return true; // No validation if no category selected
 
     const errors: Record<string, string> = {};
@@ -346,7 +353,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
       setUploading(true);
       
       // Prepare filing category data
-        const filingCategoryDto: FilingCategoryDocDto[] = [];
+      let filingCategoryDto: FilingCategoryDocDto;
         
       if (currentFile.filingCategory) {
         const metaDataDto: MetaDataDto[] = currentFile.filingCategory.metadataDefinitions
@@ -356,19 +363,26 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
             value: currentFile.metadata[def.key]
           }));
 
-            filingCategoryDto.push({
+        filingCategoryDto = {
           id: currentFile.filingCategory.id,
           metaDataDto
-        });
+        };
+      } else {
+        // Provide default empty filing category when none is selected
+        filingCategoryDto = {
+          id: 0,
+          metaDataDto: []
+        };
       }
 
       // Upload the file using the API
       await notificationApiClient.uploadDocument(
         currentFile.file,
-          folderId,
-          language,
-          filingCategoryDto
-        );
+        folderId,
+        currentFile.title,
+        language,
+        filingCategoryDto
+      );
 
       // Success
       setCurrentFile(null);
@@ -399,23 +413,32 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
     const getInputType = () => {
       switch (definition.dataType) {
         case MetadataType.NUMBER: return 'number';
+        case MetadataType.FLOAT: return 'number';
         case MetadataType.DATE: return 'date';
+        case MetadataType.DATETIME: return 'datetime-local';
         case MetadataType.BOOLEAN: return 'checkbox';
+        case MetadataType.STRING: return 'text';
         default: return 'text';
       }
     };
 
     if (definition.dataType === MetadataType.LIST && definition.list) {
+      const isCustomValue = value && !definition.list.option.includes(value);
+      const showCustomInput = isCustomValue || value === "__custom__";
+      
       return (
         <div key={definition.key}>
           <label className="block text-sm font-medium text-neutral-text-dark mb-2">
             {definition.key} {definition.mandatory && <span className="text-error">*</span>}
           </label>
           <Select
-            value={value}
+            value={showCustomInput ? "__custom__" : value}
             onValueChange={(newValue) => {
               if (newValue === "__custom__") {
-                // Don't update the value, just show the custom input
+                // Set a special value to trigger custom input display
+                updateFile({
+                  metadata: { ...currentFile.metadata, [definition.key]: "__custom__" }
+                });
                 return;
               }
               updateFile({
@@ -432,20 +455,18 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                   {option}
                 </SelectItem>
               ))}
-              {/* If list is not mandatory, allow custom input */}
-              {!definition.list.mandatory && (
-                <SelectItem value="__custom__">
-                  <div className="flex items-center gap-2">
-                    <Plus className="h-3 w-3" />
-                    Enter custom value
-                  </div>
-                </SelectItem>
-              )}
+              {/* Always allow custom input for list fields */}
+              <SelectItem value="__custom__">
+                <div className="flex items-center gap-2">
+                  <Plus className="h-3 w-3" />
+                  Enter custom value
+                </div>
+              </SelectItem>
             </SelectContent>
           </Select>
           
-          {/* Show custom input field if custom option is selected or if value is not in the list */}
-          {(!definition.list.mandatory && (value === "__custom__" || (value && !definition.list.option.includes(value)))) && (
+          {/* Show custom input field */}
+          {showCustomInput && (
             <input
               type="text"
               value={value === "__custom__" ? "" : value}
@@ -496,7 +517,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
           }`}
           placeholder={`Enter ${definition.key}`}
           required={definition.mandatory}
-          step={definition.dataType === MetadataType.NUMBER ? '0.01' : undefined}
+          step={definition.dataType === MetadataType.NUMBER ? '1' : definition.dataType === MetadataType.FLOAT ? 'any' : undefined}
         />
         {error && <p className="text-error text-xs mt-1">{error}</p>}
       </div>
@@ -525,22 +546,22 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
           >
             <X className="h-5 w-5" />
           </button>
-          </div>
+        </div>
 
         {/* Content */}
         <div className="flex-1 overflow-auto p-6">
           <div className="space-y-6">
             {/* File Drop Area - Only show when no file is selected */}
             {!currentFile && (
-          <div
-            className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+              <div
+                className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
                   dragActive ? 'border-primary bg-primary-light' : 'border-ui'
-            }`}
-            onDragEnter={handleDrag}
-            onDragLeave={handleDrag}
-            onDragOver={handleDrag}
-            onDrop={handleDrop}
-          >
+                }`}
+                onDragEnter={handleDrag}
+                onDragLeave={handleDrag}
+                onDragOver={handleDrag}
+                onDrop={handleDrop}
+              >
                 <Upload className="mx-auto h-12 w-12 text-neutral-text-light mb-4" />
                 <p className="text-lg font-medium text-neutral-text-dark mb-2">
                   Drop a file here or click to browse
@@ -548,11 +569,11 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                 <p className="text-neutral-text-light mb-4">
                   Upload one file at a time
                 </p>
-            <input
-              type="file"
-              onChange={handleFileInput}
-              className="hidden"
-              id="file-upload"
+                <input
+                  type="file"
+                  onChange={handleFileInput}
+                  className="hidden"
+                  id="file-upload"
                   disabled={uploading}
                 />
                 <label 
@@ -561,13 +582,13 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                 >
                   <Upload className="h-4 w-4" />
                   Choose File
-              </label>
-          </div>
+                </label>
+              </div>
             )}
 
             {/* File Configuration */}
             {currentFile && (
-            <div className="space-y-4">
+              <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-medium text-neutral-text-dark flex items-center gap-2">
                     <Settings className="h-5 w-5" />
@@ -592,14 +613,14 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                           {formatFileSize(currentFile.file.size)} • {currentFile.file.type || 'Unknown type'}
                         </p>
                       </div>
-                          </div>
-                        </div>
+                    </div>
+                  </div>
 
                   {/* Configuration Content */}
                   <div className="p-4 space-y-4">
                     {/* Basic Info */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          <div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
                         <label className="block text-sm font-medium text-neutral-text-dark mb-2">
                           Display Name
                         </label>
@@ -608,11 +629,25 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                           value={currentFile.name}
                           onChange={(e) => updateFile({ name: e.target.value })}
                           className="w-full p-2 border border-ui rounded text-sm bg-surface text-neutral-text-dark"
-                              disabled={uploading}
-                            />
-                          </div>
-                          
-                          <div>
+                          disabled={uploading}
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-neutral-text-dark mb-2">
+                          Title <span className="text-error">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={currentFile.title}
+                          onChange={(e) => updateFile({ title: e.target.value })}
+                          className="w-full p-2 border border-ui rounded text-sm bg-surface text-neutral-text-dark"
+                          placeholder="Enter document title"
+                          disabled={uploading}
+                        />
+                      </div>
+                      
+                      <div>
                         <label className="block text-sm font-medium text-neutral-text-dark mb-2">
                           Document Language
                         </label>
@@ -626,11 +661,11 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                             <option key={lang.value} value={lang.value}>{lang.label}</option>
                           ))}
                         </select>
-                        </div>
-
-                        <div>
+                      </div>
+                      
+                      <div>
                         <label className="block text-sm font-medium text-neutral-text-dark mb-2">
-                          Filing Category <span className="text-error">*</span>
+                          Document Model
                         </label>
                         {currentFile.filingCategory ? (
                           <div className="flex items-center gap-2 p-2 border border-ui rounded-lg bg-neutral-background">
@@ -642,7 +677,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                               <div className="text-xs text-neutral-text-light mt-1">
                                 {currentFile.filingCategory.metadataDefinitions.length} metadata field{currentFile.filingCategory.metadataDefinitions.length !== 1 ? 's' : ''}
                               </div>
-                        </div>
+                            </div>
                             <button
                               type="button"
                               onClick={() => updateFile({ filingCategory: null, metadata: {}, metadataErrors: {} })}
@@ -661,31 +696,25 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                             searching={searchingCategories}
                             items={filteredCategories}
                             onSelect={onCategorySelect}
-                            placeholder="Search filing categories..."
+                            placeholder="Search document models..."
                           />
                         )}
-                        {!currentFile.filingCategory && (
-                          <p className="text-warning text-xs mt-1 flex items-center gap-1">
-                            <AlertTriangle className="h-3 w-3" />
-                            Please select a filing category
-                          </p>
-                        )}
                       </div>
-                          </div>
-                          
-                    <div>
-                      <label className="block text-sm font-medium text-neutral-text-dark mb-2">
-                        Description
-                      </label>
-                      <textarea
-                        value={currentFile.description}
-                        onChange={(e) => updateFile({ description: e.target.value })}
-                        className="w-full p-2 border border-ui rounded text-sm bg-surface text-neutral-text-dark resize-none"
-                        placeholder="Optional description"
-                        rows={2}
-                                    disabled={uploading}
-                                  />
-                                </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-neutral-text-dark mb-2">
+                          Description
+                        </label>
+                        <textarea
+                          value={currentFile.description}
+                          onChange={(e) => updateFile({ description: e.target.value })}
+                          className="w-full p-2 border border-ui rounded text-sm bg-surface text-neutral-text-dark resize-none"
+                          placeholder="Optional description"
+                          rows={2}
+                          disabled={uploading}
+                        />
+                      </div>
+                    </div>
 
                     {/* Metadata Fields */}
                     {currentFile.filingCategory && (
@@ -705,10 +734,10 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                         </div>
                       </div>
                     )}
-                      </div>
-                    </div>
-            </div>
-          )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -723,10 +752,10 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
               className="px-4 py-2 border border-ui rounded-lg text-neutral-text-dark hover:bg-surface transition-colors disabled:opacity-50"
               disabled={uploading}
             >
-            Cancel
+              Cancel
             </button>
             <button
-            onClick={handleUpload} 
+              onClick={handleUpload} 
               disabled={!currentFile || uploading}
               className="flex items-center gap-2 bg-primary text-surface px-4 py-2 rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
