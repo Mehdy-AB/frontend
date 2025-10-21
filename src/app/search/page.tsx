@@ -37,6 +37,7 @@ export default function SearchResultsPage() {
     searchResults,
     loading,
     tableLoading,
+    isSearching,
     error,
     currentPage,
     viewMode,
@@ -156,6 +157,7 @@ export default function SearchResultsPage() {
           selectedUser={selectedUser}
           selectedModel={selectedModel}
           metadataFiltersCount={metadataFilters.length}
+          isSearching={isSearching}
         />
 
         {/* Advanced Search Modal */}

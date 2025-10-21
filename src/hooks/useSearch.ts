@@ -37,6 +37,7 @@ export const useSearch = () => {
   const [searchResults, setSearchResults] = useState<GlobalSearchResultDto | null>(null);
   const [loading, setLoading] = useState(false);
   const [tableLoading, setTableLoading] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
@@ -284,7 +285,44 @@ export const useSearch = () => {
     return () => clearTimeout(timeoutId);
   }, [localSearchQuery, currentPage, selectedUser, selectedModel, metadataFilters, searchScope, sortBy, sortDesc, fetchSearchResults]);
 
-  // Handle search input change with debouncing
+  // Smart search with local filtering first, then API call
+  const performSmartSearch = useCallback((query: string) => {
+    // First, filter locally for immediate response
+    if (query.trim() && searchResults) {
+      const localResults = {
+        ...searchResults,
+        documents: searchResults.documents.filter(doc => 
+          doc.name.toLowerCase().includes(query.toLowerCase()) ||
+          doc.description?.toLowerCase().includes(query.toLowerCase()) ||
+          doc.tags?.some(tag => tag.toLowerCase().includes(query.toLowerCase()))
+        ),
+        folders: searchResults.folders.filter(folder => 
+          folder.name.toLowerCase().includes(query.toLowerCase()) ||
+          folder.description?.toLowerCase().includes(query.toLowerCase())
+        )
+      };
+      // Update display with local results immediately
+      setSearchResults(localResults);
+    }
+
+    // Set up delayed API call
+    const timeout = setTimeout(async () => {
+      if (query.trim()) {
+        setIsSearching(true);
+        setTableLoading(true);
+        try {
+          await fetchSearchResults();
+        } finally {
+          setTableLoading(false);
+          setIsSearching(false);
+        }
+      }
+    }, 500); // 500ms delay
+
+    return timeout;
+  }, [searchResults, fetchSearchResults]);
+
+  // Handle search input change with smart search
   const handleSearchInputChange = useCallback((value: string) => {
     setLocalSearchQuery(value);
     
@@ -298,8 +336,11 @@ export const useSearch = () => {
 
       // Update search history state
       setSearchHistory(EnhancedSearchService.getSearchHistory());
+
+      // Perform smart search
+      performSmartSearch(value);
     }
-  }, [searchScope]);
+  }, [searchScope, performSmartSearch]);
 
   // Handle search execution
   const handleSearch = useCallback(() => {
@@ -392,6 +433,7 @@ export const useSearch = () => {
     searchResults,
     loading,
     tableLoading,
+    isSearching,
     error,
     currentPage,
     viewMode,

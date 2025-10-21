@@ -1193,3 +1193,113 @@ export interface LinkRuleCacheStatistics {
   lastRevalidation: string;
   cacheHitRate: number;
 }
+
+// ==================== ENHANCED LINK RULE TYPES ====================
+
+export interface LinkRuleStatistics {
+  totalRules: number;
+  activeRules: number;
+  inactiveRules: number;
+  totalLinks: number;
+  rulesByType: Record<string, number>;
+}
+
+export interface BulkToggleRequest {
+  ruleIds: number[];
+  enabled: boolean;
+}
+
+export interface BulkToggleResponse {
+  success: number[];
+  failed: number[];
+  message: string;
+}
+
+export interface LinkRuleTestResult {
+  sourceDocumentId: number;
+  targetDocumentId: number;
+  matchScore: number;
+  matchedConditions: string[];
+}
+
+export interface LinkRuleTestResponse {
+  ruleId: number;
+  testResults: LinkRuleTestResult[];
+  summary: {
+    totalMatches: number;
+    averageScore: number;
+    executionTime: number;
+  };
+}
+
+// ==================== DOCUMENT LINK ENHANCED TYPES ====================
+
+export interface DocumentLinkSearchParams {
+  page?: number;
+  size?: number;
+  linkType?: string;
+  isManual?: boolean;
+  search?: string;
+  fromDate?: string;
+  toDate?: string;
+  mimeType?: string;
+}
+
+export interface RelatedDocumentSearchParams extends DocumentLinkSearchParams {
+  sortBy?: string;
+  sortDirection?: 'asc' | 'desc';
+}
+
+export interface BulkDeleteRequest {
+  linkIds: number[];
+}
+
+export interface BulkDeleteResponse {
+  success: number[];
+  failed: number[];
+  message: string;
+}
+
+// ==================== ASYNC OPERATION TYPES ====================
+
+export interface AsyncOperationResponse {
+  message: string;
+  status: string;
+  operationId?: string;
+  estimatedCompletionTime?: number;
+}
+
+export interface LinkRuleApplicationResponse extends AsyncOperationResponse {
+  ruleId: number;
+  documentsProcessed?: number;
+  linksCreated?: number;
+}
+
+export interface DocumentRuleApplicationResponse extends AsyncOperationResponse {
+  documentId: number;
+  rulesApplied?: number;
+  linksCreated?: number;
+}
+
+export interface ReapplyAllRulesResponse extends AsyncOperationResponse {
+  totalRules?: number;
+  totalDocuments?: number;
+  totalLinksCreated?: number;
+}
+
+// ==================== CACHE MANAGEMENT TYPES ====================
+
+export interface CacheClearResponse {
+  message: string;
+  clearedAt: string;
+  itemsCleared?: number;
+}
+
+export interface CacheStatistics {
+  totalItems: number;
+  hitRate: number;
+  missRate: number;
+  averageAccessTime: number;
+  lastAccess: string;
+  memoryUsage: number;
+}

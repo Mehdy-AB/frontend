@@ -1199,6 +1199,328 @@ class ApiClient {
     return response.data;
   }
 
+  // ==================== ENHANCED LINK RULE FUNCTIONS ====================
+
+  /**
+   * Get active link rules only
+   */
+  async getActiveLinkRules(): Promise<LinkRuleResponseDto[]> {
+    const response: AxiosResponse<LinkRuleResponseDto[]> = await this.client.get('/api/link-rules/active');
+    return response.data;
+  }
+
+  /**
+   * Get link rules with advanced filtering and search
+   */
+  async searchLinkRules(params: {
+    page?: number;
+    size?: number;
+    enabled?: boolean;
+    linkType?: string;
+    name?: string;
+    sortBy?: string;
+    sortDirection?: 'asc' | 'desc';
+  } = {}): Promise<PageResponse<LinkRuleResponseDto>> {
+    const queryParams = new URLSearchParams();
+    if (params.page !== undefined) queryParams.append('page', params.page.toString());
+    if (params.size !== undefined) queryParams.append('size', params.size.toString());
+    if (params.enabled !== undefined) queryParams.append('enabled', params.enabled.toString());
+    if (params.linkType) queryParams.append('linkType', params.linkType);
+    if (params.name) queryParams.append('name', params.name);
+    if (params.sortBy) queryParams.append('sort', params.sortBy);
+    if (params.sortDirection) queryParams.append('direction', params.sortDirection);
+    
+    const response: AxiosResponse<PageResponse<LinkRuleResponseDto>> = 
+      await this.client.get(`/api/link-rules?${queryParams.toString()}`);
+    return response.data;
+  }
+
+  /**
+   * Get link rule statistics
+   */
+  async getLinkRuleStatistics(): Promise<{
+    totalRules: number;
+    activeRules: number;
+    inactiveRules: number;
+    totalLinks: number;
+    rulesByType: Record<string, number>;
+  }> {
+    const response: AxiosResponse<{
+      totalRules: number;
+      activeRules: number;
+      inactiveRules: number;
+      totalLinks: number;
+      rulesByType: Record<string, number>;
+    }> = await this.client.get('/api/link-rules/statistics');
+    return response.data;
+  }
+
+  /**
+   * Bulk enable/disable multiple rules
+   */
+  async bulkToggleLinkRules(ruleIds: number[], enabled: boolean): Promise<{
+    success: number[];
+    failed: number[];
+    message: string;
+  }> {
+    const response: AxiosResponse<{
+      success: number[];
+      failed: number[];
+      message: string;
+    }> = await this.client.put('/api/link-rules/bulk-toggle', {
+      ruleIds,
+      enabled
+    });
+    return response.data;
+  }
+
+  /**
+   * Duplicate a link rule
+   */
+  async duplicateLinkRule(ruleId: number, newName: string): Promise<LinkRuleResponseDto> {
+    const response: AxiosResponse<LinkRuleResponseDto> = 
+      await this.client.post(`/api/link-rules/${ruleId}/duplicate`, { name: newName });
+    return response.data;
+  }
+
+  /**
+   * Test a link rule against sample documents
+   */
+  async testLinkRule(ruleId: number, sampleSize: number = 10): Promise<{
+    ruleId: number;
+    testResults: Array<{
+      sourceDocumentId: number;
+      targetDocumentId: number;
+      matchScore: number;
+      matchedConditions: string[];
+    }>;
+    summary: {
+      totalMatches: number;
+      averageScore: number;
+      executionTime: number;
+    };
+  }> {
+    const response: AxiosResponse<{
+      ruleId: number;
+      testResults: Array<{
+        sourceDocumentId: number;
+        targetDocumentId: number;
+        matchScore: number;
+        matchedConditions: string[];
+      }>;
+      summary: {
+        totalMatches: number;
+        averageScore: number;
+        executionTime: number;
+      };
+    }> = await this.client.post(`/api/link-rules/${ruleId}/test`, { sampleSize });
+    return response.data;
+  }
+
+  // ==================== DOCUMENT LINK FUNCTIONS ====================
+
+  /**
+   * Get all links for a document
+   */
+  async getDocumentLinks(documentId: number, params: {
+    page?: number;
+    size?: number;
+    linkType?: string;
+    isManual?: boolean;
+    search?: string;
+  } = {}): Promise<PageResponse<DocumentLinkResponseDto>> {
+    const queryParams = new URLSearchParams();
+    if (params.page !== undefined) queryParams.append('page', params.page.toString());
+    if (params.size !== undefined) queryParams.append('size', params.size.toString());
+    if (params.linkType) queryParams.append('linkType', params.linkType);
+    if (params.isManual !== undefined) queryParams.append('isManual', params.isManual.toString());
+    if (params.search) queryParams.append('search', params.search);
+    
+    const response: AxiosResponse<PageResponse<DocumentLinkResponseDto>> = 
+      await this.client.get(`/api/document-links/document/${documentId}?${queryParams.toString()}`);
+    return response.data;
+  }
+
+  /**
+   * Get manual links for a document
+   */
+  async getManualDocumentLinks(documentId: number): Promise<DocumentLinkResponseDto[]> {
+    const response: AxiosResponse<DocumentLinkResponseDto[]> = 
+      await this.client.get(`/api/document-links/document/${documentId}/manual`);
+    return response.data;
+  }
+
+  /**
+   * Get automatic links for a document
+   */
+  async getAutomaticDocumentLinks(documentId: number): Promise<DocumentLinkResponseDto[]> {
+    const response: AxiosResponse<DocumentLinkResponseDto[]> = 
+      await this.client.get(`/api/document-links/document/${documentId}/automatic`);
+    return response.data;
+  }
+
+  /**
+   * Get outgoing links for a document
+   */
+  async getOutgoingDocumentLinks(documentId: number, params: {
+    page?: number;
+    size?: number;
+    linkType?: string;
+    isManual?: boolean;
+  } = {}): Promise<PageResponse<DocumentLinkResponseDto>> {
+    const queryParams = new URLSearchParams();
+    if (params.page !== undefined) queryParams.append('page', params.page.toString());
+    if (params.size !== undefined) queryParams.append('size', params.size.toString());
+    if (params.linkType) queryParams.append('linkType', params.linkType);
+    if (params.isManual !== undefined) queryParams.append('isManual', params.isManual.toString());
+    
+    const response: AxiosResponse<PageResponse<DocumentLinkResponseDto>> = 
+      await this.client.get(`/api/document-links/document/${documentId}/outgoing?${queryParams.toString()}`);
+    return response.data;
+  }
+
+  /**
+   * Get incoming links for a document
+   */
+  async getIncomingDocumentLinks(documentId: number, params: {
+    page?: number;
+    size?: number;
+    linkType?: string;
+    isManual?: boolean;
+  } = {}): Promise<PageResponse<DocumentLinkResponseDto>> {
+    const queryParams = new URLSearchParams();
+    if (params.page !== undefined) queryParams.append('page', params.page.toString());
+    if (params.size !== undefined) queryParams.append('size', params.size.toString());
+    if (params.linkType) queryParams.append('linkType', params.linkType);
+    if (params.isManual !== undefined) queryParams.append('isManual', params.isManual.toString());
+    
+    const response: AxiosResponse<PageResponse<DocumentLinkResponseDto>> = 
+      await this.client.get(`/api/document-links/document/${documentId}/incoming?${queryParams.toString()}`);
+    return response.data;
+  }
+
+  /**
+   * Get related documents with advanced filtering
+   */
+  async getRelatedDocuments(documentId: number, params: {
+    page?: number;
+    size?: number;
+    linkType?: string;
+    isManual?: boolean;
+    search?: string;
+    fromDate?: string;
+    toDate?: string;
+    mimeType?: string;
+  } = {}): Promise<PageResponse<RelatedDocumentResponseDto>> {
+    const queryParams = new URLSearchParams();
+    if (params.page !== undefined) queryParams.append('page', params.page.toString());
+    if (params.size !== undefined) queryParams.append('size', params.size.toString());
+    if (params.linkType) queryParams.append('linkType', params.linkType);
+    if (params.isManual !== undefined) queryParams.append('isManual', params.isManual.toString());
+    if (params.search) queryParams.append('search', params.search);
+    if (params.fromDate) queryParams.append('fromDate', params.fromDate);
+    if (params.toDate) queryParams.append('toDate', params.toDate);
+    if (params.mimeType) queryParams.append('mimeType', params.mimeType);
+    
+    const response: AxiosResponse<PageResponse<RelatedDocumentResponseDto>> = 
+      await this.client.get(`/api/document-links/document/${documentId}/related?${queryParams.toString()}`);
+    return response.data;
+  }
+
+  /**
+   * Create a manual document link
+   */
+  async createManualDocumentLink(request: DocumentLinkRequestDto): Promise<DocumentLinkResponseDto> {
+    const response: AxiosResponse<DocumentLinkResponseDto> = 
+      await this.client.post('/api/document-links', request);
+    return response.data;
+  }
+
+  /**
+   * Update a manual document link
+   */
+  async updateDocumentLink(linkId: number, request: Partial<DocumentLinkRequestDto>): Promise<DocumentLinkResponseDto> {
+    const response: AxiosResponse<DocumentLinkResponseDto> = 
+      await this.client.put(`/api/document-links/${linkId}`, request);
+    return response.data;
+  }
+
+  /**
+   * Delete a document link by ID
+   */
+  async deleteDocumentLink(linkId: number): Promise<void> {
+    await this.client.delete(`/api/document-links/${linkId}`);
+  }
+
+  /**
+   * Delete a document link by details
+   */
+  async deleteDocumentLinkByDetails(
+    sourceDocumentId: number, 
+    targetDocumentId: number, 
+    linkType: string
+  ): Promise<void> {
+    await this.client.delete(
+      `/api/document-links/source/${sourceDocumentId}/target/${targetDocumentId}/type/${linkType}`
+    );
+  }
+
+  /**
+   * Bulk delete document links
+   */
+  async bulkDeleteDocumentLinks(linkIds: number[]): Promise<{
+    success: number[];
+    failed: number[];
+    message: string;
+  }> {
+    const response: AxiosResponse<{
+      success: number[];
+      failed: number[];
+      message: string;
+    }> = await this.client.delete('/api/document-links/bulk', {
+      data: { linkIds }
+    });
+    return response.data;
+  }
+
+  // ==================== CACHE AND ADMIN FUNCTIONS ====================
+
+  /**
+   * Get cache statistics for link rules
+   */
+  async getLinkRuleCacheStatistics(): Promise<LinkRuleCacheStatistics> {
+    const response: AxiosResponse<LinkRuleCacheStatistics> = 
+      await this.client.get('/api/link-rules/cache/statistics');
+    return response.data;
+  }
+
+  /**
+   * Clear cache for a specific rule
+   */
+  async clearRuleCache(ruleId: number): Promise<{ message: string }> {
+    const response: AxiosResponse<{ message: string }> = 
+      await this.client.delete(`/api/link-rules/${ruleId}/cache`);
+    return response.data;
+  }
+
+  /**
+   * Clear cache for a specific document
+   */
+  async clearDocumentCache(documentId: number): Promise<{ message: string }> {
+    const response: AxiosResponse<{ message: string }> = 
+      await this.client.delete(`/api/link-rules/documents/${documentId}/cache`);
+    return response.data;
+  }
+
+  /**
+   * Clear all link rule caches
+   */
+  async clearAllLinkRuleCaches(): Promise<{ message: string }> {
+    const response: AxiosResponse<{ message: string }> = 
+      await this.client.delete('/api/link-rules/cache/all');
+    return response.data;
+  }
+
   // ==================== RULE EXECUTION ENDPOINTS ====================
 
   /**
@@ -1249,100 +1571,6 @@ class ApiClient {
     return response.data;
   }
 
-  /**
-   * Get link rule cache statistics
-   */
-  async getLinkRuleCacheStatistics(): Promise<LinkRuleCacheStatistics> {
-    const response: AxiosResponse<LinkRuleCacheStatistics> = await this.client.get('/api/link-rules/cache/statistics');
-    return response.data;
-  }
-
-  /**
-   * Clear cache for a specific document
-   */
-  async clearDocumentCache(documentId: number): Promise<void> {
-    await this.client.delete(`/api/link-rules/cache/document/${documentId}`);
-  }
-
-  /**
-   * Clear cache for a specific rule
-   */
-  async clearRuleCache(ruleId: number): Promise<void> {
-    await this.client.delete(`/api/link-rules/cache/rule/${ruleId}`);
-  }
-
-  /**
-   * Clear all link rule cache
-   */
-  async clearAllRuleCache(): Promise<void> {
-    await this.client.delete('/api/link-rules/cache/all');
-  }
-
-  /**
-   * Enable a link rule
-   */
-  async enableLinkRule(ruleId: number): Promise<void> {
-    await this.client.put(`/api/link-rules/${ruleId}/enable`);
-  }
-
-  /**
-   * Disable a link rule
-   */
-  async disableLinkRule(ruleId: number): Promise<void> {
-    await this.client.put(`/api/link-rules/${ruleId}/disable`);
-  }
-
-  // ==================== DOCUMENT LINK ENDPOINTS ====================
-
-  /**
-   * Create a document link
-   */
-  async createDocumentLink(request: DocumentLinkRequestDto): Promise<DocumentLinkResponseDto> {
-    const response: AxiosResponse<DocumentLinkResponseDto> = await this.client.post('/api/document-links', request);
-    return response.data;
-  }
-
-  /**
-   * Delete a document link
-   */
-  async deleteDocumentLink(linkId: number): Promise<void> {
-    await this.client.delete(`/api/document-links/${linkId}`);
-  }
-
-
-  /**
-   * Get outgoing links for a document
-   */
-  async getOutgoingLinks(documentId: number): Promise<DocumentLinkResponseDto[]> {
-    const response: AxiosResponse<DocumentLinkResponseDto[]> = await this.client.get(`/api/document-links/document/${documentId}/outgoing`);
-    return response.data;
-  }
-
-  /**
-   * Get incoming links for a document
-   */
-  async getIncomingLinks(documentId: number): Promise<DocumentLinkResponseDto[]> {
-    const response: AxiosResponse<DocumentLinkResponseDto[]> = await this.client.get(`/api/document-links/document/${documentId}/incoming`);
-    return response.data;
-  }
-
-  /**
-   * Get related documents for a document with search and filters
-   */
-  async getRelatedDocuments(documentId: number, params: {
-    search?: string;
-    linkType?: string;
-    isManual?: boolean;
-    fromDate?: string;
-    toDate?: string;
-    mimeType?: string;
-    page?: number;
-    size?: number;
-  } = {}): Promise<PageResponse<RelatedDocumentResponseDto>> {
-    const response: AxiosResponse<PageResponse<RelatedDocumentResponseDto>> = 
-      await this.client.post(`/api/document-links/document/${documentId}/related`, params);
-    return response.data;
-  }
 
   // ==================== AUDIT LOG ENDPOINTS ====================
 

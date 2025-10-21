@@ -150,10 +150,10 @@ export default function Header() {
                 </div>
               </div>
               {filteredHistory.map((item, index) => (
-                <button
+                <div
                   key={item.id || index}
+                  className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 border-b border-gray-100 last:border-b-0 flex items-center justify-between group cursor-pointer"
                   onClick={() => handleHistoryItemClick(item)}
-                  className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 border-b border-gray-100 last:border-b-0 flex items-center justify-between group"
                 >
                   <div className="flex items-center gap-2 min-w-0 flex-1">
                     <Search className="h-3 w-3 text-gray-400 flex-shrink-0" />
@@ -175,7 +175,7 @@ export default function Header() {
                       <X className="h-3 w-3" />
                     </button>
                   </div>
-                </button>
+                </div>
               ))}
             </div>
           )}

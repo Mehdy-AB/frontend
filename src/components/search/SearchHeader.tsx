@@ -15,6 +15,7 @@ interface SearchHeaderProps {
   selectedUser: any;
   selectedModel: any;
   metadataFiltersCount: number;
+  isSearching?: boolean;
 }
 
 const SearchHeader = memo<SearchHeaderProps>(({
@@ -26,7 +27,8 @@ const SearchHeader = memo<SearchHeaderProps>(({
   totalResults,
   selectedUser,
   selectedModel,
-  metadataFiltersCount
+  metadataFiltersCount,
+  isSearching = false
 }) => {
   return (
     <div className="bg-white rounded-2xl shadow-lg p-8 mb-8">
@@ -72,6 +74,11 @@ const SearchHeader = memo<SearchHeaderProps>(({
               onKeyPress={(e) => e.key === 'Enter' && onSearchSubmit()}
               className="pl-10 pr-4"
             />
+            {isSearching && (
+              <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+              </div>
+            )}
           </div>
 
           {/* Advanced Search Toggle */}

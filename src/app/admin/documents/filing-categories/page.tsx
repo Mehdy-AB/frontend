@@ -1,7 +1,7 @@
 // app/models/page.tsx
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   FolderTree, 
   Plus, 
@@ -19,6 +19,10 @@ import {
   X,
   Save,
   Copy,
+  Upload,
+  Download,
+  AlertTriangle,
+  RefreshCw,
 } from 'lucide-react';
 import { Button } from '../../../../components/ui/button';
 import { Input } from '../../../../components/ui/input';
@@ -68,6 +72,12 @@ export default function ModelsPage() {
   const [editingList, setEditingList] = useState<MetaDataListRes | null>(null);
   const [duplicatingCategory, setDuplicatingCategory] = useState<FilingCategoryResponseDto | null>(null);
   const [duplicateName, setDuplicateName] = useState('');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletingItem, setDeletingItem] = useState<{type: 'category' | 'list', id: number, name: string} | null>(null);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportQuantity, setExportQuantity] = useState(100);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Set up notification callback for API client
   useEffect(() => {
@@ -81,33 +91,64 @@ export default function ModelsPage() {
   }, [addNotification]);
 
   // Fetch data from API
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        
-        // Fetch both categories and lists in parallel
-        const [categoriesResponse, listsResponse] = await Promise.all([
-          notificationApiClient.getAllFilingCategories({ size: 1000 }),
-          notificationApiClient.getAllMetadataLists({ size: 1000 })
-        ]);
-        
-        setCategories(categoriesResponse.content);
-        setLists(listsResponse.content);
-      } catch (error) {
-        console.error('Error fetching data:', error);
-        addNotification({
-          type: 'error',
-          title: 'Error',
-          message: 'Failed to load models and lists'
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch both categories and lists in parallel
+      const [categoriesResponse, listsResponse] = await Promise.all([
+        notificationApiClient.getAllFilingCategories({ size: 1000 }),
+        notificationApiClient.getAllMetadataLists({ size: 1000 })
+      ]);
+      
+      setCategories(categoriesResponse.content);
+      setLists(listsResponse.content);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      addNotification({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to load models and lists'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchData();
   }, [addNotification]);
+
+  // Refresh function
+  const handleRefresh = async () => {
+    try {
+      setRefreshing(true);
+      await fetchData();
+      addNotification({
+        type: 'success',
+        title: 'Refresh Successful',
+        message: 'Data has been refreshed'
+      });
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+      addNotification({
+        type: 'error',
+        title: 'Refresh Error',
+        message: 'Failed to refresh data'
+      });
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // Handle editing list from metadata click
+  const handleEditListFromMetadata = (listData: any) => {
+    // Find the actual list object from our lists state
+    const actualList = lists.find(l => l.name === listData.name);
+    if (actualList) {
+      setEditingList(actualList);
+    }
+  };
 
   // Backend search function
   const performBackendSearch = useCallback(async (query: string) => {
@@ -253,6 +294,11 @@ export default function ModelsPage() {
     try {
       const newCategory = await notificationApiClient.createFilingCategory(categoryData);
       setCategories(prev => [...prev, newCategory]);
+      
+      // Refetch lists to get any new lists that were created
+      const listsResponse = await notificationApiClient.getAllMetadataLists({ size: 1000 });
+      setLists(listsResponse.content);
+      
       setShowCreateModal(false);
     } catch (error) {
       console.error('Error creating category:', error);
@@ -263,16 +309,29 @@ export default function ModelsPage() {
     try {
       const updatedCategory = await notificationApiClient.updateFilingCategory(id, categoryData);
       setCategories(prev => prev.map(cat => cat.id === id ? updatedCategory : cat));
+      
+      // Refetch lists to get any new lists that were created
+      const listsResponse = await notificationApiClient.getAllMetadataLists({ size: 1000 });
+      setLists(listsResponse.content);
+      
       setEditingCategory(null);
     } catch (error) {
       console.error('Error updating category:', error);
     }
   };
 
-  const handleDeleteCategory = async (id: number) => {
+  const handleDeleteCategory = (category: FilingCategoryResponseDto) => {
+    setDeletingItem({ type: 'category', id: category.id, name: category.name });
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDeleteCategory = async () => {
+    if (!deletingItem) return;
     try {
-      await notificationApiClient.deleteFilingCategory(id);
-      setCategories(prev => prev.filter(cat => cat.id !== id));
+      await notificationApiClient.deleteFilingCategory(deletingItem.id);
+      setCategories(prev => prev.filter(cat => cat.id !== deletingItem.id));
+      setShowDeleteConfirm(false);
+      setDeletingItem(null);
     } catch (error) {
       console.error('Error deleting category:', error);
     }
@@ -299,10 +358,18 @@ export default function ModelsPage() {
     }
   };
 
-  const handleDeleteList = async (id: number) => {
+  const handleDeleteList = (list: MetaDataListRes) => {
+    setDeletingItem({ type: 'list', id: list.id, name: list.name });
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDeleteList = async () => {
+    if (!deletingItem) return;
     try {
-      await notificationApiClient.deleteMetadataList(id);
-      setLists(prev => prev.filter(list => list.id !== id));
+      await notificationApiClient.deleteMetadataList(deletingItem.id);
+      setLists(prev => prev.filter(list => list.id !== deletingItem.id));
+      setShowDeleteConfirm(false);
+      setDeletingItem(null);
     } catch (error) {
       console.error('Error deleting list:', error);
     }
@@ -340,6 +407,221 @@ export default function ModelsPage() {
     }
   };
 
+  // Import/Export functions
+  const handleImportCSV = async (file: File) => {
+    try {
+      const text = await file.text();
+      const lines = text.split('\n');
+      const headers = lines[0].split(',').map(h => h.trim());
+      
+      // Expected headers for category import with metadata support
+      const expectedHeaders = ['name', 'description', 'metadata_fields'];
+      const hasValidHeaders = expectedHeaders.every(header => headers.includes(header));
+      
+      if (!hasValidHeaders) {
+        addNotification({
+          type: 'error',
+          title: 'Import Error',
+          message: 'CSV file must contain "name", "description", and "metadata_fields" columns'
+        });
+        return;
+      }
+
+      const categoriesToImport = [];
+      const listsToCreate = new Map<string, {name: string, description: string, mandatory: boolean, options: string[]}>();
+      
+      // Parse CSV data
+      for (let i = 1; i < lines.length; i++) {
+        if (lines[i].trim()) {
+          const values = lines[i].split(',').map(v => v.trim());
+          const name = values[headers.indexOf('name')] || '';
+          const description = values[headers.indexOf('description')] || '';
+          const metadataFieldsStr = values[headers.indexOf('metadata_fields')] || '';
+          
+          // Parse metadata fields (format: "field1:STRING:true,field2:LIST:listName:false")
+          const metadataDefinitions: any[] = [];
+          if (metadataFieldsStr) {
+            const fieldDefinitions = metadataFieldsStr.split(';').map(f => f.trim());
+            
+            for (const fieldDef of fieldDefinitions) {
+              const parts = fieldDef.split(':');
+              if (parts.length >= 2) {
+                const fieldKey = parts[0];
+                const dataType = parts[1] as MetadataType;
+                const isMandatory = parts[2] === 'true';
+                
+                if (dataType === MetadataType.LIST && parts.length >= 4) {
+                  const listName = parts[3];
+                  const listMandatory = parts[4] === 'true';
+                  
+                  // Collect list information for later creation
+                  if (!listsToCreate.has(listName)) {
+                    listsToCreate.set(listName, {
+                      name: listName,
+                      description: `List for ${listName}`,
+                      mandatory: listMandatory,
+                      options: []
+                    });
+                  }
+                  
+                  metadataDefinitions.push({
+                    key: fieldKey,
+                    dataType: dataType,
+                    mandatory: isMandatory,
+                    list: {
+                      name: listName,
+                      description: `List for ${listName}`,
+                      mandatory: listMandatory,
+                      option: []
+                    }
+                  });
+                } else {
+                  metadataDefinitions.push({
+                    key: fieldKey,
+                    dataType: dataType,
+                    mandatory: isMandatory
+                  });
+                }
+              }
+            }
+          }
+          
+          categoriesToImport.push({
+            name,
+            description,
+            metadataDefinitions
+          });
+        }
+      }
+
+      // Step 1: Create lists first (avoiding duplicates)
+      const createdLists = new Map<string, number>();
+      
+      for (const [listName, listData] of listsToCreate) {
+        try {
+          // Check if list already exists
+          const existingList = lists.find(l => l.name === listName);
+          if (existingList) {
+            createdLists.set(listName, existingList.id);
+            continue;
+          }
+          
+          // Create new list
+          const newList = await notificationApiClient.createMetadataList({
+            name: listData.name,
+            description: listData.description,
+            mandatory: listData.mandatory,
+            option: listData.options
+          });
+          
+          createdLists.set(listName, newList.id);
+        } catch (error) {
+          console.error(`Error creating list ${listName}:`, error);
+          addNotification({
+            type: 'error',
+            title: 'List Creation Error',
+            message: `Failed to create list: ${listName}`
+          });
+        }
+      }
+
+      // Step 2: Update metadata definitions with actual list IDs
+      for (const category of categoriesToImport) {
+        for (const metadata of category.metadataDefinitions) {
+          if (metadata.dataType === MetadataType.LIST && metadata.list) {
+            const listId = createdLists.get(metadata.list.name);
+            if (listId) {
+              metadata.listId = listId;
+              delete metadata.list; // Remove the list object, keep only listId
+            }
+          }
+        }
+      }
+
+      // Step 3: Create categories
+      let successCount = 0;
+      for (const categoryData of categoriesToImport) {
+        try {
+          await notificationApiClient.createFilingCategory(categoryData);
+          successCount++;
+        } catch (error) {
+          console.error(`Error creating category ${categoryData.name}:`, error);
+        }
+      }
+
+      // Refresh data
+      const [categoriesResponse, listsResponse] = await Promise.all([
+        notificationApiClient.getAllFilingCategories({ size: 1000 }),
+        notificationApiClient.getAllMetadataLists({ size: 1000 })
+      ]);
+      
+      setCategories(categoriesResponse.content);
+      setLists(listsResponse.content);
+      setShowImportModal(false);
+
+      addNotification({
+        type: 'success',
+        title: 'Import Successful',
+        message: `Successfully imported ${successCount} categories and created ${createdLists.size} lists`
+      });
+    } catch (error) {
+      console.error('Import error:', error);
+      addNotification({
+        type: 'error',
+        title: 'Import Error',
+        message: 'Failed to import CSV file'
+      });
+    }
+  };
+
+  const handleExportCSV = async () => {
+    try {
+      const categoriesToExport = categories.slice(0, exportQuantity);
+      
+      // Helper function to format metadata fields for export
+      const formatMetadataFields = (metadataDefinitions: CategoryMetadataDefinitionDto[]) => {
+        return metadataDefinitions.map(metadata => {
+          let fieldStr = `${metadata.key}:${metadata.dataType}:${metadata.mandatory}`;
+          if (metadata.dataType === MetadataType.LIST && metadata.list) {
+            fieldStr += `:${metadata.list.name}:${metadata.list.mandatory}`;
+          }
+          return fieldStr;
+        }).join(';');
+      };
+      
+      const csvContent = [
+        'name,description,metadata_fields,created_by',
+        ...categoriesToExport.map(cat => 
+          `"${cat.name}","${cat.description || ''}","${formatMetadataFields(cat.metadataDefinitions)}","${cat.createdBy.firstName} ${cat.createdBy.lastName}"`
+        )
+      ].join('\n');
+
+      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `filing-categories-export-${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      
+      setShowExportModal(false);
+      addNotification({
+        type: 'success',
+        title: 'Export Successful',
+        message: `Exported ${categoriesToExport.length} categories to CSV`
+      });
+    } catch (error) {
+      console.error('Export error:', error);
+      addNotification({
+        type: 'error',
+        title: 'Export Error',
+        message: 'Failed to export CSV file'
+      });
+    }
+  };
+
   if (loading) {
     return <ModelsSkeleton />;
   }
@@ -365,6 +647,31 @@ export default function ModelsPage() {
               </div>
             </div>
             <div className="flex gap-3">
+              <Button 
+                onClick={handleRefresh}
+                variant="outline"
+                disabled={refreshing}
+                className="flex items-center gap-2 bg-white hover:bg-slate-50 border-slate-300"
+              >
+                <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+                {refreshing ? 'Refreshing...' : 'Refresh'}
+              </Button>
+              <Button 
+                onClick={() => setShowImportModal(true)}
+                variant="outline"
+                className="flex items-center gap-2 bg-white hover:bg-slate-50 border-slate-300"
+              >
+                <Upload className="h-4 w-4" />
+                Import CSV
+              </Button>
+              <Button 
+                onClick={() => setShowExportModal(true)}
+                variant="outline"
+                className="flex items-center gap-2 bg-white hover:bg-slate-50 border-slate-300"
+              >
+                <Download className="h-4 w-4" />
+                Export CSV
+              </Button>
               {activeTab === 'lists' && (
                 <Button 
                   onClick={() => setShowCreateListModal(true)}
@@ -480,6 +787,7 @@ export default function ModelsPage() {
                     onEdit={setEditingCategory}
                     onDelete={handleDeleteCategory}
                     onDuplicate={handleDuplicateCategory}
+                    onEditList={handleEditListFromMetadata}
                   />
                 )}
               </div>
@@ -622,12 +930,213 @@ export default function ModelsPage() {
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && deletingItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setShowDeleteConfirm(false)}
+          />
+          
+          {/* Modal */}
+          <div className="relative w-[500px] max-w-[90vw] bg-background border rounded-lg shadow-lg">
+            <div className="flex items-center justify-between p-6 border-b bg-muted/20">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 bg-red-100 rounded-lg flex items-center justify-center">
+                  <AlertTriangle className="h-5 w-5 text-red-600" />
+                </div>
+                <h2 className="text-xl font-semibold">Confirm Delete</h2>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowDeleteConfirm(false)}
+                className="h-8 w-8 p-0"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="text-center">
+                <p className="text-lg text-slate-700 mb-2">
+                  Are you sure you want to delete this {deletingItem.type}?
+                </p>
+                <p className="text-sm text-slate-500">
+                  <strong>{deletingItem.name}</strong> will be permanently removed.
+                </p>
+                <p className="text-xs text-red-600 mt-2">
+                  This action cannot be undone.
+                </p>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>
+                  Cancel
+                </Button>
+                <Button 
+                  onClick={deletingItem.type === 'category' ? confirmDeleteCategory : confirmDeleteList}
+                  className="bg-red-600 hover:bg-red-700 text-white"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import CSV Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setShowImportModal(false)}
+          />
+          
+          {/* Modal */}
+          <div className="relative w-[600px] max-w-[90vw] bg-background border rounded-lg shadow-lg">
+            <div className="flex items-center justify-between p-6 border-b bg-muted/20">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <Upload className="h-5 w-5 text-blue-600" />
+                </div>
+                <h2 className="text-xl font-semibold">Import Categories from CSV</h2>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowImportModal(false)}
+                className="h-8 w-8 p-0"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="space-y-3">
+                <p className="text-sm text-slate-600">
+                  Upload a CSV file with the following columns:
+                </p>
+                <div className="bg-slate-50 p-3 rounded-lg">
+                  <code className="text-sm">name, description, metadata_fields</code>
+                </div>
+                <div className="space-y-2 text-xs text-slate-500">
+                  <p><strong>metadata_fields format:</strong></p>
+                  <p>• For simple fields: <code>fieldName:dataType:mandatory</code></p>
+                  <p>• For list fields: <code>fieldName:LIST:mandatory:listName:listMandatory</code></p>
+                  <p>• Multiple fields separated by semicolon (;)</p>
+                  <p><strong>Example:</strong> <code>invoice_number:STRING:true;status:LIST:true:DocumentStatus:false</code></p>
+                </div>
+                <p className="text-xs text-slate-500">
+                  The CSV should have a header row with these exact column names.
+                </p>
+              </div>
+              <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center">
+                <input
+                  type="file"
+                  accept=".csv"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      handleImportCSV(file);
+                    }
+                  }}
+                  className="hidden"
+                  id="csv-upload"
+                />
+                <label
+                  htmlFor="csv-upload"
+                  className="cursor-pointer flex flex-col items-center gap-2"
+                >
+                  <Upload className="h-8 w-8 text-slate-400" />
+                  <span className="text-sm font-medium">Click to upload CSV file</span>
+                  <span className="text-xs text-slate-500">or drag and drop</span>
+                </label>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setShowImportModal(false)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Export CSV Modal */}
+      {showExportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setShowExportModal(false)}
+          />
+          
+          {/* Modal */}
+          <div className="relative w-[500px] max-w-[90vw] bg-background border rounded-lg shadow-lg">
+            <div className="flex items-center justify-between p-6 border-b bg-muted/20">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 bg-green-100 rounded-lg flex items-center justify-center">
+                  <Download className="h-5 w-5 text-green-600" />
+                </div>
+                <h2 className="text-xl font-semibold">Export Categories to CSV</h2>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowExportModal(false)}
+                className="h-8 w-8 p-0"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="space-y-3">
+                <Label htmlFor="export-quantity">Number of categories to export</Label>
+                <Select
+                  value={exportQuantity.toString()}
+                  onValueChange={(value) => setExportQuantity(parseInt(value))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="50">50 categories</SelectItem>
+                    <SelectItem value="100">100 categories</SelectItem>
+                    <SelectItem value="250">250 categories</SelectItem>
+                    <SelectItem value="500">500 categories</SelectItem>
+                    <SelectItem value="1000">1000 categories</SelectItem>
+                    <SelectItem value={categories.length.toString()}>All categories ({categories.length})</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-slate-500">
+                  The CSV will include: name, description, metadata fields (with full configuration), and created by information.
+                </p>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setShowExportModal(false)}>
+                  Cancel
+                </Button>
+                <Button 
+                  onClick={handleExportCSV}
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Export CSV
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 // Categories Tab Component
-function CategoriesTab({ categories, lists, getDataTypeIcon, getDataTypeColor, onEdit, onDelete, onDuplicate }: any) {
+function CategoriesTab({ categories, lists, getDataTypeIcon, getDataTypeColor, onEdit, onDelete, onDuplicate, onEditList }: any) {
   const [expandedCategories, setExpandedCategories] = useState<number[]>([]);
 
   const toggleCategoryExpansion = (categoryId: number) => {
@@ -673,8 +1182,8 @@ function CategoriesTab({ categories, lists, getDataTypeIcon, getDataTypeColor, o
             const isExpanded = expandedCategories.includes(category.id);
 
             return (
-              <>
-                <tr key={category.id} className="border-b border-slate-200 hover:bg-slate-50 transition-colors">
+              <React.Fragment key={category.id}>
+                <tr className="border-b border-slate-200 hover:bg-slate-50 transition-colors">
                   <td className="p-6">
                     <button 
                       onClick={() => toggleCategoryExpansion(category.id)}
@@ -725,16 +1234,7 @@ function CategoriesTab({ categories, lists, getDataTypeIcon, getDataTypeColor, o
                       <Button 
                         variant="ghost"
                         size="sm"
-                        onClick={() => onDuplicate(category)}
-                        title="Duplicate"
-                        className="h-8 w-8 p-0 hover:bg-green-100 hover:text-green-700"
-                      >
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                      <Button 
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onDelete(category.id)}
+                        onClick={() => onDelete(category)}
                         title="Delete"
                         className="h-8 w-8 p-0 hover:bg-red-100 hover:text-red-700"
                       >
@@ -757,6 +1257,7 @@ function CategoriesTab({ categories, lists, getDataTypeIcon, getDataTypeColor, o
                               metadata={metadata}
                               getDataTypeIcon={getDataTypeIcon}
                               getDataTypeColor={getDataTypeColor}
+                              onEditList={onEditList}
                             />
                           ))}
                         </div>
@@ -764,7 +1265,7 @@ function CategoriesTab({ categories, lists, getDataTypeIcon, getDataTypeColor, o
                     </td>
                   </tr>
                 )}
-              </>
+              </React.Fragment>
             );
           })}
         </tbody>
@@ -775,7 +1276,13 @@ function CategoriesTab({ categories, lists, getDataTypeIcon, getDataTypeColor, o
 }
 
 // Metadata Definition Card Component
-function MetadataDefinitionCard({ metadata, getDataTypeIcon, getDataTypeColor }: any) {
+function MetadataDefinitionCard({ metadata, getDataTypeIcon, getDataTypeColor, onEditList }: any) {
+  const handleListClick = () => {
+    if (metadata.list && onEditList) {
+      onEditList(metadata.list);
+    }
+  };
+
   return (
     <div className="flex items-center justify-between p-4 bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
       <div className="flex items-center gap-4">
@@ -796,9 +1303,13 @@ function MetadataDefinitionCard({ metadata, getDataTypeIcon, getDataTypeColor }:
           <span className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium">Required</span>
         )}
         {metadata.list && (
-          <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
+          <button
+            onClick={handleListClick}
+            className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium hover:bg-blue-200 transition-colors cursor-pointer"
+            title="Click to edit list"
+          >
             {metadata.list.mandatory ? 'Fixed List' : 'Open List'}
-          </span>
+          </button>
         )}
       </div>
     </div>
@@ -890,7 +1401,7 @@ function ListsTab({ lists, onEdit, onDelete }: any) {
                   <Button 
                     variant="ghost"
                     size="sm"
-                    onClick={() => onDelete(list.id)}
+                    onClick={() => onDelete(list)}
                     title="Delete"
                     className="h-8 w-8 p-0 hover:bg-red-100 hover:text-red-700"
                   >
@@ -923,6 +1434,8 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
   });
 
   const [showNewMetadata, setShowNewMetadata] = useState(false);
+  const [editingMetadataIndex, setEditingMetadataIndex] = useState<number | null>(null);
+  const [editingMetadata, setEditingMetadata] = useState<ExtendedCategoryMetadataDefinitionDto | null>(null);
 
   const addMetadataDefinition = () => {
     if (newMetadata.key.trim()) {
@@ -945,6 +1458,35 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
       ...prev,
       metadataDefinitions: prev.metadataDefinitions.filter((_, i) => i !== index)
     }));
+  };
+
+  const startEditingMetadata = (index: number) => {
+    const metadata = formData.metadataDefinitions[index];
+    setEditingMetadata({
+      key: metadata.key,
+      dataType: metadata.dataType,
+      mandatory: metadata.mandatory,
+      listId: metadata.listId
+    });
+    setEditingMetadataIndex(index);
+  };
+
+  const saveEditingMetadata = () => {
+    if (editingMetadata && editingMetadataIndex !== null && editingMetadata.key.trim()) {
+      setFormData(prev => ({
+        ...prev,
+        metadataDefinitions: prev.metadataDefinitions.map((metadata, index) => 
+          index === editingMetadataIndex ? editingMetadata : metadata
+        )
+      }));
+      setEditingMetadata(null);
+      setEditingMetadataIndex(null);
+    }
+  };
+
+  const cancelEditingMetadata = () => {
+    setEditingMetadata(null);
+    setEditingMetadataIndex(null);
   };
 
   return (
@@ -1351,27 +1893,109 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
               <div className="space-y-3">
                 {formData.metadataDefinitions.map((metadata, index) => (
                   <div key={index} className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border">
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 bg-primary/10 rounded-lg flex items-center justify-center">
-                        {getDataTypeIcon(metadata.dataType)}
-                      </div>
-                      <div>
-                        <div className="font-medium">{metadata.key}</div>
-                        <div className="text-sm text-muted-foreground capitalize">
-                          {metadata.dataType.toLowerCase()}
-                          {metadata.mandatory && ' • Required'}
-                          {metadata.listId && ` • List ID: ${metadata.listId}`}
+                    {editingMetadataIndex === index ? (
+                      <div className="flex-1 space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor={`edit-field-key-${index}`}>Field Key *</Label>
+                            <Input
+                              id={`edit-field-key-${index}`}
+                              type="text"
+                              value={editingMetadata?.key || ''}
+                              onChange={(e) => setEditingMetadata(prev => prev ? ({ ...prev, key: e.target.value }) : null)}
+                              placeholder="e.g., invoice_number"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor={`edit-data-type-${index}`}>Data Type</Label>
+                            <Select
+                              value={editingMetadata?.dataType || MetadataType.STRING}
+                              onValueChange={(value) => setEditingMetadata(prev => prev ? ({ ...prev, dataType: value as MetadataType }) : null)}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={MetadataType.LIST}>List</SelectItem>
+                                <SelectItem value={MetadataType.STRING}>String</SelectItem>
+                                <SelectItem value={MetadataType.NUMBER}>Number</SelectItem>
+                                <SelectItem value={MetadataType.DATETIME}>DateTime</SelectItem>
+                                <SelectItem value={MetadataType.DATE}>Date</SelectItem>
+                                <SelectItem value={MetadataType.FLOAT}>Float</SelectItem>
+                                <SelectItem value={MetadataType.BOOLEAN}>Boolean</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Options</Label>
+                            <div className="flex items-center space-x-2 pt-2">
+                              <input
+                                type="checkbox"
+                                id={`edit-mandatory-${index}`}
+                                checked={editingMetadata?.mandatory || false}
+                                onChange={(e) => setEditingMetadata(prev => prev ? ({ ...prev, mandatory: e.target.checked }) : null)}
+                                className="rounded border-input"
+                              />
+                              <Label htmlFor={`edit-mandatory-${index}`} className="text-sm">Required field</Label>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Actions</Label>
+                            <div className="flex gap-2 pt-2">
+                              <Button
+                                onClick={saveEditingMetadata}
+                                size="sm"
+                                className="flex-1"
+                              >
+                                Save
+                              </Button>
+                              <Button
+                                onClick={cancelEditingMetadata}
+                                variant="outline"
+                                size="sm"
+                                className="flex-1"
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeMetadataDefinition(index)}
-                      className="text-destructive hover:text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-3">
+                          <div className="h-10 w-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                            {getDataTypeIcon(metadata.dataType)}
+                          </div>
+                          <div>
+                            <div className="font-medium">{metadata.key}</div>
+                            <div className="text-sm text-muted-foreground capitalize">
+                              {metadata.dataType.toLowerCase()}
+                              {metadata.mandatory && ' • Required'}
+                              {metadata.listId && ` • List ID: ${metadata.listId}`}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => startEditingMetadata(index)}
+                            className="text-blue-600 hover:text-blue-700"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeMetadataDefinition(index)}
+                            className="text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 ))}
 
