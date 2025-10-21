@@ -18,6 +18,7 @@ import {
   DocumentViewSkeleton
 } from '../../../components/document';
 import DeleteConfirmationModal from '../../../components/modals/DeleteConfirmationModal';
+import FolderActionModal from '../../../components/modals/FolderActionModal';
 
 export default function DocumentViewPage() {
   const { t } = useLanguage();
@@ -39,6 +40,7 @@ export default function DocumentViewPage() {
   const [showUploadVersion, setShowUploadVersion] = useState<boolean>(false);
   const [showMoveDocument, setShowMoveDocument] = useState<boolean>(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
+  const [showRenameDocument, setShowRenameDocument] = useState<boolean>(false);
   const [versions, setVersions] = useState<any[]>([]);
   const [optimisticFile, setOptimisticFile] = useState<File | null>(null);
   const [currentVersion, setCurrentVersion] = useState<number | null>(null);
@@ -189,49 +191,23 @@ export default function DocumentViewPage() {
     }
   };
 
-  // Update document name
-  const handleUpdateDocumentName = async (newName: string) => {
-    if (!document || !newName.trim() || newName === document.name) return;
-    
-    try {
-      // Use the actual API to rename the document
-      await notificationApiClient.renameDocument(document.documentId, newName.trim());
-      // Update local state
-      setDocument(prev => prev ? { ...prev, name: newName.trim() } : null);
-    } catch (error) {
-      console.error('Error updating document name:', error);
-      throw error;
-    }
+  // Handle rename document
+  const handleRenameDocument = () => {
+    setShowRenameDocument(true);
   };
 
-  // Update document title
-  const handleUpdateDocumentTitle = async (newTitle: string) => {
-    if (!document || newTitle === document.title) return;
-    
-    try {
-      // Use the actual API to update the document title
-      await notificationApiClient.editDocumentTitle(document.documentId, { title: newTitle.trim() });
-      // Update local state
-      setDocument(prev => prev ? { ...prev, title: newTitle.trim() } : null);
-    } catch (error) {
-      console.error('Error updating document title:', error);
-      throw error;
-    } 
+  // Handle upload new version
+  const handleUploadVersion = () => {
+    setShowUploadVersion(true);
   };
 
-  // Update document description
-  const handleUpdateDocumentDescription = async (newDescription: string) => {
-    if (!document || newDescription === document.description) return;
-    
-    try {
-      // Use the actual API to update the document description
-      await notificationApiClient.editDocumentDescription(document.documentId, newDescription.trim());
-      // Update local state
-      setDocument(prev => prev ? { ...prev, description: newDescription.trim() } : null);
-    } catch (error) {
-      console.error('Error updating document description:', error);
-      throw error;
+  // Handle rename success
+  const handleRenameSuccess = async (updatedItem?: { id: number; name: string; type: 'folder' | 'document'; action: 'rename' | 'move' }) => {
+    if (updatedItem && updatedItem.type === 'document') {
+      // Update local state with new name
+      setDocument(prev => prev ? { ...prev, name: updatedItem.name } : null);
     }
+    setShowRenameDocument(false);
   };
 
   // Set active version
@@ -432,13 +408,7 @@ export default function DocumentViewPage() {
           isUpdatingDocument={isUpdatingDocument}
           isFavorite={isFavorite}
           onBack={() => router.back()}
-          onUpdateName={handleUpdateDocumentName}
-          onUpdateTitle={handleUpdateDocumentTitle}
-          onUpdateDescription={handleUpdateDocumentDescription}
-          onSetActiveVersion={handleSetActiveVersion}
-          onRevertToVersion={handleRevertToVersion}
-        onShowVersionHistory={() => setShowVersionHistory(true)}
-        onShowUploadVersion={() => setShowUploadVersion(true)}
+          onShowVersionHistory={() => setShowVersionHistory(true)}
           onToggleFavorite={handleToggleFavorite}
           onDownload={handleDownload}
           onShare={() => setShowManagePermissions(true)}
@@ -446,6 +416,8 @@ export default function DocumentViewPage() {
           onShowComments={() => setActiveTab('comments')}
           onCopyLink={copyDocumentLink}
           onDelete={() => setShowDeleteConfirm(true)}
+          onRename={handleRenameDocument}
+          onUploadVersion={handleUploadVersion}
         />
 
         {/* Document Content Area */}
@@ -482,26 +454,26 @@ export default function DocumentViewPage() {
         {/* Tab Content */}
         <DocumentContent
           activeTab={activeTab}
-            document={document} 
+          document={document} 
           auditLogs={auditLogs}
           isLoadingConfig={isLoadingConfig}
           isLoadingModels={isLoadingModels}
           isLoadingMetadata={isLoadingMetadata}
           isLoadingAuditLogs={isLoadingAuditLogs}
           isFavorite={isFavorite}
-            onCopyLink={copyDocumentLink}
-            onShare={() => setShowManagePermissions(true)}
-            onToggleFavorite={handleToggleFavorite}
-            onUpdateMetadata={(metadata) => {
-              setDocument(prev => prev ? { ...prev, metadata } : null);
-            }}
-            onUpdateDocument={(updatedDocument) => setDocument(updatedDocument)}
-            onRefreshMetadata={async () => {
-              const updatedDocument = await fetchMetadata(parseInt(documentId));
-              if (updatedDocument) {
-                setDocument(updatedDocument as DocumentViewDto);
-              }
-            }}
+          onCopyLink={copyDocumentLink}
+          onShare={() => setShowManagePermissions(true)}
+          onToggleFavorite={handleToggleFavorite}
+          onUpdateMetadata={(metadata) => {
+            setDocument(prev => prev ? { ...prev, metadata } : null);
+          }}
+          onUpdateDocument={(updatedDocument) => setDocument(updatedDocument)}
+          onRefreshMetadata={async () => {
+            const updatedDocument = await fetchMetadata(parseInt(documentId));
+            if (updatedDocument) {
+              setDocument(updatedDocument as DocumentViewDto);
+            }
+          }}
         />
       </div>
 
@@ -560,6 +532,18 @@ export default function DocumentViewPage() {
           itemName={document?.name || 'document'}
           itemType="document"
           isLoading={isUpdatingDocument}
+        />
+      )}
+
+      {/* Rename Document Modal */}
+      {showRenameDocument && document && (
+        <FolderActionModal
+          isOpen={showRenameDocument}
+          onClose={() => setShowRenameDocument(false)}
+          folder={null}
+          document={document}
+          action="rename"
+          onSuccess={handleRenameSuccess}
         />
       )}
     </div>

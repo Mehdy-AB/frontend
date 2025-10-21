@@ -17,18 +17,22 @@ import {
   AlertTriangle,
   Settings,
   Info,
-  Search
+  Search,
+  Tag
 } from 'lucide-react';
 import { useNotifications } from '@/hooks/useNotifications';
 import { notificationApiClient } from '@/api/notificationClient';
+import { DocumentService } from '@/api/services/documentService';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SearchSelect } from '@/components/main/SearchSelect';
 import {
   FilingCategoryResponseDto, 
   FilingCategoryDocDto, 
   ExtractorLanguage,
   MetaDataDto,
   CategoryMetadataDefinitionDto,
-  MetadataType
+  MetadataType,
+  TagResponseDto
 } from '@/types/api';
 
 interface FileUploadModalProps {
@@ -44,9 +48,11 @@ interface FileWithMetadata {
   name: string;
   title: string;
   description: string;
+  fileName?: string;
   filingCategory: FilingCategoryResponseDto | null;
   metadata: Record<string, string>;
   metadataErrors: Record<string, string>;
+  tags: TagResponseDto[];
   isValid: boolean;
 }
 
@@ -83,6 +89,11 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
   const [showConfiguration, setShowConfiguration] = useState(false);
   const { showWarning, showError, showSuccess } = useNotifications();
 
+  // Tags states
+  const [availableTags, setAvailableTags] = useState<TagResponseDto[]>([]);
+  const [isLoadingTags, setIsLoadingTags] = useState(false);
+  const [isCreateTagModalOpen, setIsCreateTagModalOpen] = useState(false);
+
   // Search states for filing categories
   const [categorySearch, setCategorySearch] = useState('');
   const [filteredCategories, setFilteredCategories] = useState<FilingCategoryResponseDto[]>([]);
@@ -90,7 +101,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
   const [searchingCategories, setSearchingCategories] = useState(false);
   const categorySearchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Load filing categories
+  // Load filing categories and tags
   useEffect(() => {
     const loadFilingCategories = async () => {
       try {
@@ -105,8 +116,21 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
       }
     };
 
+    const loadAvailableTags = async () => {
+      try {
+        setIsLoadingTags(true);
+        const tags = await DocumentService.getAvailableTags({ silent: true });
+        setAvailableTags(tags);
+      } catch (error) {
+        console.error('Error loading available tags:', error);
+      } finally {
+        setIsLoadingTags(false);
+      }
+    };
+
     if (isOpen) {
       loadFilingCategories();
+      loadAvailableTags();
     }
   }, [isOpen]);
 
@@ -213,9 +237,11 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
         name: file.name.replace(/\.[^/.]+$/, ""), // Remove extension for display name
         title: file.name.replace(/\.[^/.]+$/, ""), // Default title to filename without extension
         description: '',
+        fileName: file.name, // Set fileName to original filename
         filingCategory: null,
         metadata: {},
         metadataErrors: {},
+        tags: [],
         isValid: false
       });
       setShowConfiguration(true);
@@ -245,6 +271,52 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
     
     setCategorySearch('');
     setShowCategoryDropdown(false);
+  };
+
+  // Tag selection handler
+  const handleTagSelect = (tag: TagResponseDto) => {
+    if (!currentFile) return;
+    
+    // Check if tag is already added
+    if (currentFile.tags.some(t => t.id === tag.id)) {
+      showWarning('Tag already added', 'This tag is already added to the document');
+      return;
+    }
+    
+    updateFile({
+      tags: [...currentFile.tags, tag]
+    });
+  };
+
+  // Tag removal handler
+  const handleTagRemove = (tagId: number) => {
+    if (!currentFile) return;
+    
+    updateFile({
+      tags: currentFile.tags.filter(tag => tag.id !== tagId)
+    });
+  };
+
+  // Create new tag handler
+  const handleCreateTag = async (tagData: { name: string; description?: string; color?: string }) => {
+    try {
+      const newTag = await DocumentService.createTag(tagData, { silent: true });
+      
+      // Add the new tag to available tags
+      setAvailableTags(prev => [...prev, newTag]);
+      
+      // Add the new tag to the current file
+      if (currentFile) {
+        updateFile({
+          tags: [...currentFile.tags, newTag]
+        });
+      }
+      
+      showSuccess('Tag created', `Tag "${newTag.name}" created and added successfully`);
+    } catch (error) {
+      console.error('Error creating tag:', error);
+      showError('Failed to create tag', 'Please try again');
+    }
   };
 
   // SearchableSelect component
@@ -353,7 +425,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
       setUploading(true);
       
       // Prepare filing category data
-      let filingCategoryDto: FilingCategoryDocDto;
+      let filingCategoryDto: FilingCategoryDocDto | null = null;
         
       if (currentFile.filingCategory) {
         const metaDataDto: MetaDataDto[] = currentFile.filingCategory.metadataDefinitions
@@ -367,12 +439,6 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
           id: currentFile.filingCategory.id,
           metaDataDto
         };
-      } else {
-        // Provide default empty filing category when none is selected
-        filingCategoryDto = {
-          id: 0,
-          metaDataDto: []
-        };
       }
 
       // Upload the file using the API
@@ -381,7 +447,9 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
         folderId,
         currentFile.title,
         language,
-        filingCategoryDto
+        filingCategoryDto,
+        currentFile.fileName,
+        currentFile.tags.map(tag => tag.id)
       );
 
       // Success
@@ -649,6 +717,23 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                       
                       <div>
                         <label className="block text-sm font-medium text-neutral-text-dark mb-2">
+                          File Name (Optional)
+                        </label>
+                        <input
+                          type="text"
+                          value={currentFile.fileName || ''}
+                          onChange={(e) => updateFile({ fileName: e.target.value })}
+                          className="w-full p-2 border border-ui rounded text-sm bg-surface text-neutral-text-dark"
+                          placeholder="Enter custom file name"
+                          disabled={uploading}
+                        />
+                        <p className="text-xs text-neutral-text-light mt-1">
+                          Leave empty to use original filename
+                        </p>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-neutral-text-dark mb-2">
                           Document Language
                         </label>
                         <select 
@@ -716,6 +801,84 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                       </div>
                     </div>
 
+                    {/* Tags Section */}
+                    <div className="border-t border-ui pt-4">
+                      <h4 className="font-medium text-neutral-text-dark mb-3 flex items-center gap-2">
+                        <Tag className="h-4 w-4" />
+                        Tags
+                      </h4>
+                      
+                      {/* Search and Add Tag Interface */}
+                      <div className="space-y-2 mb-4">
+                        <SearchSelect
+                          items={availableTags}
+                          fetchFunction={async (query: string) => {
+                            const response = await DocumentService.searchTags(query, 0, 20, { silent: true });
+                            return response.content || [];
+                          }}
+                          onSelect={handleTagSelect}
+                          placeholder="Search and select tags..."
+                          displayField="name"
+                          descriptionField="description"
+                          debounceMs={300}
+                        />
+                        
+                        {/* Create New Tag Option */}
+                        <div className="text-xs text-neutral-text-light">
+                          Can't find the tag you're looking for?{' '}
+                          <button
+                            onClick={() => setIsCreateTagModalOpen(true)}
+                            className="text-primary hover:text-primary-dark underline hover:no-underline transition-colors"
+                            disabled={uploading}
+                          >
+                            Create a new tag
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Tags Display */}
+                      <div className="flex flex-wrap gap-2 min-h-[32px]">
+                        {isLoadingTags ? (
+                          <div className="text-sm text-neutral-text-light">Loading tags...</div>
+                        ) : currentFile.tags.length > 0 ? (
+                          currentFile.tags.map((tag) => (
+                            <div 
+                              key={tag.id} 
+                              className="group flex items-center gap-1 px-3 py-1.5 rounded-lg border transition-all hover:opacity-80"
+                              style={{ 
+                                backgroundColor: tag.color ? `${tag.color}20` : '#EFF6FF',
+                                borderColor: tag.color ? `${tag.color}40` : '#DBEAFE',
+                                color: tag.color || '#1D4ED8'
+                              }}
+                            >
+                              <span className="text-sm font-medium">{tag.name}</span>
+                              {tag.color && (
+                                <div 
+                                  className="w-3 h-3 rounded-full border"
+                                  style={{ 
+                                    backgroundColor: tag.color,
+                                    borderColor: tag.color
+                                  }}
+                                />
+                              )}
+                              <button 
+                                onClick={() => handleTagRemove(tag.id)}
+                                className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-black hover:bg-opacity-10"
+                                style={{ color: tag.color || '#1D4ED8' }}
+                                disabled={uploading}
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-sm text-neutral-text-light italic">
+                            No tags added yet
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
                     {/* Metadata Fields */}
                     {currentFile.filingCategory && (
                       <div className="border-t border-ui pt-4">
@@ -773,6 +936,117 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
             </button>
           </div>
         </div>
+      </div>
+      
+      {/* Create Tag Modal */}
+      <CreateTagModal
+        isOpen={isCreateTagModalOpen}
+        onClose={() => setIsCreateTagModalOpen(false)}
+        onCreateTag={handleCreateTag}
+      />
+    </div>
+  );
+}
+
+// Simple CreateTagModal component
+function CreateTagModal({ 
+  isOpen, 
+  onClose, 
+  onCreateTag 
+}: { 
+  isOpen: boolean; 
+  onClose: () => void; 
+  onCreateTag: (data: { name: string; description?: string; color?: string }) => void; 
+}) {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [color, setColor] = useState('#1D4ED8');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (name.trim()) {
+      onCreateTag({ name: name.trim(), description: description.trim() || undefined, color });
+      setName('');
+      setDescription('');
+      setColor('#1D4ED8');
+      onClose();
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-60 p-4">
+      <div className="bg-surface rounded-lg border border-ui w-full max-w-md">
+        <div className="flex justify-between items-center p-6 border-b border-ui">
+          <h3 className="text-lg font-semibold text-neutral-text-dark">Create New Tag</h3>
+          <button 
+            onClick={onClose}
+            className="p-2 rounded-lg hover:bg-neutral-background transition-colors text-neutral-text-light"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-neutral-text-dark mb-2">
+              Tag Name <span className="text-error">*</span>
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full p-2 border border-ui rounded text-sm bg-surface text-neutral-text-dark"
+              placeholder="Enter tag name"
+              required
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-neutral-text-dark mb-2">
+              Description
+            </label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full p-2 border border-ui rounded text-sm bg-surface text-neutral-text-dark resize-none"
+              placeholder="Optional description"
+              rows={2}
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-neutral-text-dark mb-2">
+              Color
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                className="w-8 h-8 border border-ui rounded cursor-pointer"
+              />
+              <span className="text-sm text-neutral-text-light">{color}</span>
+            </div>
+          </div>
+          
+          <div className="flex justify-end gap-3 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 border border-ui rounded-lg text-neutral-text-dark hover:bg-surface transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-primary text-surface rounded-lg hover:bg-primary-dark transition-colors"
+            >
+              Create Tag
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

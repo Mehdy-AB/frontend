@@ -252,9 +252,9 @@ class NotificationApiClient {
 
   // ==================== DOCUMENT ENDPOINTS ====================
 
-  async uploadDocument(file: File, folderId: number, title: string, lang: any, filingCategoryDto: FilingCategoryDocDto, options?: ApiNotificationOptions) {
+  async uploadDocument(file: File, folderId: number, title: string, lang: any, filingCategoryDto: FilingCategoryDocDto | null, fileName?: string, tags?: number[], options?: ApiNotificationOptions) {
     return this.withNotification(
-      () => apiClient.uploadDocument(file, folderId, title, lang, filingCategoryDto),
+      () => apiClient.uploadDocument(file, folderId, title, lang, filingCategoryDto, fileName, tags),
       { 
         successMessage: `File "${file.name}" uploaded successfully`, 
         errorMessage: `Failed to upload "${file.name}"`, 

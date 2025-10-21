@@ -493,7 +493,9 @@ class ApiClient {
     folderId: number,
     title: string,
     lang: ExtractorLanguage,
-    filingCategoryDto: FilingCategoryDocDto
+    filingCategoryDto: FilingCategoryDocDto | null,
+    fileName?: string,
+    tags?: number[]
   ): Promise<DocumentResponseDto> {
     const formData = new FormData();
     formData.append('file', file);
@@ -501,11 +503,23 @@ class ApiClient {
     formData.append('title', title);
     formData.append('lang', lang);
     
+    // Add optional fileName
+    if (fileName) {
+      formData.append('fileName', fileName);
+    }
+    
+    // Add optional tags
+    if (tags && tags.length > 0) {
+      formData.append('tags', JSON.stringify(tags));
+    }
+    
     // Create a Blob with JSON content type for the filing category
-    const filingCategoryBlob = new Blob([JSON.stringify(filingCategoryDto)], {
+    if (filingCategoryDto) {
+      const filingCategoryBlob = new Blob([JSON.stringify(filingCategoryDto)], {
       type: 'application/json'
     });
     formData.append('filingCategory', filingCategoryBlob);
+  }
 
     const response: AxiosResponse<DocumentResponseDto> = await this.client.post(
       '/api/v1/document',

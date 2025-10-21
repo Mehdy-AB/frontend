@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Star, Download, Share2, MoreVertical, Copy, Trash2, Move, MessageSquare } from 'lucide-react';
+import { Star, Download, Share2, MoreVertical, Copy, Trash2, Move, MessageSquare, Edit3, Upload } from 'lucide-react';
 import { DocumentViewDto } from '../../types/documentView';
 
 interface DocumentActionsProps {
@@ -14,6 +14,8 @@ interface DocumentActionsProps {
   onShowComments?: () => void;
   onMove?: () => void;
   onDelete?: () => void;
+  onRename?: () => void;
+  onUploadVersion?: () => void;
 }
 
 export default function DocumentActions({
@@ -25,7 +27,9 @@ export default function DocumentActions({
   onCopyLink,
   onShowComments,
   onMove,
-  onDelete
+  onDelete,
+  onRename,
+  onUploadVersion
 }: DocumentActionsProps) {
   const [showMoreActions, setShowMoreActions] = useState(false);
 
@@ -99,6 +103,30 @@ export default function DocumentActions({
             {document.userPermissions?.canEdit && (
               <>
                 <hr className="border-ui" />
+                {onRename && (
+                  <button
+                    onClick={() => {
+                      onRename();
+                      setShowMoreActions(false);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-text-light hover:text-neutral-text-dark hover:bg-neutral-background"
+                  >
+                    <Edit3 className="h-4 w-4" />
+                    Rename Document
+                  </button>
+                )}
+                {onUploadVersion && (
+                  <button
+                    onClick={() => {
+                      onUploadVersion();
+                      setShowMoreActions(false);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-text-light hover:text-neutral-text-dark hover:bg-neutral-background"
+                  >
+                    <Upload className="h-4 w-4" />
+                    Upload New Version
+                  </button>
+                )}
                 {onMove && (
                   <button
                     onClick={() => {

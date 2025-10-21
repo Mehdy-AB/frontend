@@ -6,6 +6,7 @@ import { Tag, FileText, Plus, X, Edit3, Save, ChevronDown, FolderOpen, Calendar,
 import { DocumentViewDto } from '../../types/documentView';
 import { DocumentService } from '../../api/services/documentService';
 import { FilingCategoryService } from '../../api/services/filingCategoryService';
+import { notificationApiClient } from '../../api/notificationClient';
 import { FilingCategoryResponseDto, FilingCategoryDocDto, MetaDataDto, MetadataType, UpdateDocumentMetadataRequestDto, DocumentFilingCategoryResponseDto, TagResponseDto, CreateTagRequestDto, AddTagToDocumentRequestDto } from '../../types/api';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Input } from '../ui/input';
@@ -29,6 +30,13 @@ export default function MetadataTab({
   onUpdateDocument,
   onRefreshMetadata
 }: MetadataTabProps) {
+  const [isEditingTitle, setIsEditingTitle] = useState<boolean>(false);
+  const [editingTitle, setEditingTitle] = useState<string>(document.title || '');
+  const [isEditingDescription, setIsEditingDescription] = useState<boolean>(false);
+  const [editingDescription, setEditingDescription] = useState<string>(document.description || '');
+  const [isSavingTitle, setIsSavingTitle] = useState<boolean>(false);
+  const [isSavingDescription, setIsSavingDescription] = useState<boolean>(false);
+  
   const [tags, setTags] = useState<TagResponseDto[]>([]);
   const [availableTags, setAvailableTags] = useState<TagResponseDto[]>([]);
   const [isLoadingTags, setIsLoadingTags] = useState(false);
@@ -54,6 +62,12 @@ export default function MetadataTab({
     // Load available tags
     loadAvailableTags();
   }, [document.documentId]);
+
+  // Update editing values when document changes
+  useEffect(() => {
+    setEditingTitle(document.title || '');
+    setEditingDescription(document.description || '');
+  }, [document.title, document.description]);
 
   const loadDocumentTags = async () => {
     try {
@@ -327,7 +341,7 @@ export default function MetadataTab({
           </div>
         );
       
-      case MetadataType.TEXT:
+      case MetadataType.STRING:
       default:
         return (
           <Input
@@ -349,7 +363,7 @@ export default function MetadataTab({
         return <ToggleLeft className="h-3 w-3 text-purple-500" />;
       case MetadataType.LIST:
         return <List className="h-3 w-3 text-orange-500" />;
-      case MetadataType.TEXT:
+      case MetadataType.STRING:
       default:
         return <FileText className="h-3 w-3 text-gray-500" />;
     }
@@ -613,6 +627,79 @@ export default function MetadataTab({
     }
   };
 
+  // Handle save title
+  const handleSaveTitle = async () => {
+    if (!editingTitle.trim()) {
+      setError('Title cannot be empty');
+      return;
+    }
+
+    try {
+      setIsSavingTitle(true);
+      setError(null);
+      
+      // Call the API to update title
+      await notificationApiClient.editDocumentTitle(document.documentId, { title: editingTitle.trim() });
+      
+      // Update local state
+      if (onUpdateDocument) {
+        onUpdateDocument({ ...document, title: editingTitle.trim() });
+      }
+      
+      setIsEditingTitle(false);
+      setSuccess('Title updated successfully');
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (error) {
+      console.error('Error updating title:', error);
+      setError('Failed to update title. Please try again.');
+    } finally {
+      setIsSavingTitle(false);
+    }
+  };
+
+  // Handle save description
+  const handleSaveDescription = async () => {
+    try {
+      setIsSavingDescription(true);
+      setError(null);
+      
+      // Call the API to update description
+      await notificationApiClient.editDocumentDescription(document.documentId, editingDescription.trim());
+      
+      // Update local state
+      if (onUpdateDocument) {
+        onUpdateDocument({ ...document, description: editingDescription.trim() });
+      }
+      
+      setIsEditingDescription(false);
+      setSuccess('Description updated successfully');
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (error) {
+      console.error('Error updating description:', error);
+      setError('Failed to update description. Please try again.');
+    } finally {
+      setIsSavingDescription(false);
+    }
+  };
+
+  // Handle cancel title edit
+  const handleCancelTitleEdit = () => {
+    setEditingTitle(document.title || '');
+    setIsEditingTitle(false);
+    setError(null);
+  };
+
+  // Handle cancel description edit
+  const handleCancelDescriptionEdit = () => {
+    setEditingDescription(document.description || '');
+    setIsEditingDescription(false);
+    setError(null);
+  };
+
   if (isLoading) {
     return (
       <div className="p-4 space-y-4">
@@ -626,6 +713,130 @@ export default function MetadataTab({
 
   return (
     <div className="space-y-4 p-4">
+      {/* Document Basic Info Section */}
+      <div className="border-b pb-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-medium text-neutral-text-dark flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            Document Information
+          </h3>
+        </div>
+        
+        {/* Error and Success Messages */}
+        {error && (
+          <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+            {error}
+          </div>
+        )}
+        {success && (
+          <div className="mb-3 p-2 bg-green-50 border border-green-200 rounded text-sm text-green-700">
+            {success}
+          </div>
+        )}
+        
+        <div className="space-y-3">
+          {/* Title */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Title
+            </label>
+            {isEditingTitle ? (
+              <div className="space-y-2">
+                <Input
+                  type="text"
+                  value={editingTitle}
+                  onChange={(e) => setEditingTitle(e.target.value)}
+                  placeholder="Enter document title"
+                  className="w-full"
+                  autoFocus
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleSaveTitle}
+                    disabled={isSavingTitle || !editingTitle.trim()}
+                    className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1"
+                  >
+                    <Save className="h-3 w-3" />
+                    {isSavingTitle ? 'Saving...' : 'Save'}
+                  </button>
+                  <button
+                    onClick={handleCancelTitleEdit}
+                    disabled={isSavingTitle}
+                    className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="group flex items-center gap-2">
+                <span className="text-sm text-gray-900 flex-1">
+                  {document.title || 'No title'}
+                </span>
+                {document.userPermissions?.canEdit && (
+                  <button
+                    onClick={() => setIsEditingTitle(true)}
+                    className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-blue-600 rounded transition-all"
+                  >
+                    <Edit3 className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Description
+            </label>
+            {isEditingDescription ? (
+              <div className="space-y-2">
+                <textarea
+                  value={editingDescription}
+                  onChange={(e) => setEditingDescription(e.target.value)}
+                  placeholder="Enter document description"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                  rows={3}
+                  autoFocus
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleSaveDescription}
+                    disabled={isSavingDescription}
+                    className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1"
+                  >
+                    <Save className="h-3 w-3" />
+                    {isSavingDescription ? 'Saving...' : 'Save'}
+                  </button>
+                  <button
+                    onClick={handleCancelDescriptionEdit}
+                    disabled={isSavingDescription}
+                    className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="group flex items-start gap-2">
+                <span className="text-sm text-gray-900 flex-1">
+                  {document.description || 'No description'}
+                </span>
+                {document.userPermissions?.canEdit && (
+                  <button
+                    onClick={() => setIsEditingDescription(true)}
+                    className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-blue-600 rounded transition-all flex-shrink-0"
+                  >
+                    <Edit3 className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Model Section */}
       <div className="border-b pb-4">
         <div 
@@ -820,7 +1031,7 @@ export default function MetadataTab({
                               const metadataDef = metadataDefinitions.find(
                                 (def: any) => def.id === meta.metadataId
                               );
-                              const dataType = metadataDef?.dataType || MetadataType.TEXT;
+                              const dataType = metadataDef?.dataType || MetadataType.STRING;
                               
                               return (
                                 <div key={meta.metadataId} className="p-3 bg-gray-50 rounded border">
