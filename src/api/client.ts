@@ -31,6 +31,20 @@ import {
   DocumentLinkRequestDto,
   DocumentLinkResponseDto,
   RelatedDocumentResponseDto,
+  // Enhanced ClassA types
+  ClassAUploadRequestDto,
+  ClassAResponseDto,
+  ClassADetailResponseDto,
+  ClassASearchRequestDto,
+  ClassAStatisticsResponseDto,
+  // Bulk Upload types
+  BulkUploadRequestDto,
+  BulkUploadResponseDto,
+  // Document Search types
+  DocumentSearchResultDto,
+  DocumentSearchResponseDto,
+  // Document Update types
+  UpdateDocumentDescriptionRequestDto,
   TypeShareAccessDocWithTypeReq,
   TypeShareAccessDocumentRes,
   // Folder types
@@ -157,7 +171,17 @@ class ApiClient {
         }
 
         // Handle other errors
-        console.error('API Error:', error.response?.data || error.message);
+        console.error('API Error:', {
+          message: error.message,
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          data: error.response?.data,
+          config: {
+            url: error.config?.url,
+            method: error.config?.method,
+            params: error.config?.params
+          }
+        });
         return Promise.reject(error);
       }
     );
@@ -486,8 +510,64 @@ class ApiClient {
   }
 
   /**
-   * Upload document
+   * Upload multiple documents (bulk upload)
    */
+  async uploadMultipleDocuments(
+    files: File[],
+    folderId: number,
+    title: string,
+    lang: ExtractorLanguage,
+    categoryId?: number,
+    fileName?: string,
+    tags?: number[],
+    filingCategoryDto?: FilingCategoryDocDto | null
+  ): Promise<BulkUploadResponseDto> {
+    const formData = new FormData();
+    
+    // Add all files
+    files.forEach((file, index) => {
+      formData.append('files', file);
+    });
+    
+    formData.append('folderId', folderId.toString());
+    formData.append('title', title);
+    formData.append('lang', lang);
+    
+    // Add category ID (required for multi-file uploads)
+    if (categoryId) {
+      formData.append('categoryId', categoryId.toString());
+    }
+    
+    // Add optional fileName
+    if (fileName) {
+      formData.append('fileName', fileName);
+    }
+    
+    // Add optional tags
+    if (tags && tags.length > 0) {
+      formData.append('tags', JSON.stringify(tags));
+    }
+    
+    // Add filing category metadata if available (using @RequestPart)
+    if (filingCategoryDto) {
+      // Create a Blob with JSON content type for the filing category
+      const filingCategoryBlob = new Blob([JSON.stringify(filingCategoryDto)], {
+        type: 'application/json'
+      });
+      formData.append('filingCategory', filingCategoryBlob);
+    }
+
+    const response: AxiosResponse<BulkUploadResponseDto> = await this.client.post(
+      '/api/v1/document/upload',
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      }
+    );
+    return response.data;
+  }
   async uploadDocument(
     file: File,
     folderId: number,
@@ -515,7 +595,7 @@ class ApiClient {
     
     // Create a Blob with JSON content type for the filing category
     if (filingCategoryDto) {
-      const filingCategoryBlob = new Blob([JSON.stringify(filingCategoryDto)], {
+    const filingCategoryBlob = new Blob([JSON.stringify(filingCategoryDto)], {
       type: 'application/json'
     });
     formData.append('filingCategory', filingCategoryBlob);
@@ -1535,7 +1615,165 @@ class ApiClient {
     return response.data;
   }
 
-  // ==================== RULE EXECUTION ENDPOINTS ====================
+  // ==================== ENHANCED CLASS A DOCUMENT ENDPOINTS ====================
+
+  /**
+   * Search ClassA documents with advanced filtering
+   */
+  async searchClassADocuments(request: ClassASearchRequestDto): Promise<PageResponse<ClassAResponseDto>> {
+    const response: AxiosResponse<PageResponse<ClassAResponseDto>> = 
+      await this.client.post('/api/v1/document/class-a/search', request);
+    return response.data;
+  }
+
+  /**
+   * Get ClassA document statistics
+   */
+  async getClassAStatistics(): Promise<ClassAStatisticsResponseDto> {
+    const response: AxiosResponse<ClassAStatisticsResponseDto> = 
+      await this.client.get('/api/v1/document/class-a/statistics');
+    return response.data;
+  }
+
+  /**
+   * Get ClassA documents with pagination and filters (enhanced with search functionality)
+   */
+  async getClassADocuments(params: {
+    page?: number;
+    size?: number;
+    userId?: string;
+    categoryId?: number;
+    name?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    exactDate?: string;
+  } = {}): Promise<PageResponse<ClassAResponseDto>> {
+    const queryParams = new URLSearchParams();
+    if (params.page !== undefined) queryParams.append('page', params.page.toString());
+    if (params.size !== undefined) queryParams.append('size', params.size.toString());
+    if (params.userId) queryParams.append('userId', params.userId);
+    if (params.categoryId) queryParams.append('categoryId', params.categoryId.toString());
+    if (params.name) queryParams.append('name', params.name);
+    if (params.dateFrom) queryParams.append('dateFrom', params.dateFrom);
+    if (params.dateTo) queryParams.append('dateTo', params.dateTo);
+    if (params.exactDate) queryParams.append('exactDate', params.exactDate);
+    
+    const response: AxiosResponse<PageResponse<ClassAResponseDto>> = 
+      await this.client.get(`/api/v1/document/class-a?${queryParams.toString()}`);
+    return response.data;
+  }
+
+  /**
+   * Get ClassA document by ID with full details
+   */
+  async getClassADocument(id: number): Promise<ClassADetailResponseDto> {
+    const response: AxiosResponse<ClassADetailResponseDto> = 
+      await this.client.get(`/api/v1/document/class-a/${id}`);
+    return response.data;
+  }
+
+  /**
+   * Move ClassA document to main documents table
+   */
+  async moveClassAToDocument(id: number, params: {
+    title: string;
+    lang: ExtractorLanguage;
+    name?: string;
+    description?: string;
+    tags?: string;
+    filingCategory?: FilingCategoryDocDto;
+  }): Promise<DocumentResponseDto> {
+    const formData = new FormData();
+    formData.append('title', params.title);
+    formData.append('lang', params.lang);
+    
+    if (params.name) formData.append('name', params.name);
+    if (params.description) formData.append('description', params.description);
+    if (params.tags) formData.append('tags', params.tags);
+    if (params.filingCategory) {
+      formData.append('filingCategory', JSON.stringify(params.filingCategory));
+    }
+    
+    const response: AxiosResponse<DocumentResponseDto> = 
+      await this.client.post(`/api/v1/document/class-a/${id}/move-to-document`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+    return response.data;
+  }
+
+  /**
+   * Get ClassA document view URL
+   */
+  async getClassADocumentUrl(id: number): Promise<{ url: string }> {
+    const response: AxiosResponse<{ url: string }> = 
+      await this.client.get(`/api/v1/document/class-a/${id}/view`);
+    return response.data;
+  }
+
+  /**
+   * Delete ClassA document
+   */
+  async deleteClassADocument(id: number): Promise<void> {
+    await this.client.delete(`/api/v1/document/class-a/${id}`);
+  }
+
+  // ==================== ENHANCED DOCUMENT ENDPOINTS ====================
+
+  /**
+   * Update document description
+   */
+  async updateDocumentDescription(id: number, request: UpdateDocumentDescriptionRequestDto): Promise<void> {
+    await this.client.put(`/api/v1/document/${id}/description`, request);
+  }
+
+  /**
+   * Search documents with query
+   */
+  async searchDocuments(params: {
+    q: string;
+    page?: number;
+    size?: number;
+  }): Promise<DocumentSearchResponseDto> {
+    const queryParams = new URLSearchParams();
+    queryParams.append('q', params.q);
+    if (params.page !== undefined) queryParams.append('page', params.page.toString());
+    if (params.size !== undefined) queryParams.append('size', params.size.toString());
+    
+    const response: AxiosResponse<DocumentSearchResponseDto> = 
+      await this.client.get(`/api/v1/document/search?${queryParams.toString()}`);
+    return response.data;
+  }
+
+  /**
+   * Test OCR functionality
+   */
+  async testOcr(): Promise<{
+    status: string;
+    message: string;
+    testText?: string;
+    tessdataPath?: string;
+  }> {
+    const response: AxiosResponse<{
+      status: string;
+      message: string;
+      testText?: string;
+      tessdataPath?: string;
+    }> = await this.client.get('/api/v1/document/test-ocr');
+    return response.data;
+  }
+
+  /**
+   * Log file download for audit purposes
+   */
+  async logFileDownload(id: number, version?: number): Promise<void> {
+    const queryParams = new URLSearchParams();
+    if (version !== undefined) queryParams.append('version', version.toString());
+    
+    await this.client.post(`/api/v1/document/fileDownloaded/${id}?${queryParams.toString()}`);
+  }
+
 
   /**
    * Execute a specific link rule

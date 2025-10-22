@@ -80,7 +80,8 @@ const formatFileSize = (bytes: number): string => {
 };
 
 export default function FileUploadModal({ isOpen, onClose, folderId, folderName, onSuccess }: FileUploadModalProps) {
-  const [currentFile, setCurrentFile] = useState<FileWithMetadata | null>(null);
+  const [files, setFiles] = useState<FileWithMetadata[]>([]);
+  const [currentFileIndex, setCurrentFileIndex] = useState(0);
   const [dragActive, setDragActive] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [language, setLanguage] = useState<ExtractorLanguage>('ENG' as ExtractorLanguage);
@@ -100,6 +101,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [searchingCategories, setSearchingCategories] = useState(false);
   const categorySearchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load filing categories and tags
   useEffect(() => {
@@ -231,8 +233,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
 
   const handleFiles = (fileList: FileList) => {
     if (fileList.length > 0) {
-      const file = fileList[0]; // Only take the first file
-      setCurrentFile({
+      const newFiles: FileWithMetadata[] = Array.from(fileList).map(file => ({
         file,
         name: file.name.replace(/\.[^/.]+$/, ""), // Remove extension for display name
         title: file.name.replace(/\.[^/.]+$/, ""), // Default title to filename without extension
@@ -243,26 +244,62 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
         metadataErrors: {},
         tags: [],
         isValid: false
-      });
+      }));
+      
+      setFiles(prev => [...prev, ...newFiles]);
+      setCurrentFileIndex(0); // Start with the first file
       setShowConfiguration(true);
     }
   };
 
-  const removeFile = () => {
-    setCurrentFile(null);
-    setShowConfiguration(false);
+  const removeFile = (index?: number) => {
+    const targetIndex = index !== undefined ? index : currentFileIndex;
+    setFiles(prev => prev.filter((_, i) => i !== targetIndex));
+    
+    if (files.length <= 1) {
+      setShowConfiguration(false);
+      setCurrentFileIndex(0);
+    } else if (currentFileIndex >= files.length - 1) {
+      setCurrentFileIndex(Math.max(0, files.length - 2));
+    }
+  };
+
+  const setAsMain = (index: number) => {
+    if (index === 0) return; // Already main
+    
+    setFiles(prev => {
+      const newFiles = [...prev];
+      const mainFile = newFiles[0];
+      const targetFile = newFiles[index];
+      
+      // Swap the files
+      newFiles[0] = targetFile;
+      newFiles[index] = mainFile;
+      
+      return newFiles;
+    });
+    
+    setCurrentFileIndex(0); // Always show main file configuration
+  };
+
+  const getCurrentFile = () => files[currentFileIndex] || null;
+  
+  const updateCurrentFile = (updates: Partial<FileWithMetadata>) => {
+    if (files[currentFileIndex]) {
+      setFiles(prev => prev.map((file, index) => 
+        index === currentFileIndex ? { ...file, ...updates } : file
+      ));
+    }
   };
 
   const updateFile = (updates: Partial<FileWithMetadata>) => {
-    if (currentFile) {
-      setCurrentFile({ ...currentFile, ...updates });
-    }
+    setFiles(prev => prev.map((file, index) => 
+      index === 0 ? { ...file, ...updates } : file
+    ));
   };
 
   // Category selection handler
   const onCategorySelect = (category: FilingCategoryResponseDto) => {
-    if (!currentFile) return;
-    
     updateFile({ 
       filingCategory: category,
       metadata: {},
@@ -275,25 +312,27 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
 
   // Tag selection handler
   const handleTagSelect = (tag: TagResponseDto) => {
-    if (!currentFile) return;
+    const mainFile = files[0];
+    if (!mainFile) return;
     
     // Check if tag is already added
-    if (currentFile.tags.some(t => t.id === tag.id)) {
+    if (mainFile.tags.some(t => t.id === tag.id)) {
       showWarning('Tag already added', 'This tag is already added to the document');
       return;
     }
     
     updateFile({
-      tags: [...currentFile.tags, tag]
+      tags: [...mainFile.tags, tag]
     });
   };
 
   // Tag removal handler
   const handleTagRemove = (tagId: number) => {
-    if (!currentFile) return;
+    const mainFile = files[0];
+    if (!mainFile) return;
     
     updateFile({
-      tags: currentFile.tags.filter(tag => tag.id !== tagId)
+      tags: mainFile.tags.filter(tag => tag.id !== tagId)
     });
   };
 
@@ -306,9 +345,10 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
       setAvailableTags(prev => [...prev, newTag]);
       
       // Add the new tag to the current file
-      if (currentFile) {
+      const mainFile = files[0];
+      if (mainFile) {
         updateFile({
-          tags: [...currentFile.tags, newTag]
+          tags: [...mainFile.tags, newTag]
         });
       }
       
@@ -375,29 +415,31 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
   ), []);
 
   const validateMetadata = (): boolean => {
-    if (!currentFile) return false;
+    const mainFile = files[0];
+    if (!mainFile) return false;
+    
     // Title is required
-    if (!currentFile.title || currentFile.title.trim() === '') {
+    if (!mainFile.title || mainFile.title.trim() === '') {
       updateFile({ isValid: false });
       return false;
     }
-    if (!currentFile.filingCategory) return true; // No validation if no category selected
+    if (!mainFile.filingCategory) return true; // No validation if no category selected
 
     const errors: Record<string, string> = {};
     let isValid = true;
 
-    currentFile.filingCategory.metadataDefinitions.forEach(definition => {
-      if (definition.mandatory && (!currentFile.metadata[definition.key] || currentFile.metadata[definition.key].trim() === '')) {
+    mainFile.filingCategory.metadataDefinitions.forEach(definition => {
+      if (definition.mandatory && (!mainFile.metadata[definition.key] || mainFile.metadata[definition.key].trim() === '')) {
         errors[definition.key] = 'This field is required';
         isValid = false;
       } else if (definition.dataType === MetadataType.NUMBER) {
-        const value = currentFile.metadata[definition.key];
+        const value = mainFile.metadata[definition.key];
         if (value && isNaN(Number(value))) {
           errors[definition.key] = 'Must be a valid number';
           isValid = false;
         }
       } else if (definition.dataType === MetadataType.DATE) {
-        const value = currentFile.metadata[definition.key];
+        const value = mainFile.metadata[definition.key];
         if (value && isNaN(Date.parse(value))) {
           errors[definition.key] = 'Must be a valid date';
           isValid = false;
@@ -410,56 +452,53 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
   };
 
   const handleUpload = async () => {
-    if (!currentFile) {
-      showWarning('No file selected', 'Please select a file to upload');
+    if (files.length === 0) {
+      showWarning('No files selected', 'Please select files to upload');
       return;
     }
 
-    // Validate the file
+    // Validate the main file (first file)
     if (!validateMetadata()) {
-      showWarning('Validation errors', 'Please fix validation errors before uploading');
+      showWarning('Validation errors', 'Please fix validation errors for the main document before uploading');
       return;
     }
 
     try {
       setUploading(true);
       
-      // Prepare filing category data
-      let filingCategoryDto: FilingCategoryDocDto | null = null;
-        
-      if (currentFile.filingCategory) {
-        const metaDataDto: MetaDataDto[] = currentFile.filingCategory.metadataDefinitions
-          .filter(def => currentFile.metadata[def.key])
-          .map((def, index) => ({
-            id: def.id || index + 1,
-            value: currentFile.metadata[def.key]
-          }));
-
-        filingCategoryDto = {
-          id: currentFile.filingCategory.id,
-          metaDataDto
-        };
-      }
-
-      // Upload the file using the API
-      await notificationApiClient.uploadDocument(
-        currentFile.file,
+      const mainFile = files[0];
+      
+      // Upload using the new multi-file API endpoint
+      await notificationApiClient.uploadMultipleDocuments(
+        files.map(f => f.file),
         folderId,
-        currentFile.title,
+        mainFile.title,
         language,
-        filingCategoryDto,
-        currentFile.fileName,
-        currentFile.tags.map(tag => tag.id)
+        mainFile.filingCategory?.id,
+        mainFile.fileName,
+        mainFile.tags.map(tag => tag.id),
+        mainFile.filingCategory ? {
+          id: mainFile.filingCategory.id,
+          metaDataDto: mainFile.filingCategory.metadataDefinitions
+            .filter(def => mainFile.metadata[def.key])
+            .map((def, index) => ({
+              id: def.id || index + 1,
+              value: mainFile.metadata[def.key]
+            }))
+        } : null
       );
 
-      // Success
-      setCurrentFile(null);
+      showSuccess('Upload successful', `${files.length} files uploaded successfully. First file moved to repository, others to unclassified documents.`);
+      
+      // Reset state
+      setFiles([]);
+      setCurrentFileIndex(0);
       setShowConfiguration(false);
       onSuccess?.();
       onClose();
     } catch (error: any) {
-      console.error('Error uploading file:', error);
-      showError('Upload failed', error.message || 'Failed to upload file. Please try again.');
+      console.error('Error uploading files:', error);
+      showError('Upload failed', error.message || 'Failed to upload files. Please try again.');
     } finally {
       setUploading(false);
     }
@@ -467,16 +506,18 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
 
   const handleClose = () => {
     if (!uploading) {
-      setCurrentFile(null);
+      setFiles([]);
+      setCurrentFileIndex(0);
       setShowConfiguration(false);
       onClose();
     }
   };
 
   const renderMetadataField = (definition: CategoryMetadataDefinitionDto) => {
-    if (!currentFile) return null;
-    const value = currentFile.metadata[definition.key] || '';
-    const error = currentFile.metadataErrors[definition.key];
+    const mainFile = files[0];
+    if (!mainFile) return null;
+    const value = mainFile.metadata[definition.key] || '';
+    const error = mainFile.metadataErrors[definition.key];
 
     const getInputType = () => {
       switch (definition.dataType) {
@@ -505,12 +546,12 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
               if (newValue === "__custom__") {
                 // Set a special value to trigger custom input display
                 updateFile({
-                  metadata: { ...currentFile.metadata, [definition.key]: "__custom__" }
+                  metadata: { ...mainFile.metadata, [definition.key]: "__custom__" }
                 });
                 return;
               }
               updateFile({
-                metadata: { ...currentFile.metadata, [definition.key]: newValue }
+                metadata: { ...mainFile.metadata, [definition.key]: newValue }
               });
             }}
           >
@@ -540,7 +581,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
               value={value === "__custom__" ? "" : value}
               placeholder={`Enter custom ${definition.key}`}
               onChange={(e) => updateFile({
-                metadata: { ...currentFile.metadata, [definition.key]: e.target.value }
+                metadata: { ...mainFile.metadata, [definition.key]: e.target.value }
               })}
               className="w-full mt-2 p-2 border border-ui rounded text-sm bg-surface text-neutral-text-dark"
             />
@@ -558,7 +599,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
             type="checkbox"
             checked={value === 'true'}
             onChange={(e) => updateFile({
-              metadata: { ...currentFile.metadata, [definition.key]: e.target.checked ? 'true' : 'false' }
+              metadata: { ...mainFile.metadata, [definition.key]: e.target.checked ? 'true' : 'false' }
             })}
             className="rounded border-ui"
           />
@@ -578,7 +619,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
           type={getInputType()}
           value={value}
           onChange={(e) => updateFile({
-            metadata: { ...currentFile.metadata, [definition.key]: e.target.value }
+            metadata: { ...mainFile.metadata, [definition.key]: e.target.value }
           })}
           className={`w-full p-2 border rounded text-sm bg-surface text-neutral-text-dark ${
             error ? 'border-error' : 'border-ui'
@@ -620,7 +661,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
         <div className="flex-1 overflow-auto p-6">
           <div className="space-y-6">
             {/* File Drop Area - Only show when no file is selected */}
-            {!currentFile && (
+            {files.length === 0 && (
               <div
                 className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
                   dragActive ? 'border-primary bg-primary-light' : 'border-ui'
@@ -632,13 +673,15 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
               >
                 <Upload className="mx-auto h-12 w-12 text-neutral-text-light mb-4" />
                 <p className="text-lg font-medium text-neutral-text-dark mb-2">
-                  Drop a file here or click to browse
+                  Drop files here or click to browse
                 </p>
                 <p className="text-neutral-text-light mb-4">
-                  Upload one file at a time
+                  Upload multiple files. First file will be processed immediately, others will be classified later.
                 </p>
                 <input
+                  ref={fileInputRef}
                   type="file"
+                  multiple
                   onChange={handleFileInput}
                   className="hidden"
                   id="file-upload"
@@ -649,157 +692,266 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                   className="inline-flex items-center gap-2 bg-primary text-surface px-4 py-2 rounded-lg hover:bg-primary-dark transition-colors cursor-pointer disabled:opacity-50"
                 >
                   <Upload className="h-4 w-4" />
-                  Choose File
+                  Choose Files
                 </label>
               </div>
             )}
 
             {/* File Configuration */}
-            {currentFile && (
+            {files.length > 0 && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-medium text-neutral-text-dark flex items-center gap-2">
                     <Settings className="h-5 w-5" />
-                    File Configuration
+                    File Configuration ({files.length} files)
                   </h3>
                   <button 
-                    onClick={removeFile}
+                    onClick={() => removeFile(currentFileIndex)}
                     className="p-2 text-error hover:bg-error/10 rounded transition-colors"
                     disabled={uploading}
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
+
+                {/* File List - Vertical Layout */}
+                {files.length > 0 && (
+                  <div className="p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-sm text-gray-600">Files ({files.length}):</span>
+                      <button
+                        onClick={() => {
+                          // Create a new file input element
+                          const input = document.createElement('input');
+                          input.type = 'file';
+                          input.multiple = true;
+                          input.style.display = 'none';
+                          
+                          input.onchange = (e) => {
+                            const target = e.target as HTMLInputElement;
+                            if (target.files) {
+                              handleFiles(target.files);
+                            }
+                          };
+                          
+                          document.body.appendChild(input);
+                          input.click();
+                          document.body.removeChild(input);
+                        }}
+                        className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
+                        disabled={uploading}
+                      >
+                        <Plus className="h-3 w-3" />
+                        Add More
+                      </button>
+                    </div>
+                    
+                    <div className="max-h-48 overflow-y-auto space-y-1">
+                      {files.map((file, index) => (
+                        <div
+                          key={index}
+                          className={`flex items-center gap-2 px-2 py-1.5 rounded border text-sm ${
+                            index === 0
+                              ? 'bg-green-50 border-green-200'
+                              : 'bg-white border-gray-300'
+                          }`}
+                        >
+                          {getFileIcon(file.file)}
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-gray-900 truncate text-xs">
+                              {file.name}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {formatFileSize(file.file.size)}
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-1">
+                            {index === 0 ? (
+                              <span className="px-1.5 py-0.5 text-xs bg-green-100 text-green-800 rounded">
+                                Main
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => setAsMain(index)}
+                                className="px-1.5 py-0.5 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
+                                disabled={uploading}
+                              >
+                                Set Main
+                              </button>
+                            )}
+                            
+                            <button
+                              onClick={() => removeFile(index)}
+                              className="p-0.5 text-red-500 hover:bg-red-50 rounded transition-colors"
+                              disabled={uploading}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="border border-ui rounded-lg overflow-hidden">
                   {/* File Header */}
                   <div className="p-4 bg-neutral-background border-b border-ui">
                     <div className="flex items-center gap-3">
-                      {getFileIcon(currentFile.file)}
+                      {getFileIcon(files[0]?.file || ({} as File))}
                       <div>
-                        <p className="font-medium text-neutral-text-dark">{currentFile.name}</p>
+                        <p className="font-medium text-neutral-text-dark">{files[0]?.name}</p>
                         <p className="text-sm text-neutral-text-light">
-                          {formatFileSize(currentFile.file.size)} • {currentFile.file.type || 'Unknown type'}
+                          {formatFileSize(files[0]?.file.size || 0)} • {files[0]?.file.type || 'Unknown type'}
                         </p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="px-2 py-0.5 text-xs bg-green-100 text-green-800 rounded-full">
+                            Main File
+                          </span>
+                          <span className="text-xs text-gray-500">Goes to repository</span>
+                        </div>
                       </div>
                     </div>
                   </div>
 
                   {/* Configuration Content */}
                   <div className="p-4 space-y-4">
-                    {/* Basic Info */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-neutral-text-dark mb-2">
-                          Display Name
-                        </label>
-                        <input
-                          type="text"
-                          value={currentFile.name}
-                          onChange={(e) => updateFile({ name: e.target.value })}
-                          className="w-full p-2 border border-ui rounded text-sm bg-surface text-neutral-text-dark"
-                          disabled={uploading}
-                        />
-                      </div>
+                    {/* Basic fields - available for all files */}
+                    <div className="border-t border-ui pt-4">
+                      <h4 className="font-medium text-neutral-text-dark mb-3 flex items-center gap-2">
+                        <FileText className="h-4 w-4" />
+                        Main File Configuration
+                        <span className="px-2 py-0.5 text-xs bg-green-100 text-green-800 rounded-full">
+                          Main File
+                        </span>
+                      </h4>
                       
-                      <div>
-                        <label className="block text-sm font-medium text-neutral-text-dark mb-2">
-                          Title <span className="text-error">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={currentFile.title}
-                          onChange={(e) => updateFile({ title: e.target.value })}
-                          className="w-full p-2 border border-ui rounded text-sm bg-surface text-neutral-text-dark"
-                          placeholder="Enter document title"
-                          disabled={uploading}
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="block text-sm font-medium text-neutral-text-dark mb-2">
-                          File Name (Optional)
-                        </label>
-                        <input
-                          type="text"
-                          value={currentFile.fileName || ''}
-                          onChange={(e) => updateFile({ fileName: e.target.value })}
-                          className="w-full p-2 border border-ui rounded text-sm bg-surface text-neutral-text-dark"
-                          placeholder="Enter custom file name"
-                          disabled={uploading}
-                        />
-                        <p className="text-xs text-neutral-text-light mt-1">
-                          Leave empty to use original filename
-                        </p>
-                      </div>
-                      
-                      <div>
-                        <label className="block text-sm font-medium text-neutral-text-dark mb-2">
-                          Document Language
-                        </label>
-                        <select 
-                          value={language}
-                          onChange={(e) => setLanguage(e.target.value as ExtractorLanguage)}
-                          className="w-full p-2 border border-ui rounded text-sm bg-surface text-neutral-text-dark"
-                          disabled={uploading}
-                        >
-                          {SUPPORTED_LANGUAGES.map(lang => (
-                            <option key={lang.value} value={lang.value}>{lang.label}</option>
-                          ))}
-                        </select>
-                      </div>
-                      
-                      <div>
-                        <label className="block text-sm font-medium text-neutral-text-dark mb-2">
-                          Document Model
-                        </label>
-                        {currentFile.filingCategory ? (
-                          <div className="flex items-center gap-2 p-2 border border-ui rounded-lg bg-neutral-background">
-                            <div className="flex-1">
-                              <div className="font-medium text-neutral-text-dark">{currentFile.filingCategory.name}</div>
-                              {currentFile.filingCategory.description && (
-                                <div className="text-xs text-neutral-text-light">{currentFile.filingCategory.description}</div>
-                              )}
-                              <div className="text-xs text-neutral-text-light mt-1">
-                                {currentFile.filingCategory.metadataDefinitions.length} metadata field{currentFile.filingCategory.metadataDefinitions.length !== 1 ? 's' : ''}
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => updateFile({ filingCategory: null, metadata: {}, metadataErrors: {} })}
-                              className="p-1 text-error hover:bg-error/10 rounded transition-colors"
-                              disabled={uploading}
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
-                          </div>
-                        ) : (
-                          <SearchableSelect
-                            search={categorySearch}
-                            setSearch={setCategorySearch}
-                            showDropdown={showCategoryDropdown}
-                            setShowDropdown={setShowCategoryDropdown}
-                            searching={searchingCategories}
-                            items={filteredCategories}
-                            onSelect={onCategorySelect}
-                            placeholder="Search document models..."
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-neutral-text-dark mb-2">
+                            Display Name
+                          </label>
+                          <input
+                            type="text"
+                            value={files[0]?.name || ''}
+                            onChange={(e) => updateFile({ name: e.target.value })}
+                            className="w-full p-2 border border-ui rounded text-sm bg-surface text-neutral-text-dark"
+                            disabled={uploading}
                           />
-                        )}
-                      </div>
-                      
-                      <div>
-                        <label className="block text-sm font-medium text-neutral-text-dark mb-2">
-                          Description
-                        </label>
-                        <textarea
-                          value={currentFile.description}
-                          onChange={(e) => updateFile({ description: e.target.value })}
-                          className="w-full p-2 border border-ui rounded text-sm bg-surface text-neutral-text-dark resize-none"
-                          placeholder="Optional description"
-                          rows={2}
-                          disabled={uploading}
-                        />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-neutral-text-dark mb-2">
+                            Title <span className="text-error">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={files[0]?.title || ''}
+                            onChange={(e) => updateFile({ title: e.target.value })}
+                            className="w-full p-2 border border-ui rounded text-sm bg-surface text-neutral-text-dark"
+                            placeholder="Enter document title"
+                            disabled={uploading}
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-neutral-text-dark mb-2">
+                            File Name (Optional)
+                          </label>
+                          <input
+                            type="text"
+                            value={files[0]?.fileName || ''}
+                            onChange={(e) => updateFile({ fileName: e.target.value })}
+                            className="w-full p-2 border border-ui rounded text-sm bg-surface text-neutral-text-dark"
+                            placeholder="Enter custom file name"
+                            disabled={uploading}
+                          />
+                          <p className="text-xs text-neutral-text-light mt-1">
+                            Leave empty to use original filename
+                          </p>
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-neutral-text-dark mb-2">
+                            Document Language
+                          </label>
+                          <select 
+                            value={language}
+                            onChange={(e) => setLanguage(e.target.value as ExtractorLanguage)}
+                            className="w-full p-2 border border-ui rounded text-sm bg-surface text-neutral-text-dark"
+                            disabled={uploading}
+                          >
+                            {SUPPORTED_LANGUAGES.map(lang => (
+                              <option key={lang.value} value={lang.value}>{lang.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                        
+                        <div className="md:col-span-2">
+                          <label className="block text-sm font-medium text-neutral-text-dark mb-2">
+                            Description
+                          </label>
+                          <textarea
+                            value={files[0]?.description || ''}
+                            onChange={(e) => updateFile({ description: e.target.value })}
+                            className="w-full p-2 border border-ui rounded text-sm bg-surface text-neutral-text-dark resize-none"
+                            placeholder="Optional description"
+                            rows={2}
+                            disabled={uploading}
+                          />
+                        </div>
                       </div>
                     </div>
+
+                    {/* Only show advanced features for main file (index 0) */}
+                    {currentFileIndex === 0 && (
+                      <>
+                        {/* Document Model Section */}
+                        <div className="border-t border-ui pt-4">
+                          <h4 className="font-medium text-neutral-text-dark mb-3 flex items-center gap-2">
+                            <Settings className="h-4 w-4" />
+                            Document Model
+                          </h4>
+                          
+                          <div>
+                            <label className="block text-sm font-medium text-neutral-text-dark mb-2">
+                              Document Model
+                            </label>
+                            {files[0]?.filingCategory ? (
+                              <div className="flex items-center gap-2 p-2 border border-ui rounded-lg bg-neutral-background">
+                                <div className="flex-1">
+                                  <div className="font-medium text-neutral-text-dark">{files[0]?.filingCategory?.name}</div>
+                                  {files[0]?.filingCategory?.description && (
+                                    <div className="text-xs text-neutral-text-light">{files[0]?.filingCategory?.description}</div>
+                                  )}
+                                  <div className="text-xs text-neutral-text-light mt-1">
+                                    {files[0]?.filingCategory?.metadataDefinitions.length} metadata field{files[0]?.filingCategory?.metadataDefinitions.length !== 1 ? 's' : ''}
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => updateFile({ filingCategory: null, metadata: {}, metadataErrors: {} })}
+                                  className="p-1 text-error hover:bg-error/10 rounded transition-colors"
+                                  disabled={uploading}
+                                >
+                                  <X className="h-4 w-4" />
+                                </button>
+                              </div>
+                            ) : (
+                              <SearchableSelect
+                                search={categorySearch}
+                                setSearch={setCategorySearch}
+                                showDropdown={showCategoryDropdown}
+                                setShowDropdown={setShowCategoryDropdown}
+                                searching={searchingCategories}
+                                items={filteredCategories}
+                                onSelect={onCategorySelect}
+                                placeholder="Search document models..."
+                              />
+                            )}
+                          </div>
+                        </div>
 
                     {/* Tags Section */}
                     <div className="border-t border-ui pt-4">
@@ -840,8 +992,8 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                       <div className="flex flex-wrap gap-2 min-h-[32px]">
                         {isLoadingTags ? (
                           <div className="text-sm text-neutral-text-light">Loading tags...</div>
-                        ) : currentFile.tags.length > 0 ? (
-                          currentFile.tags.map((tag) => (
+                        ) : files[0]?.tags.length ? (
+                          files[0]?.tags.map((tag) => (
                             <div 
                               key={tag.id} 
                               className="group flex items-center gap-1 px-3 py-1.5 rounded-lg border transition-all hover:opacity-80"
@@ -880,22 +1032,24 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                     </div>
 
                     {/* Metadata Fields */}
-                    {currentFile.filingCategory && (
+                    {files[0]?.filingCategory && (
                       <div className="border-t border-ui pt-4">
                         <h4 className="font-medium text-neutral-text-dark mb-3 flex items-center gap-2">
                           <FileText className="h-4 w-4" />
-                          {currentFile.filingCategory.name} Metadata
+                          {files[0]?.filingCategory?.name} Metadata
                           <span className="text-xs text-neutral-text-light">
-                            ({currentFile.filingCategory.metadataDefinitions.filter(d => d.mandatory).length} required)
+                            ({files[0]?.filingCategory?.metadataDefinitions.filter(d => d.mandatory).length} required)
                           </span>
                         </h4>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {currentFile.filingCategory.metadataDefinitions.map(definition =>
+                          {files[0]?.filingCategory?.metadataDefinitions.map(definition =>
                             renderMetadataField(definition)
                           )}
                         </div>
                       </div>
+                    )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -907,7 +1061,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
         {/* Footer */}
         <div className="flex justify-between items-center p-6 border-t border-ui bg-neutral-background">
           <div className="text-sm text-neutral-text-light">
-            {currentFile ? '1 file selected' : 'No file selected'}
+            {files.length > 0 ? `${files.length} file${files.length !== 1 ? 's' : ''} selected` : 'No files selected'}
           </div>
           <div className="flex gap-3">
             <button
@@ -919,7 +1073,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
             </button>
             <button
               onClick={handleUpload} 
-              disabled={!currentFile || uploading}
+              disabled={files.length === 0 || uploading}
               className="flex items-center gap-2 bg-primary text-surface px-4 py-2 rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {uploading ? (
@@ -930,7 +1084,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
               ) : (
                 <>
                   <Upload className="h-4 w-4" />
-                  Upload File
+                  Upload {files.length > 1 ? 'Files' : 'File'}
                 </>
               )}
             </button>

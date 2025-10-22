@@ -1303,3 +1303,191 @@ export interface CacheStatistics {
   lastAccess: string;
   memoryUsage: number;
 }
+
+// ==================== ENHANCED CLASS A DOCUMENT TYPES ====================
+
+export interface ClassAUploadRequestDto {
+  folderId: number;
+  createdBy: string;
+  title: string;
+  fileName?: string;
+  tagsJson?: string;
+  categoryId: number;
+}
+
+export interface ClassAResponseDto {
+  id: number;
+  name: string;
+  title: string;
+  description?: string;
+  folderId: number;
+  createdBy: UserDto;
+  ownedBy: UserDto;
+  createdAt: string;
+  updatedAt: string;
+  isPublic: boolean;
+  categoryId: number;
+  categoryName: string;
+  activeVersionId: number;
+  minioKey: string;
+  sizeBytes: number;
+  mimeType: string;
+  fileExtension?: string;
+  folderPath?: string;
+}
+
+export interface ClassADetailResponseDto {
+  id: number;
+  name: string;
+  title: string;
+  description?: string;
+  folderId: number;
+  createdBy: UserDto;
+  ownedBy: UserDto;
+  createdAt: string;
+  updatedAt: string;
+  isPublic: boolean;
+  categoryId: number;
+  categoryName: string;
+  categoryDescription?: string;
+  activeVersionId: number;
+  minioKey: string;
+  sizeBytes: number;
+  mimeType: string;
+  fileExtension?: string;
+  folderPath?: string;
+  metadataDefinitions: MetadataInfoDto[];
+  userPermissions?: {
+    canEdit: boolean;
+    canDelete: boolean;
+    canView: boolean;
+  };
+}
+
+export interface ClassASearchRequestDto {
+  // Search query
+  query?: string;
+  
+  // User filtering
+  userId?: string;
+  
+  // Category filtering
+  categoryId?: number;
+  
+  // Document name search
+  name?: string;
+  
+  // Date filtering
+  dateFrom?: string;
+  dateTo?: string;
+  exactDate?: string;
+  
+  // Pagination
+  page?: number;
+  size?: number;
+  sortBy?: string;
+  sortDirection?: 'asc' | 'desc';
+}
+
+export interface ClassAStatisticsResponseDto {
+  // Total counts
+  totalDocuments: number;
+  totalSizeBytes: number;
+  
+  // Category breakdown
+  categoryStats: Array<{
+    categoryId: number;
+    categoryName: string;
+    documentCount: number;
+    totalSizeBytes: number;
+  }>;
+  
+  // File type statistics
+  fileTypeStats: Array<{
+    mimeType: string;
+    fileExtension: string;
+    documentCount: number;
+    totalSizeBytes: number;
+  }>;
+  
+  // Size distribution
+  sizeDistribution: {
+    small: number;    // < 1MB
+    medium: number;   // 1MB - 10MB
+    large: number;    // 10MB - 100MB
+    xlarge: number;   // > 100MB
+  };
+  
+  // Recent activity
+  recentActivity: {
+    today: number;
+    thisWeek: number;
+    thisMonth: number;
+  };
+  
+  // User statistics
+  userStats: Array<{
+    userId: string;
+    userName: string;
+    documentCount: number;
+    totalSizeBytes: number;
+  }>;
+  
+  // Top users
+  topUsers: Array<{
+    userId: string;
+    userName: string;
+    documentCount: number;
+  }>;
+}
+
+// ==================== BULK UPLOAD TYPES ====================
+
+export interface BulkUploadRequestDto {
+  folderId: number;
+  createdBy: string;
+  title: string;
+  fileName?: string;
+  tagsJson?: string;
+  categoryId: number;
+  files: File[];
+  lang: ExtractorLanguage;
+  filingCategories: FilingCategoryDocDto[];
+}
+
+export interface BulkUploadResponseDto {
+  firstDocument: DocumentResponseDto;
+  classADocuments: ClassAResponseDto[];
+  totalFiles: number;
+  processedFiles: number;
+}
+
+// ==================== DOCUMENT SEARCH TYPES ====================
+
+export interface DocumentSearchResultDto {
+  id: number;
+  title: string;
+  name: string;
+  description?: string;
+  type: string;
+  ownerName: string;
+  mimeType: string;
+  sizeBytes: number;
+  path: string;
+}
+
+export interface DocumentSearchResponseDto {
+  documents: DocumentSearchResultDto[];
+  totalElements: number;
+  totalPages: number;
+  currentPage: number;
+  size: number;
+  hasNext: boolean;
+  hasPrevious: boolean;
+}
+
+// ==================== DOCUMENT UPDATE TYPES ====================
+
+export interface UpdateDocumentDescriptionRequestDto {
+  description: string;
+}

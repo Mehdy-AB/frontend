@@ -264,6 +264,18 @@ class NotificationApiClient {
     )
   }
 
+  async uploadMultipleDocuments(files: File[], folderId: number, title: string, lang: any, categoryId?: number, fileName?: string, tags?: number[], filingCategoryDto?: FilingCategoryDocDto | null, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => apiClient.uploadMultipleDocuments(files, folderId, title, lang, categoryId, fileName, tags, filingCategoryDto),
+      { 
+        successMessage: `${files.length} files uploaded successfully`, 
+        errorMessage: `Failed to upload ${files.length} files`, 
+        ...options 
+      },
+      'upload'
+    )
+  }
+
   async renameDocument(id: number, name: string, options?: ApiNotificationOptions) {
     return this.withNotification(
       () => apiClient.renameDocument(id, name),

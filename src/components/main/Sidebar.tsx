@@ -13,9 +13,10 @@ import {
   Clock,
   ChevronDown,
   ChevronRight,
-  Plus,
   Share2,
-  User
+  User,
+  FileCheck,
+  Archive
 } from 'lucide-react';
 import { useState } from 'react';
 import Link from 'next/link';
@@ -31,7 +32,6 @@ interface SidebarItem {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   href: string;
-  count?: number;
   children?: SidebarItem[];
 }
 
@@ -56,28 +56,30 @@ export default function Sidebar() {
       label: 'My Repository',
       icon: Folder,
       href: '/folders',
-      count: 12,
+    },
+    {
+      id: 'classa',
+      label: 'Unclassified Documents',
+      icon: Archive,
+      href: '/classa',
     },
     {
       id: 'shared',
       label: 'Shared with Me',
       icon: Share2,
       href: '/shared',
-      count: 8,
     },
     {
       id: 'favorites',
       label: t('common.favorites'),
       icon: Star,
       href: '/favorites',
-      count: 8,
     },
     {
       id: 'trash',
       label: t('common.trash'),
       icon: Trash2,
       href: '/trash',
-      count: 4,
     },
   ];
 
@@ -118,11 +120,6 @@ export default function Sidebar() {
             </div>
             
             <div className="flex items-center gap-1">
-              {item.count !== undefined && (
-                <Badge variant={active ? 'default' : 'secondary'} className="text-xs h-5 min-w-[20px] px-1.5">
-                  {item.count}
-                </Badge>
-              )}
               {hasChildren && (
                 <Button
                   variant="ghost"
@@ -174,32 +171,13 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* New Document Button */}
-      <div className="p-4 border-b">
-        <Button className="w-full justify-start gap-2">
-          <Plus className="h-4 w-4" />
-          New Document
-        </Button>
-      </div>
 
       {/* Navigation Items */}
       <nav className="flex-1 p-3 space-y-1 overflow-y-auto scrollbar-thin">
         {sidebarItems.map(item => renderSidebarItem(item))}
       </nav>
 
-      {/* Storage Info */}
-      <div className="p-4 border-t">
-        <div className="space-y-2">
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>Storage</span>
-            <span>65% used</span>
-          </div>
-          <div className="w-full bg-muted rounded-full h-1.5">
-            <div className="bg-primary rounded-full h-1.5" style={{ width: '65%' }}></div>
-          </div>
-          <p className="text-xs text-muted-foreground">12.4 GB of 19 GB used</p>
-        </div>
-      </div>
+
     </aside>
   );
 }

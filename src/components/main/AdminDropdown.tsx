@@ -64,37 +64,37 @@ const SECTIONS: Section[] = [
     items: [
       {
         label: 'DMS Settings',
-        href: '/administration/system/dms-settings',
+        href: '/admin/system/dms-settings',
         description: 'Configure DMS defaults and global system preferences.',
         Icon: Settings,
       },
       {
         label: 'Customization',
-        href: '/administration/system/customization',
+        href: '/admin/system/customization',
         description: 'Theme, branding and UI customization options.',
         Icon: Palette,
       },
       {
         label: 'Email Customisation',
-        href: '/administration/system/email',
+        href: '/admin/system/email',
         description: 'Templates, SMTP settings and email behavior.',
         Icon: Mail,
       },
       {
         label: 'License',
-        href: '/administration/system/license',
+        href: '/admin/system/license',
         description: 'View and manage your application license.',
         Icon: Key,
       },
       {
         label: 'Emails',
-        href: '/administration/system/emails',
+        href: '/admin/system/emails',
         description: 'General email settings for notifications and templates.',
         Icon: AtSign,
       },
       {
         label: 'Transactions',
-        href: '/administration/system/transactions',
+        href: '/admin/system/transactions',
         description: 'Review system transactions and their metrics.',
         Icon: BarChart3,
       },
