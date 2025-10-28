@@ -1,190 +1,162 @@
-import { apiClient } from '../client'
-import { notificationApiClient } from '../notificationClient'
-import { Favorite, FolderFavorite, FavoriteCheckResponse, FavoriteCountResponse, PageResponse } from '../../types/api'
+import { apiClient } from '../client';
+import {
+  Favorite,
+  FavoriteCheckResponse,
+  FavoriteCountResponse,
+  PageResponse,
+} from '../../types/api';
 
 export class FavoriteService {
-  // ==================== FAVORITE ENDPOINTS ====================
+  private baseUrl = '/api/v1/favorites';
 
-  /**
-   * Add document to favorites
-   */
-  async addToFavorites(documentId: number): Promise<Favorite> {
-    return notificationApiClient.addToFavorites(documentId)
+  // Get user's favorites with pagination
+  async getFavorites(
+    page: number = 0,
+    size: number = 20,
+    sortBy: string = 'createdAt',
+    sortDirection: 'asc' | 'desc' = 'desc'
+  ): Promise<PageResponse<Favorite>> {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      size: size.toString(),
+      sortBy,
+      sortDirection,
+    });
+
+    return apiClient.get<PageResponse<Favorite>>(`${this.baseUrl}?${params}`);
   }
 
-  /**
-   * Remove document from favorites
-   */
-  async removeFromFavorites(documentId: number): Promise<void> {
-    return notificationApiClient.removeFromFavorites(documentId)
+  // Get favorite by ID
+  async getFavoriteById(favoriteId: number): Promise<Favorite> {
+    return apiClient.get<Favorite>(`${this.baseUrl}/${favoriteId}`);
   }
 
-  /**
-   * Check if document is favorite
-   */
-  async isFavorite(documentId: number): Promise<FavoriteCheckResponse> {
-    return notificationApiClient.isFavorite(documentId)
+  // Add document to favorites
+  async addDocumentToFavorites(documentId: number): Promise<Favorite> {
+    return apiClient.post<Favorite>(`${this.baseUrl}/documents/${documentId}`);
   }
 
-  /**
-   * Get current user's favorites
-   */
-  async getMyFavorites(params: {
-    page?: number;
-    size?: number;
-    sortBy?: string;
-    sortDir?: string;
-  } = {}): Promise<PageResponse<Favorite>> {
-    return notificationApiClient.getMyFavorites(params)
+  // Add folder to favorites
+  async addFolderToFavorites(folderId: number): Promise<Favorite> {
+    return apiClient.post<Favorite>(`${this.baseUrl}/folders/${folderId}`);
   }
 
-  /**
-   * Get favorites by user
-   */
-  async getFavoritesByUser(userId: string, params: {
-    page?: number;
-    size?: number;
-    sortBy?: string;
-    sortDir?: string;
-  } = {}): Promise<PageResponse<Favorite>> {
-    return notificationApiClient.getFavoritesByUser(userId, params)
+  // Remove document from favorites
+  async removeDocumentFromFavorites(documentId: number): Promise<void> {
+    return apiClient.delete<void>(`${this.baseUrl}/documents/${documentId}`);
   }
 
-  /**
-   * Get favorites for document
-   */
-  async getFavoritesByDocument(documentId: number, params: {
-    page?: number;
-    size?: number;
-    sortBy?: string;
-    sortDir?: string;
-  } = {}): Promise<PageResponse<Favorite>> {
-    return notificationApiClient.getFavoritesByDocument(documentId, params)
-  }
-
-  /**
-   * Get current user's favorite count
-   */
-  async getMyFavoritesCount(): Promise<FavoriteCountResponse> {
-    return notificationApiClient.getMyFavoritesCount()
-  }
-
-  /**
-   * Get user's favorite count
-   */
-  async getUserFavoritesCount(userId: string): Promise<FavoriteCountResponse> {
-    return notificationApiClient.getUserFavoritesCount(userId)
-  }
-
-  /**
-   * Get document's favorite count
-   */
-  async getDocumentFavoritesCount(documentId: number): Promise<FavoriteCountResponse> {
-    return notificationApiClient.getDocumentFavoritesCount(documentId)
-  }
-
-  /**
-   * Get all favorites (admin)
-   */
-  async getAllFavorites(params: {
-    page?: number;
-    size?: number;
-    sortBy?: string;
-    sortDir?: string;
-  } = {}): Promise<PageResponse<Favorite>> {
-    return notificationApiClient.getAllFavorites(params)
-  }
-
-  // ==================== FOLDER FAVORITE ENDPOINTS ====================
-
-  /**
-   * Add folder to favorites
-   */
-  async addFolderToFavorites(folderId: number): Promise<FolderFavorite> {
-    return notificationApiClient.addFolderToFavorites(folderId)
-  }
-
-  /**
-   * Remove folder from favorites
-   */
+  // Remove folder from favorites
   async removeFolderFromFavorites(folderId: number): Promise<void> {
-    return notificationApiClient.removeFolderFromFavorites(folderId)
+    return apiClient.delete<void>(`${this.baseUrl}/folders/${folderId}`);
   }
 
-  /**
-   * Check if folder is favorite
-   */
-  async isFolderFavorite(folderId: number): Promise<FavoriteCheckResponse> {
-    return notificationApiClient.isFolderFavorite(folderId)
+  // Remove favorite by ID
+  async removeFavorite(favoriteId: number): Promise<void> {
+    return apiClient.delete<void>(`${this.baseUrl}/${favoriteId}`);
   }
 
-  /**
-   * Get current user's folder favorites
-   */
-  async getMyFolderFavorites(params: {
-    page?: number;
-    size?: number;
-    sortBy?: string;
-    sortDir?: string;
-  } = {}): Promise<PageResponse<FolderFavorite>> {
-    return notificationApiClient.getMyFolderFavorites(params)
+  // Check if document is favorite
+  async checkDocumentFavorite(documentId: number): Promise<FavoriteCheckResponse> {
+    return apiClient.get<FavoriteCheckResponse>(`${this.baseUrl}/documents/${documentId}/check`);
   }
 
-  /**
-   * Get folder favorites by folder
-   */
-  async getFolderFavoritesByFolder(folderId: number, params: {
-    page?: number;
-    size?: number;
-    sortBy?: string;
-    sortDir?: string;
-  } = {}): Promise<PageResponse<FolderFavorite>> {
-    return notificationApiClient.getFolderFavoritesByFolder(folderId, params)
+  // Check if folder is favorite
+  async checkFolderFavorite(folderId: number): Promise<FavoriteCheckResponse> {
+    return apiClient.get<FavoriteCheckResponse>(`${this.baseUrl}/folders/${folderId}/check`);
   }
 
-  /**
-   * Get current user's folder favorite count
-   */
-  async getMyFolderFavoritesCount(): Promise<FavoriteCountResponse> {
-    return notificationApiClient.getMyFolderFavoritesCount()
+  // Get favorite count
+  async getFavoriteCount(): Promise<FavoriteCountResponse> {
+    return apiClient.get<FavoriteCountResponse>(`${this.baseUrl}/count`);
   }
 
-  // ==================== COMBINED FAVORITES (getMyRepo) ====================
+  // Get document favorites
+  async getDocumentFavorites(
+    page: number = 0,
+    size: number = 20
+  ): Promise<PageResponse<Favorite>> {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      size: size.toString(),
+    });
 
-  /**
-   * Get all favorites (documents and folders) for current user
-   */
-  async getMyRepo(params: {
-    page?: number;
-    size?: number;
-    sortBy?: string;
-    sortDir?: string;
-  } = {}): Promise<PageResponse<any>> {
-    return notificationApiClient.getMyRepo(params)
+    return apiClient.get<PageResponse<Favorite>>(`${this.baseUrl}/documents?${params}`);
   }
 
-  /**
-   * Get count of all favorites for current user
-   */
-  async getMyRepoCount(): Promise<FavoriteCountResponse> {
-    return notificationApiClient.getMyRepoCount()
+  // Get folder favorites
+  async getFolderFavorites(
+    page: number = 0,
+    size: number = 20
+  ): Promise<PageResponse<Favorite>> {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      size: size.toString(),
+    });
+
+    return apiClient.get<PageResponse<Favorite>>(`${this.baseUrl}/folders?${params}`);
   }
 
-  /**
-   * Check favorite status for multiple documents and folders
-   */
-  async checkFavoriteStatus(request: {
-    documentIds?: number[];
-    folderIds?: number[];
-  }): Promise<{
-    documents?: Record<number, boolean>;
-    folders?: Record<number, boolean>;
+  // Search favorites
+  async searchFavorites(
+    query: string,
+    page: number = 0,
+    size: number = 20
+  ): Promise<PageResponse<Favorite>> {
+    const params = new URLSearchParams({
+      query,
+      page: page.toString(),
+      size: size.toString(),
+    });
+
+    return apiClient.get<PageResponse<Favorite>>(`${this.baseUrl}/search?${params}`);
+  }
+
+  // Get recent favorites
+  async getRecentFavorites(limit: number = 10): Promise<Favorite[]> {
+    return apiClient.get<Favorite[]>(`${this.baseUrl}/recent`, {
+      params: { limit },
+    });
+  }
+
+  // Get favorite statistics
+  async getFavoriteStatistics(): Promise<{
+    totalFavorites: number;
+    documentFavorites: number;
+    folderFavorites: number;
+    favoritesByUser: Record<string, number>;
   }> {
-    return notificationApiClient.checkFavoriteStatus(request)
+    return apiClient.get(`${this.baseUrl}/statistics`);
+  }
+
+  // Bulk operations
+  async bulkRemoveFavorites(favoriteIds: number[]): Promise<void> {
+    return apiClient.delete<void>(`${this.baseUrl}/bulk`, {
+      data: { favoriteIds },
+    });
+  }
+
+  // Clear all favorites
+  async clearAllFavorites(): Promise<void> {
+    return apiClient.delete<void>(`${this.baseUrl}/clear`);
+  }
+
+  // Export favorites
+  async exportFavorites(): Promise<Blob> {
+    return apiClient.downloadFile(`${this.baseUrl}/export`);
+  }
+
+  // Import favorites
+  async importFavorites(file: File): Promise<{
+    imported: number;
+    failed: number;
+    errors: string[];
+  }> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return apiClient.uploadFile(`${this.baseUrl}/import`, formData);
   }
 }
 
-// Create and export a singleton instance
-export const favoriteService = new FavoriteService()
-export default favoriteService
-
+export const favoriteService = new FavoriteService();

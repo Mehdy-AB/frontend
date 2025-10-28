@@ -34,7 +34,8 @@ import { apiClient } from '@/api/client';
 import { ClassAResponseDto, PageResponse, ClassASearchRequestDto } from '@/types/api';
 import { useLanguage } from '@/contexts/LanguageContext';
 import ClassAValidationModal from '@/components/modals/ClassAValidationModal';
-import ClassAFilterModal, { ClassAFilters } from '@/components/modals/ClassAFilterModal';
+import ClassAFilterPanel, { ClassAFilters } from '@/components/modals/ClassAFilterPanel';
+import ConfirmationModal from '@/components/modals/ConfirmationModal';
 
 export default function ClassAPage() {
   const { t } = useLanguage();
@@ -47,8 +48,13 @@ export default function ClassAPage() {
   const [totalElements, setTotalElements] = useState(0);
   const [selectedDocument, setSelectedDocument] = useState<ClassAResponseDto | null>(null);
   const [showValidationModal, setShowValidationModal] = useState(false);
-  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [filters, setFilters] = useState<ClassAFilters>({});
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [documentToDelete, setDocumentToDelete] = useState<ClassAResponseDto | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [bulkValidating, setBulkValidating] = useState(false);
+  const [validationQueue, setValidationQueue] = useState<ClassAResponseDto[]>([]);
 
   const pageSize = 20;
 
@@ -95,20 +101,53 @@ export default function ClassAPage() {
     setShowValidationModal(true);
   };
 
+
+  const handleDeleteDocument = (document: ClassAResponseDto) => {
+    setDocumentToDelete(document);
+    setShowDeleteConfirmation(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!documentToDelete) return;
+    
+    try {
+      setDeleting(true);
+      await apiClient.deleteClassADocument(documentToDelete.id);
+      fetchDocuments(); // Refresh the list
+      setShowDeleteConfirmation(false);
+      setDocumentToDelete(null);
+    } catch (error) {
+      console.error('Error deleting document:', error);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleBulkValidate = () => {
+    if (documents.length === 0) return;
+    
+    setValidationQueue([...documents]);
+    setBulkValidating(true);
+    setSelectedDocument(documents[0]);
+    setShowValidationModal(true);
+  };
+
   const handleDocumentValidated = () => {
     setShowValidationModal(false);
     setSelectedDocument(null);
-    fetchDocuments(); // Refresh the list
-  };
-
-  const handleDeleteDocument = async (documentId: number) => {
-    if (confirm('Are you sure you want to delete this document?')) {
-      try {
-        await apiClient.deleteClassADocument(documentId);
-        fetchDocuments(); // Refresh the list
-      } catch (error) {
-        console.error('Error deleting document:', error);
-      }
+    
+    // Remove the validated document from queue
+    const remainingQueue = validationQueue.slice(1);
+    setValidationQueue(remainingQueue);
+    
+    if (remainingQueue.length > 0) {
+      // Continue with next document
+      setSelectedDocument(remainingQueue[0]);
+      setShowValidationModal(true);
+    } else {
+      // All documents validated
+      setBulkValidating(false);
+      fetchDocuments(); // Refresh the list
     }
   };
 
@@ -147,14 +186,42 @@ export default function ClassAPage() {
     return '📄';
   };
 
+  const renderUserInfo = (user: any) => {
+    if (!user) return 'Unknown';
+    if (typeof user === 'string') return user;
+    if (typeof user === 'object') {
+      return user.username || user.firstName || user.lastName || 'Unknown';
+    }
+    return String(user);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-semibold">Unclassified Documents</h1>
-        <p className="text-muted-foreground">
-          Process documents that need metadata validation before moving to the main repository
-        </p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-semibold">Unclassified Documents</h1>
+          <p className="text-muted-foreground">
+            Process documents that need metadata validation before moving to the main repository
+          </p>
+        </div>
+        <Button 
+          onClick={handleBulkValidate}
+          disabled={documents.length === 0 || bulkValidating}
+          className="flex items-center gap-2"
+        >
+          {bulkValidating ? (
+            <>
+              <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+              Validating... ({validationQueue.length} remaining)
+            </>
+          ) : (
+            <>
+              <CheckCircle className="h-4 w-4" />
+              Start Validate
+            </>
+          )}
+        </Button>
       </div>
 
 
@@ -178,7 +245,7 @@ export default function ClassAPage() {
               <Button 
                 variant="outline" 
                 size="sm"
-                onClick={() => setShowFilterModal(true)}
+                onClick={() => setShowFilterPanel(true)}
               >
                 <Filter className="h-4 w-4 mr-2" />
                 Filter
@@ -252,7 +319,7 @@ export default function ClassAPage() {
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <User className="h-4 w-4 text-muted-foreground" />
-                          {doc.createdBy?.username || doc.createdBy?.firstName || 'Unknown'}
+                          {renderUserInfo(doc.createdBy)}
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
@@ -267,12 +334,8 @@ export default function ClassAPage() {
                               <CheckCircle className="h-4 w-4 mr-2" />
                               Validate & Move
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
-                              <Eye className="h-4 w-4 mr-2" />
-                              View Details
-                            </DropdownMenuItem>
                             <DropdownMenuItem 
-                              onClick={() => handleDeleteDocument(doc.id)}
+                              onClick={() => handleDeleteDocument(doc)}
                               className="text-destructive"
                             >
                               <Trash2 className="h-4 w-4 mr-2" />
@@ -324,18 +387,41 @@ export default function ClassAPage() {
       {selectedDocument && (
         <ClassAValidationModal
           isOpen={showValidationModal}
-          onClose={() => setShowValidationModal(false)}
+          onClose={() => {
+            setShowValidationModal(false);
+            setSelectedDocument(null);
+            if (bulkValidating) {
+              setBulkValidating(false);
+              setValidationQueue([]);
+            }
+          }}
           document={selectedDocument}
           onSuccess={handleDocumentValidated}
         />
       )}
 
-      {/* Filter Modal */}
-      <ClassAFilterModal
-        isOpen={showFilterModal}
-        onClose={() => setShowFilterModal(false)}
+      {/* Filter Panel */}
+      <ClassAFilterPanel
+        isOpen={showFilterPanel}
+        onClose={() => setShowFilterPanel(false)}
         onApplyFilters={handleApplyFilters}
         currentFilters={filters}
+      />
+      
+      {/* Delete Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showDeleteConfirmation}
+        onClose={() => {
+          setShowDeleteConfirmation(false);
+          setDocumentToDelete(null);
+        }}
+        onConfirm={confirmDelete}
+        title="Delete Document"
+        message={`Are you sure you want to delete "${documentToDelete?.title}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="destructive"
+        loading={deleting}
       />
     </div>
   );

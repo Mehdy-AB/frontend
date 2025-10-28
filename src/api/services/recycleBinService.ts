@@ -1,5 +1,4 @@
-import { apiClient } from '../client'
-import { notificationApiClient } from '../notificationClient'
+import { apiClient } from '../client';
 import { 
   RecycleBinEntry, 
   RecycleBinMoveReq, 
@@ -7,146 +6,161 @@ import {
   RecycleBinPermanentDeleteReq, 
   RecycleBinCheckResponse, 
   RecycleBinCountResponse, 
-  PageResponse 
-} from '../../types/api'
+  PageResponse,
+} from '../../types/api';
 
 export class RecycleBinService {
-  // ==================== RECYCLE BIN ENDPOINTS ====================
+  private baseUrl = '/api/v1/recycle-bin';
 
-  /**
-   * Move entity to recycle bin
-   */
-  async moveToRecycleBin(data: RecycleBinMoveReq): Promise<RecycleBinEntry> {
-    return notificationApiClient.moveToRecycleBin(data)
+  // Get recycle bin entries with pagination
+  async getRecycleBinEntries(
+    page: number = 0,
+    size: number = 20,
+    sortBy: string = 'deletedAt',
+    sortDirection: 'asc' | 'desc' = 'desc'
+  ): Promise<PageResponse<RecycleBinEntry>> {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      size: size.toString(),
+      sortBy,
+      sortDirection,
+    });
+
+    return apiClient.get<PageResponse<RecycleBinEntry>>(`${this.baseUrl}?${params}`);
   }
 
-  /**
-   * Restore entity from recycle bin
-   */
-  async restoreFromRecycleBin(data: RecycleBinRestoreReq): Promise<void> {
-    return notificationApiClient.restoreFromRecycleBin(data)
+  // Get recycle bin entry by ID
+  async getRecycleBinEntryById(entryId: number): Promise<RecycleBinEntry> {
+    return apiClient.get<RecycleBinEntry>(`${this.baseUrl}/${entryId}`);
   }
 
-  /**
-   * Permanently delete entity
-   */
-  async permanentlyDelete(data: RecycleBinPermanentDeleteReq): Promise<void> {
-    return notificationApiClient.permanentlyDelete(data)
+  // Move entity to recycle bin
+  async moveToRecycleBin(moveData: RecycleBinMoveReq): Promise<RecycleBinEntry> {
+    return apiClient.post<RecycleBinEntry>(this.baseUrl, moveData);
   }
 
-  /**
-   * Empty entire recycle bin
-   */
-  async emptyRecycleBin(): Promise<void> {
-    return notificationApiClient.emptyRecycleBin()
+  // Restore entity from recycle bin
+  async restoreFromRecycleBin(restoreData: RecycleBinRestoreReq): Promise<void> {
+    return apiClient.post<void>(`${this.baseUrl}/restore`, restoreData);
   }
 
-  /**
-   * Empty current user's recycle bin
-   */
-  async emptyMyRecycleBin(): Promise<void> {
-    return notificationApiClient.emptyMyRecycleBin()
+  // Permanently delete entity from recycle bin
+  async permanentDeleteFromRecycleBin(deleteData: RecycleBinPermanentDeleteReq): Promise<void> {
+    return apiClient.delete<void>(`${this.baseUrl}/permanent-delete`, {
+      data: deleteData,
+    });
   }
 
-  /**
-   * Get all recycle bin entries
-   */
-  async getAllRecycleBinEntries(params: {
-    page?: number;
-    size?: number;
-    sortBy?: string;
-    sortDir?: string;
-  } = {}): Promise<PageResponse<RecycleBinEntry>> {
-    return notificationApiClient.getAllRecycleBinEntries(params)
+  // Check if entity is in recycle bin
+  async checkEntityInRecycleBin(entityType: string, entityId: number): Promise<RecycleBinCheckResponse> {
+    return apiClient.get<RecycleBinCheckResponse>(`${this.baseUrl}/check/${entityType}/${entityId}`);
   }
 
-  /**
-   * Get entries by entity type
-   */
-  async getRecycleBinEntriesByEntityType(entityType: string, params: {
-    page?: number;
-    size?: number;
-    sortBy?: string;
-    sortDir?: string;
-  } = {}): Promise<PageResponse<RecycleBinEntry>> {
-    return notificationApiClient.getRecycleBinEntriesByEntityType(entityType, params)
-  }
-
-  /**
-   * Get current user's entries
-   */
-  async getMyRecycleBinEntries(params: {
-    page?: number;
-    size?: number;
-    sortBy?: string;
-    sortDir?: string;
-  } = {}): Promise<PageResponse<RecycleBinEntry>> {
-    return notificationApiClient.getMyRecycleBinEntries(params)
-  }
-
-  /**
-   * Get entries by user
-   */
-  async getRecycleBinEntriesByUser(userId: string, params: {
-    page?: number;
-    size?: number;
-    sortBy?: string;
-    sortDir?: string;
-  } = {}): Promise<PageResponse<RecycleBinEntry>> {
-    return notificationApiClient.getRecycleBinEntriesByUser(userId, params)
-  }
-
-  /**
-   * Check if entity is in recycle bin
-   */
-  async isInRecycleBin(entityType: string, entityId: number): Promise<RecycleBinCheckResponse> {
-    return notificationApiClient.isInRecycleBin(entityType, entityId)
-  }
-
-  /**
-   * Get total recycle bin count
-   */
+  // Get recycle bin count
   async getRecycleBinCount(): Promise<RecycleBinCountResponse> {
-    return notificationApiClient.getRecycleBinCount()
+    return apiClient.get<RecycleBinCountResponse>(`${this.baseUrl}/count`);
   }
 
-  /**
-   * Get count by entity type
-   */
-  async getRecycleBinCountByEntityType(entityType: string): Promise<RecycleBinCountResponse> {
-    return notificationApiClient.getRecycleBinCountByEntityType(entityType)
+  // Get entries by entity type
+  async getEntriesByEntityType(
+    entityType: string,
+    page: number = 0,
+    size: number = 20
+  ): Promise<PageResponse<RecycleBinEntry>> {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      size: size.toString(),
+    });
+
+    return apiClient.get<PageResponse<RecycleBinEntry>>(`${this.baseUrl}/type/${entityType}?${params}`);
   }
 
-  /**
-   * Get current user's entry count
-   */
-  async getMyRecycleBinCount(): Promise<RecycleBinCountResponse> {
-    return notificationApiClient.getMyRecycleBinCount()
+  // Get entries by user
+  async getEntriesByUser(
+    userId: string,
+    page: number = 0,
+    size: number = 20
+  ): Promise<PageResponse<RecycleBinEntry>> {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      size: size.toString(),
+    });
+
+    return apiClient.get<PageResponse<RecycleBinEntry>>(`${this.baseUrl}/user/${userId}?${params}`);
   }
 
-  /**
-   * Get user's entry count
-   */
-  async getUserRecycleBinCount(userId: string): Promise<RecycleBinCountResponse> {
-    return notificationApiClient.getUserRecycleBinCount(userId)
+  // Search recycle bin entries
+  async searchRecycleBinEntries(
+    query: string,
+    page: number = 0,
+    size: number = 20
+  ): Promise<PageResponse<RecycleBinEntry>> {
+    const params = new URLSearchParams({
+      query,
+      page: page.toString(),
+      size: size.toString(),
+    });
+
+    return apiClient.get<PageResponse<RecycleBinEntry>>(`${this.baseUrl}/search?${params}`);
   }
 
-  /**
-   * Cleanup old entries
-   */
-  async cleanupOldRecycleBinEntries(cutoffDate: string): Promise<void> {
-    return notificationApiClient.cleanupOldRecycleBinEntries(cutoffDate)
+  // Get expired entries
+  async getExpiredEntries(): Promise<RecycleBinEntry[]> {
+    return apiClient.get<RecycleBinEntry[]>(`${this.baseUrl}/expired`);
   }
 
-  /**
-   * Get specific recycle bin entry
-   */
-  async getRecycleBinEntry(id: number): Promise<RecycleBinEntry> {
-    return notificationApiClient.getRecycleBinEntry(id)
+  // Clean up expired entries
+  async cleanupExpiredEntries(): Promise<{
+    cleaned: number;
+    errors: string[];
+  }> {
+    return apiClient.post(`${this.baseUrl}/cleanup`);
+  }
+
+  // Get recycle bin statistics
+  async getRecycleBinStatistics(): Promise<{
+    totalEntries: number;
+    entriesByType: Record<string, number>;
+    entriesByUser: Record<string, number>;
+    expiredEntries: number;
+    totalSize: number;
+  }> {
+    return apiClient.get(`${this.baseUrl}/statistics`);
+  }
+
+  // Bulk operations
+  async bulkRestoreEntries(entryIds: number[]): Promise<void> {
+    return apiClient.post<void>(`${this.baseUrl}/bulk/restore`, { entryIds });
+  }
+
+  async bulkPermanentDeleteEntries(entryIds: number[]): Promise<void> {
+    return apiClient.delete<void>(`${this.baseUrl}/bulk/permanent-delete`, {
+      data: { entryIds },
+    });
+  }
+
+  // Clear entire recycle bin
+  async clearRecycleBin(): Promise<{
+    cleared: number;
+    errors: string[];
+  }> {
+    return apiClient.delete(`${this.baseUrl}/clear`);
+  }
+
+  // Set retention period
+  async setRetentionPeriod(days: number): Promise<void> {
+    return apiClient.patch<void>(`${this.baseUrl}/retention`, { days });
+  }
+
+  // Get retention period
+  async getRetentionPeriod(): Promise<{ days: number }> {
+    return apiClient.get<{ days: number }>(`${this.baseUrl}/retention`);
+  }
+
+  // Export recycle bin entries
+  async exportRecycleBinEntries(): Promise<Blob> {
+    return apiClient.downloadFile(`${this.baseUrl}/export`);
   }
 }
 
-// Create and export a singleton instance
-export const recycleBinService = new RecycleBinService()
-export default recycleBinService
-
+export const recycleBinService = new RecycleBinService();

@@ -17,7 +17,7 @@ import {
   DocumentModals,
   DocumentViewSkeleton
 } from '../../../components/document';
-import DeleteConfirmationModal from '../../../components/modals/DeleteConfirmationModal';
+import ConfirmationModal from '../../../components/modals/ConfirmationModal';
 import FolderActionModal from '../../../components/modals/FolderActionModal';
 
 export default function DocumentViewPage() {
@@ -525,13 +525,18 @@ export default function DocumentViewPage() {
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
-        <DeleteConfirmationModal
+        <ConfirmationModal
           isOpen={showDeleteConfirm}
           onClose={() => setShowDeleteConfirm(false)}
           onConfirm={handleDeleteDocument}
+          title="Delete Document"
+          message="This action cannot be undone"
+          confirmText="Delete"
+          cancelText="Cancel"
+          variant="destructive"
+          loading={isUpdatingDocument}
           itemName={document?.name || 'document'}
           itemType="document"
-          isLoading={isUpdatingDocument}
         />
       )}
 

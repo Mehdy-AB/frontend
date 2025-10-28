@@ -50,7 +50,6 @@ const nextConfig = {
       // Add any redirects here
     ];
   },
-  
   // Headers
   async headers() {
     return [

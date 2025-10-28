@@ -73,7 +73,7 @@
     "signOut": "تسجيل الخروج",
     "signInTitle": "تسجيل الدخول إلى AebDMS",
     "signInSubtitle": "نظام إدارة المستندات",
-    "signInWithKeycloak": "تسجيل الدخول باستخدام Keycloak",
+    "signIn": "تسجيل الدخول",
     "signingIn": "جاري تسجيل الدخول...",
     "signingOut": "جاري تسجيل الخروج...",
     "authError": "خطأ في المصادقة",
@@ -82,7 +82,7 @@
     "tryAgain": "حاول مرة أخرى",
     "goToHome": "الذهاب إلى الرئيسية",
     "contactAdmin": "إذا استمررت في مواجهة مشاكل، يرجى الاتصال بالمسؤول.",
-    "redirectingToKeycloak": "سيتم توجيهك إلى Keycloak للمصادقة",
+    "redirectingToAuth": "سيتم توجيهك للمصادقة الآمنة",
     "checkingAuth": "جاري التحقق من المصادقة...",
     "redirectingToSignIn": "جاري التوجيه إلى تسجيل الدخول...",
     "loadingSession": "جاري تحميل الجلسة..."

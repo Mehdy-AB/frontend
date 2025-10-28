@@ -32,7 +32,7 @@ The `middleware.ts` file uses NextAuth's `withAuth` middleware to protect all ro
 
 #### Sign-in Page (`/auth/signin`)
 - Custom UI for authentication
-- Handles sign-in with Keycloak
+- Handles sign-in with credentials
 - Shows loading states and error messages
 - Redirects to home page after successful authentication
 
@@ -99,24 +99,22 @@ function MyComponent() {
 Make sure these environment variables are set in your `.env.local`:
 
 ```env
-# Keycloak Configuration
-KEYCLOAK_ID=your-keycloak-client-id
-KEYCLOAK_SECRET=your-keycloak-client-secret
-KEYCLOAK_ISSUER=http://localhost:9090/realms/AeB_Dms
+# Backend API Configuration
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8080
 
 # NextAuth Configuration
 NEXTAUTH_URL=http://localhost:3000
 NEXTAUTH_SECRET=your-nextauth-secret
 ```
 
-### Keycloak Client Configuration
+### Backend API Configuration
 
-In your Keycloak admin console, ensure your client has:
+Ensure your backend authentication endpoints are configured:
 
-- **Valid Redirect URIs**: 
-  - `http://localhost:3000/api/auth/callback/keycloak`
-  - `http://localhost:3000/auth/callback/keycloak`
-- **Web Origins**: `http://localhost:3000`
+- **Login endpoint**: `POST /api/v1/auth/login`
+- **Refresh endpoint**: `POST /api/v1/auth/refresh`
+- **Logout endpoint**: `POST /api/v1/auth/logout`
+- **User profile endpoint**: `GET /api/v1/auth/me`
 
 ## Customization
 
@@ -176,7 +174,7 @@ Modify `src/app/auth/error/page.tsx` to customize error handling:
 ### Common Issues
 
 1. **Infinite redirect loops**
-   - Check Keycloak redirect URI configuration
+   - Check backend API configuration
    - Verify NEXTAUTH_URL matches your domain
 
 2. **Middleware not working**
@@ -188,7 +186,7 @@ Modify `src/app/auth/error/page.tsx` to customize error handling:
    - Check for any TypeScript errors
 
 4. **Authentication errors**
-   - Check Keycloak client configuration
+   - Check backend API endpoints
    - Verify environment variables are set correctly
 
 ### Debug Mode

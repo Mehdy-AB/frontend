@@ -19,7 +19,7 @@ import AdvancedSearchModal from '../modals/AdvancedSearchModal';
 import AdminDropdown from './AdminDropdown';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { isAdmin } from '../../utils/adminUtils';
-import { EnhancedSearchService, SearchHistoryItem } from '../../api/services/enhancedSearchService';
+import { SearchHistoryService, SearchHistoryItem } from '../../utils/searchHistory';
 
 export default function Header() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -45,7 +45,7 @@ export default function Header() {
 
   // Load search history on component mount
   useEffect(() => {
-    setSearchHistory(EnhancedSearchService.getSearchHistory());
+    setSearchHistory(SearchHistoryService.getSearchHistory());
   }, []);
 
   // Filter search history based on current query
@@ -94,13 +94,14 @@ export default function Header() {
     if (searchQuery.trim()) {
       setShowSearchHistory(false);
       // Save to search history
-      EnhancedSearchService.saveSearchToHistory({
+      SearchHistoryService.saveSearchToHistory({
         query: searchQuery.trim(),
+        timestamp: Date.now(),
         searchType: 'unified',
         filters: {}
       });
       // Update search history state
-      setSearchHistory(EnhancedSearchService.getSearchHistory());
+      setSearchHistory(SearchHistoryService.getSearchHistory());
       // Navigate to search page
       window.location.href = `/search?query=${encodeURIComponent(searchQuery)}`;
     }
@@ -217,7 +218,7 @@ export default function Header() {
         </Button>
 
         {/* Admin Dropdown */}
-        <AdminDropdown isAdmin={userIsAdmin} />
+        <AdminDropdown />
 
         {/* User Menu */}
         <DropdownMenu>

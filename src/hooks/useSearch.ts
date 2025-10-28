@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { notificationApiClient } from '@/api/notificationClient';
-import { UserService } from '@/api/services/userService';
-import { EnhancedSearchService, SearchConfiguration, SearchHistoryItem } from '@/api/services/enhancedSearchService';
+import { userManagementService } from '@/api/services/userManagementService';
+import { SearchHistoryService, SearchHistoryItem } from '@/utils/searchHistory';
 import { GlobalSearchResultDto, UserDto, FilingCategoryResponseDto } from '@/types/api';
 
 interface MetadataFilter {
@@ -116,11 +116,12 @@ export const useSearch = () => {
   useEffect(() => {
     const loadUsersAndModels = async () => {
       try {
-        const [usersData, modelsData] = await Promise.all([
-          UserService.getAllUsers({ size: 100 }),
+        const [usersResponse, modelsData] = await Promise.all([
+          userManagementService.searchUsers('', ['USERNAME'], 0, 100),
           // Add model loading here when API is available
           Promise.resolve([] as FilingCategoryResponseDto[])
         ]);
+        const usersData = usersResponse.content || [];
         setUsers(usersData);
         setModels(modelsData);
         setFilteredUsers(usersData);
@@ -142,10 +143,8 @@ export const useSearch = () => {
     
     setSearchingUsers(true);
     try {
-      const searchResults = await UserService.getAllUsers({ 
-        query: query,
-        size: 50
-      });
+      const searchResultsResponse = await userManagementService.searchUsers(query, ['USERNAME'], 0, 50);
+      const searchResults = searchResultsResponse.content || [];
       setFilteredUsers(searchResults);
     } catch (error) {
       console.error('Error searching users:', error);
@@ -259,7 +258,7 @@ export const useSearch = () => {
 
   // Load search history on component mount
   useEffect(() => {
-    setSearchHistory(EnhancedSearchService.getSearchHistory());
+    setSearchHistory(SearchHistoryService.getSearchHistory());
   }, []);
 
   // Update local search query when URL query changes
@@ -328,14 +327,15 @@ export const useSearch = () => {
     
     if (value.trim()) {
       // Save search to history
-      EnhancedSearchService.saveSearchToHistory({
+      SearchHistoryService.saveSearchToHistory({
         query: value.trim(),
+        timestamp: Date.now(),
         searchType: 'unified',
         filters: searchScope
       });
 
       // Update search history state
-      setSearchHistory(EnhancedSearchService.getSearchHistory());
+      setSearchHistory(SearchHistoryService.getSearchHistory());
 
       // Perform smart search
       performSmartSearch(value);

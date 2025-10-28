@@ -1,94 +1,98 @@
-import { notificationApiClient } from '../notificationClient';
-import { AuditLog, AuditLogStatistics, PageResponse } from '../../types/api';
+import { apiClient } from '../client';
+import { PageResponse } from '../../types/api';
+
+export interface AuditLog {
+  id: number;
+  userId: string;
+  username: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  details: string;
+  ipAddress: string;
+  timestamp: string;
+}
 
 export class AuditLogService {
-  /**
-   * Get all audit logs
-   */
-  static async getAllAuditLogs(params: {
-    page?: number;
-    size?: number;
-    sortBy?: string;
-    sortDir?: string;
-  } = {}, options?: any): Promise<PageResponse<AuditLog>> {
-    return notificationApiClient.getAllAuditLogs(params, options);
+  private baseUrl = '/api/v1/admin/audit-logs';
+
+  // Get all audit logs
+  async getAllAuditLogs(
+    page: number = 0,
+    size: number = 20,
+    sortBy: string = 'timestamp',
+    sortDirection: 'asc' | 'desc' = 'desc'
+  ): Promise<PageResponse<AuditLog>> {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      size: size.toString(),
+      sortBy,
+      sortDirection,
+    });
+
+    return apiClient.get<PageResponse<AuditLog>>(`${this.baseUrl}?${params}`);
   }
 
-  /**
-   * Get audit logs by user
-   */
-  static async getAuditLogsByUser(userId: string, params: {
-    page?: number;
-    size?: number;
-  } = {}, options?: any): Promise<PageResponse<AuditLog>> {
-    return notificationApiClient.getAuditLogsByUser(userId, params, options);
+  // Get audit logs by user
+  async getAuditLogsByUser(
+    userId: string,
+    page: number = 0,
+    size: number = 20
+  ): Promise<PageResponse<AuditLog>> {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      size: size.toString(),
+    });
+
+    return apiClient.get<PageResponse<AuditLog>>(`${this.baseUrl}/user/${userId}?${params}`);
   }
 
-  /**
-   * Get audit logs by entity
-   */
-  static async getAuditLogsByEntity(
+  // Get audit logs by entity
+  async getAuditLogsByEntity(
     entityType: string,
-    entityId: string,
-    params: {
-      page?: number;
-      size?: number;
-    } = {},
-    options?: any
+    entityId: number,
+    page: number = 0,
+    size: number = 20
   ): Promise<PageResponse<AuditLog>> {
-    return notificationApiClient.getAuditLogsByEntity(entityType, entityId, params, options);
+    const params = new URLSearchParams({
+      page: page.toString(),
+      size: size.toString(),
+    });
+
+    return apiClient.get<PageResponse<AuditLog>>(`${this.baseUrl}/entity/${entityType}/${entityId}?${params}`);
   }
 
-  /**
-   * Get audit logs by search term
-   */
-  static async getAuditLogsBySearchTerm(
+  // Search audit logs
+  async searchAuditLogs(
     searchTerm: string,
-    params: {
-      page?: number;
-      size?: number;
-    } = {},
-    options?: any
+    page: number = 0,
+    size: number = 20
   ): Promise<PageResponse<AuditLog>> {
-    return notificationApiClient.getAuditLogsBySearchTerm(searchTerm, params, options);
+    const params = new URLSearchParams({
+      searchTerm,
+      page: page.toString(),
+      size: size.toString(),
+    });
+
+    return apiClient.get<PageResponse<AuditLog>>(`${this.baseUrl}/search?${params}`);
   }
 
-  /**
-   * Get audit logs by date range
-   */
-  static async getAuditLogsByDateRange(
+  // Get audit logs by date range
+  async getAuditLogsByDateRange(
     startDate: string,
     endDate: string,
-    params: {
-      page?: number;
-      size?: number;
-    } = {},
-    options?: any
+    page: number = 0,
+    size: number = 20
   ): Promise<PageResponse<AuditLog>> {
-    return notificationApiClient.getAuditLogsByDateRange(startDate, endDate, params, options);
-  }
+    const params = new URLSearchParams({
+      startDate,
+      endDate,
+      page: page.toString(),
+      size: size.toString(),
+    });
 
-  /**
-   * Get user activity statistics
-   */
-  static async getUserActivityStatistics(
-    startDate: string,
-    endDate: string,
-    options?: any
-  ): Promise<AuditLogStatistics> {
-    return notificationApiClient.getUserActivityStatistics(startDate, endDate, options);
-  }
-
-  /**
-   * Get entity type statistics
-   */
-  static async getEntityTypeStatistics(
-    startDate: string,
-    endDate: string,
-    options?: any
-  ): Promise<AuditLogStatistics> {
-    return notificationApiClient.getEntityTypeStatistics(startDate, endDate, options);
+    return apiClient.get<PageResponse<AuditLog>>(`${this.baseUrl}/date-range?${params}`);
   }
 }
 
-export default AuditLogService;
+export const auditLogService = new AuditLogService();

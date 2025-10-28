@@ -14,7 +14,7 @@ import { DocumentResponseDto, FolderRepoResDto, FolderResDto, SortFields, AuditL
 import AuditLogService from '@/api/services/auditLogService';
 import { favoriteService } from '@/api/services/favoriteService';
 import FolderActionModal from '@/components/modals/FolderActionModal';
-import DeleteConfirmationModal from '@/components/modals/DeleteConfirmationModal';
+import ConfirmationModal from '@/components/modals/ConfirmationModal';
 import { CommentsModal } from '@/components/modals/CommentsModal';
 
 // Import extracted components
@@ -752,13 +752,18 @@ export default function FolderDetailsPage() {
         initialQuery={searchQuery}
       />
 
-      <DeleteConfirmationModal
+      <ConfirmationModal
         isOpen={showDeleteModal}
         onClose={handleCancelDelete}
         onConfirm={handleConfirmDelete}
+        title={`Delete ${deleteItem?.type === 'document' ? 'Document' : 'Folder'}`}
+        message="This action cannot be undone"
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="destructive"
+        loading={isDeleting}
         itemName={deleteItem?.name || ''}
         itemType={deleteItem?.type || 'folder'}
-        isLoading={isDeleting}
       />
 
       {/* Comments Modal */}

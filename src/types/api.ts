@@ -1,3 +1,4 @@
+// Updated API types to match backend structure
 // Base API types
 export interface ApiResponse<T> {
   data: T;
@@ -46,146 +47,177 @@ export interface PageResponse<T> {
 }
 
 // Enums
-export enum GranteeType {
-  USER = 'USER',
-  GROUP = 'GROUP',
-  ROLE = 'ROLE'
-}
+export const GranteeType = {
+  USER: 'USER',
+  GROUP: 'GROUP',
+  ROLE: 'ROLE'
+} as const;
 
-export enum ExtractorLanguage {
-  ARA = 'ara',
-  FRA = 'fra',
-  ENG = 'eng'
-}
+export type GranteeType = typeof GranteeType[keyof typeof GranteeType];
 
-export enum SortFields {
-  OWNED_BY = 'ownedBy',
-  NAME = 'name',
-  CREATED_AT = 'createdAt',
-  UPDATED_AT = 'updatedAt',
-  CREATED_BY = 'createdBy'
-}
+export const ExtractorLanguage = {
+  ARA: 'ara',
+  FRA: 'fra',
+  ENG: 'eng'
+} as const;
 
-export enum SortFieldsUser {
-  USERNAME = 'USERNAME',
-  EMAIL = 'EMAIL',
-  FIRST_NAME = 'FIRST_NAME',
-  CREATED_TIMESTAMP = 'CREATED_TIMESTAMP',
-  LAST_NAME = 'LAST_NAME'
-}
+export type ExtractorLanguage = typeof ExtractorLanguage[keyof typeof ExtractorLanguage];
 
-export enum SearchFields {
-  USERNAME = 'USERNAME',
-  EMAIL = 'EMAIL',
-  FIRST_NAME = 'FIRST_NAME',
-  LAST_NAME = 'LAST_NAME'
-}
+export const SortFields = {
+  OWNED_BY: 'ownedBy',
+  NAME: 'name',
+  CREATED_AT: 'createdAt',
+  UPDATED_AT: 'updatedAt',
+  CREATED_BY: 'createdBy'
+} as const;
 
-export enum ElasticSortFields {
-  SCORE = 'score',
-  NAME = 'name',
-  CREATED_AT = 'createdAt',
-  UPDATED_AT = 'updatedAt'
-}
+export type SortFields = typeof SortFields[keyof typeof SortFields];
 
-export enum SearchResultType {
-  FOLDER = 'FOLDER',
-  DOCUMENT = 'DOCUMENT'
-}
+export const SortFieldsUser = {
+  USERNAME: 'USERNAME',
+  EMAIL: 'EMAIL',
+  FIRST_NAME: 'FIRST_NAME',
+  CREATED_TIMESTAMP: 'CREATED_TIMESTAMP',
+  LAST_NAME: 'LAST_NAME'
+} as const;
 
-export enum MetadataType {
-  LIST = 'LIST',
-  STRING = 'STRING',
-  NUMBER = 'NUMBER',
-  DATETIME = 'DATETIME',
-  DATE = 'DATE',
-  FLOAT = 'FLOAT',
-  BOOLEAN = 'BOOLEAN'
-}
+export type SortFieldsUser = typeof SortFieldsUser[keyof typeof SortFieldsUser];
 
-// User types
+export const SearchFields = {
+  USERNAME: 'USERNAME',
+  EMAIL: 'EMAIL',
+  FIRST_NAME: 'FIRST_NAME',
+  LAST_NAME: 'LAST_NAME'
+} as const;
+
+export type SearchFields = typeof SearchFields[keyof typeof SearchFields];
+
+export const ElasticSortFields = {
+  SCORE: 'score',
+  NAME: 'name',
+  CREATED_AT: 'createdAt',
+  UPDATED_AT: 'updatedAt'
+} as const;
+
+export type ElasticSortFields = typeof ElasticSortFields[keyof typeof ElasticSortFields];
+
+export const SearchResultType = {
+  FOLDER: 'FOLDER',
+  DOCUMENT: 'DOCUMENT'
+} as const;
+
+export type SearchResultType = typeof SearchResultType[keyof typeof SearchResultType];
+
+export const MetadataType = {
+  LIST: 'LIST',
+  STRING: 'STRING',
+  NUMBER: 'NUMBER',
+  DATETIME: 'DATETIME',
+  DATE: 'DATE',
+  FLOAT: 'FLOAT',
+  BOOLEAN: 'BOOLEAN'
+} as const;
+
+export type MetadataType = typeof MetadataType[keyof typeof MetadataType];
+
+// ==================== USER TYPES ====================
+
 export interface UserDto {
   id: string;
   username: string;
-  firstName: string;
-  lastName: string;
-  jobTitle: string[];
-  imageUrl: string;
   email: string;
-  createdTimestamp: string;
-}
-
-export interface FullUserDto {
-  id: string;
-  username: string;
-  firstName: string;
-  lastName: string;
-  jobTitle: string[];
-  imageUrl: string;
-  email: string;
-  createdTimestamp: string;
-  sessions: any[]; // UserSessionRepresentation from Keycloak
-}
-
-export interface UserCreateReq {
-  username: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  password?: string;
-  job: string[];
-  imageUrl?: string;
-}
-
-export interface UserUpdateReq {
   firstName?: string;
   lastName?: string;
-  email?: string;
-  enabled?: boolean;
-  imageUrl?: string;
-  jobTitle?: string[];
+  displayName: string;
+  jobTitle?: string;
+  imgUrl?: string;
+  enabled: boolean;
+  emailVerified: boolean;
+  createdTimestamp: string;
+  createdAt: string;
+  updatedAt: string;
+  status: string;
+  attributes?: Record<string, any>;
+  roles: string[];
+  groups: string[];
 }
 
-// Role types
+export interface CreateUserRequest {
+  username: string;
+  email: string;
+  displayName: string;
+  firstName?: string;
+  lastName?: string;
+  jobTitle?: string;
+  imageUrl?: string;
+}
+
+export interface UpdateUserRequest {
+  username: string;
+  email: string;
+  displayName: string;
+  firstName?: string;
+  lastName?: string;
+  jobTitle?: string;
+  imageUrl?: string;
+}
+
+// ==================== ROLE TYPES ====================
+
 export interface RoleDto {
   id: string;
   name: string;
-  description: string;
-  permissions: string[];
+  description?: string;
+  isDefault?: boolean;
+  isSystem?: boolean;
+  permissions: PermissionDto[];
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string;
 }
 
-export interface RoleCreateReq {
+export interface PermissionDto {
+  id: string;
+  key: string;
   name: string;
   description?: string;
-  permissions?: string[];
+  category: string;
 }
 
-export interface RoleUpdateReq {
+export interface CreateRoleRequest {
+  name: string;
   description?: string;
-  permissions?: string[];
 }
 
-// Group types
+export interface UpdateRoleRequest {
+  name: string;
+  description?: string;
+}
+
+// ==================== GROUP TYPES ====================
+
 export interface GroupDto {
   id: string;
   name: string;
-  description: string;
-  path: string;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+  userCount: number;
 }
 
-export interface GroupCreateReq {
+export interface CreateGroupRequest {
   name: string;
   description?: string;
-  path?: string;
 }
 
-export interface GroupUpdateReq {
-  name?: string;
+export interface UpdateGroupRequest {
+  name: string;
   description?: string;
-  path?: string;
 }
 
-// Document types
+// ==================== DOCUMENT TYPES ====================
+
 export interface DocumentMetadataResponseDto {
   metadataId: number;
   metadataName: string;
@@ -220,7 +252,6 @@ export interface DocumentResponseDto {
   isPublic: boolean;
   metadata: string[];
   filingCategory?: DocumentFilingCategoryResponseDto;
-  metadataDefinitions: CategoryMetadataDefinitionDto[];
   userPermissions: DocumentPermissionResDto;
 }
 
@@ -283,13 +314,9 @@ export interface CreateTagRequestDto {
 }
 
 export interface UpdateTagRequestDto {
-  name: string;
+  name?: string;
   description?: string;
   color?: string;
-}
-
-export interface AddTagToDocumentRequestDto {
-  tagId: number;
 }
 
 export interface TagResponseDto {
@@ -297,75 +324,42 @@ export interface TagResponseDto {
   name: string;
   description?: string;
   color?: string;
-  createdBy: string;
+  createdBy: UserDto;
   createdAt: string;
   updatedAt: string;
-  isSystem?: boolean;
-  documentCount?: number;
+  documentCount: number;
+}
+
+export interface AddTagToDocumentRequestDto {
+  tagId: number;
 }
 
 export interface DocumentTagResponseDto {
+  id: number;
   documentId: number;
   tagId: number;
-  tagName: string;
-  tagColor?: string;
-  createdBy: string;
+  tag: TagResponseDto;
+  createdBy: UserDto;
   createdAt: string;
 }
 
 // ==================== LINK RULE TYPES ====================
 
-// Enums for link rules
-export enum ConditionLogic {
-  AND = 'AND',
-  OR = 'OR'
-}
-
-export enum ConditionOperator {
-  EQUAL = 'EQUAL',
-  NOT_EQUAL = 'NOT_EQUAL',
-  GREATER_THAN = 'GREATER_THAN',
-  LESS_THAN = 'LESS_THAN',
-  GREATER_THAN_OR_EQUAL = 'GREATER_THAN_OR_EQUAL',
-  LESS_THAN_OR_EQUAL = 'LESS_THAN_OR_EQUAL',
-  CONTAINS = 'CONTAINS',
-  STARTS_WITH = 'STARTS_WITH',
-  ENDS_WITH = 'ENDS_WITH',
-  IN = 'IN',
-  NOT_IN = 'NOT_IN'
+export interface LinkRuleRequestDto {
+  name: string;
+  description?: string;
+  linkType: string;
+  conditionsLogic: 'AND' | 'OR';
+  conditions: LinkRuleConditionRequestDto[];
+  enabled?: boolean;
+  bidirectional?: boolean;
 }
 
 export interface LinkRuleConditionRequestDto {
   sourceMetadataId: number;
   targetMetadataId: number;
-  operator: ConditionOperator;
+  operator: 'EQUAL' | 'NOT_EQUAL' | 'CONTAINS' | 'NOT_CONTAINS';
   caseSensitive?: boolean;
-}
-
-export interface MetadataInfoDto {
-  metadataId: number;
-  metadataName: string;
-  categoryId: number;
-  categoryName: string;
-  dataType: string;
-}
-
-export interface LinkRuleConditionResponseDto {
-  id: number;
-  sourceMetadata: MetadataInfoDto;
-  targetMetadata: MetadataInfoDto;
-  operator: ConditionOperator;
-  caseSensitive: boolean;
-}
-
-export interface LinkRuleRequestDto {
-  name: string;
-  description?: string;
-  linkType: string;
-  conditionsLogic: ConditionLogic;
-  conditions: LinkRuleConditionRequestDto[];
-  enabled?: boolean;
-  bidirectional?: boolean;
 }
 
 export interface LinkRuleResponseDto {
@@ -373,13 +367,25 @@ export interface LinkRuleResponseDto {
   name: string;
   description?: string;
   linkType: string;
+  conditionsLogic: 'AND' | 'OR';
   conditions: LinkRuleConditionResponseDto[];
   enabled: boolean;
   bidirectional: boolean;
   createdBy: UserDto;
   createdAt: string;
   updatedAt: string;
-  activeLinksCount?: number;
+  linksCreated: number;
+  lastExecutedAt?: string;
+}
+
+export interface LinkRuleConditionResponseDto {
+  id: number;
+  sourceMetadataId: number;
+  targetMetadataId: number;
+  operator: string;
+  caseSensitive: boolean;
+  sourceMetadataName: string;
+  targetMetadataName: string;
 }
 
 export interface DocumentLinkRequestDto {
@@ -391,23 +397,17 @@ export interface DocumentLinkRequestDto {
 
 export interface DocumentLinkResponseDto {
   id: number;
-  // Source document
   sourceDocumentId: number;
-  sourceDocumentName: string;
-  sourceDocumentTitle: string;
-  // Target document
   targetDocumentId: number;
-  targetDocumentName: string;
-  targetDocumentTitle: string;
-  // Link details
   linkType: string;
   description?: string;
-  isManual: boolean; // Changed from isAutomatic - INVERTED LOGIC!
-  // Rule info (if automatic)
+  isManual: boolean;
   ruleId?: number;
   ruleName?: string;
-  createdBy: string;
+  createdBy: UserDto;
   createdAt: string;
+  sourceDocument: RelatedDocumentResponseDto;
+  targetDocument: RelatedDocumentResponseDto;
 }
 
 export interface RelatedDocumentResponseDto {
@@ -421,128 +421,67 @@ export interface RelatedDocumentResponseDto {
   sizeBytes: number;
   mimeType: string;
   versionNumber: number;
-  activeVersion: number;
+  activeVersion?: number;
   documentCreatedAt: string;
-  documentUpdatedAt: string;
   isPublic: boolean;
-  // User information
-  createdBy: UserDto;
   ownedBy: UserDto;
-  // Link information
   linkType: string;
   description?: string;
   isManual: boolean;
   ruleName?: string;
   ruleId?: number;
   linkedAt: string;
-  // Document metadata for frontend display
-  metadata: RelatedDocumentMetadataDto[];
-  // Category information
-  filingCategory?: RelatedDocumentFilingCategoryDto;
-  // User permissions
-  userPermissions?: RelatedDocumentUserPermissionsDto;
+  metadata: DocumentMetadataResponseDto[];
+  filingCategory?: DocumentFilingCategoryResponseDto;
+  userPermissions: DocumentPermissionResDto;
 }
 
-export interface RelatedDocumentMetadataDto {
-  metadataId: number;
-  metadataName: string;
-  value: string;
-  categoryName: string;
-  categoryId: number;
-}
+// ==================== FOLDER TYPES ====================
 
-export interface RelatedDocumentFilingCategoryDto {
+export interface FolderResDto {
   id: number;
   name: string;
-  description?: string;
-  metadata: RelatedDocumentMetadataDto[];
-  metadataDefinitions: RelatedDocumentMetadataDefinitionDto[];
+  path: string;
+  parentId?: number;
+  sizeBytes: number;
+  isPublic: boolean;
+  ownedBy: UserDto;
+  createdAt: string;
+  updatedAt: string;
+  documentCount: number;
+  folderCount: number;
 }
 
-export interface RelatedDocumentMetadataDefinitionDto {
-  id: number;
-  key: string;
-  dataType: string;
-  mandatory: boolean;
-  listId?: number;
-  list?: RelatedDocumentListMetaDataDto;
+export interface FolderWithOwnerDto extends FolderResDto {
+  ownedBy: UserDto;
 }
 
-export interface RelatedDocumentListMetaDataDto {
-  id: number;
-  name: string;
-  description?: string;
-  mandatory: boolean;
-  option: string[];
-}
-
-export interface RelatedDocumentUserPermissionsDto {
+export interface FolderPermissionResDto {
   canView: boolean;
   canEdit: boolean;
   canDelete: boolean;
   canManagePermissions: boolean;
-}
-
-export interface TypeShareAccessDocWithTypeReq {
-  granteeId: string;
-  permission: DocumentPermissionReq;
-  type: GranteeType;
-}
-
-export interface TypeShareAccessDocumentRes {
-  grantee: any;
-  permission: DocumentPermissionReq;
-}
-
-// Folder types
-export interface FolderResDto {
-  id: number;
-  name: string;
-  description: string;
-  parentId: number;
-  createdBy: UserDto;
-  ownedBy: UserDto;
-  isPublic: boolean;
-  size: number;
-  createdAt: string;
-  updatedAt: string;
-  path: string;
-  userPermissions: FolderPermissionResDto;
 }
 
 export interface CreateFolderDto {
   name: string;
   description?: string;
   parentId?: number;
-  usersGevenPermission: TypeShareAcces[];
-  goupesGevenPermission: TypeShareAcces[];
-  rolesGevenPermission: TypeShareAcces[];
-  subgroups: CreateFolderDto[];
+  usersGevenPermission?: TypeShareAcces[];
+  goupesGevenPermission?: TypeShareAcces[];
+  rolesGevenPermission?: TypeShareAcces[];
+  subfolders?: SubfolderDto[];
 }
 
-export interface FolderRepoResDto {
-  folder: FolderResDto;
-  folders: FolderResDto[];
-  documents: DocumentResponseDto[];
-  page: PageMeta;
+// Recursive subfolder - can have nested subfolders
+// Permissions are automatically inherited from parent
+export interface SubfolderDto {
+  name: string;
+  description?: string;
+  subfolders?: SubfolderDto[]; // Can be nested infinitely
 }
 
 export interface FolderPermissionReq {
-  canView: boolean;
-  canUpload: boolean;
-  canEdit: boolean;
-  canDelete: boolean;
-  canShare: boolean;
-  canManagePermissions: boolean;
-  canCreateSubFolders: boolean;
-  canEditDoc: boolean;
-  canDeleteDoc: boolean;
-  canShareDoc: boolean;
-  canManagePermissionsDoc: boolean;
-  inherits: boolean;
-}
-
-export interface FolderPermissionResDto {
   canView: boolean;
   canUpload: boolean;
   canEdit: boolean;
@@ -562,470 +501,292 @@ export interface TypeShareAcces {
   permission: FolderPermissionReq;
 }
 
-export interface TypeShareAccessWithTypeReq {
-  granteeId: string;
-  permission: FolderPermissionReq;
-  type: GranteeType;
+export interface FolderRepoResDto {
+  folders: FolderResDto[];
+  documents: DocumentResponseDto[];
+  totalElements: number;
+  totalPages: number;
+  currentPage: number;
+  pageSize: number;
 }
 
-export interface TypeShareAccessRes {
-  grantee: any;
-  permission: FolderPermissionReq;
-}
+// ==================== FILING CATEGORIES TYPES ====================
 
-// Filing Categories types
 export interface FilingCategoryRequestDto {
   name: string;
   description?: string;
-  metadataDefinitions: CategoryMetadataDefinitionDto[];
 }
 
 export interface FilingCategoryResponseDto {
   id: number;
   name: string;
-  description: string;
-  createdBy: UserDto;
-  metadataDefinitions: CategoryMetadataDefinitionDto[];
-}
-
-export interface CategoryMetadataDefinitionDto {
-  id?: number;
-  key: string;
-  dataType: MetadataType;
-  mandatory: boolean;
-  listId?: number;
-  list?: MetaDataListReq;
+  description?: string;
+  createdBy?: UserDto | null;
+  metadataDefinitions?: CategoryMetadataDefinitionDto[]; // For frontend compatibility
 }
 
 export interface MetaDataListReq {
-  id?: number;
   name: string;
   description?: string;
-  mandatory: boolean;
-  option: string[];
+  metadataFields: MetadataFieldDto[];
 }
 
 export interface MetaDataListRes {
   id: number;
   name: string;
-  description: string;
-  mandatory: boolean;
-  option: string[];
+  description?: string;
+  metadataFields: MetadataFieldDto[];
+  createdAt: string;
+  updatedAt: string;
 }
 
-// Elastic Search types
+export interface MetadataFieldDto {
+  id?: number;
+  name: string;
+  type: MetadataType;
+  required: boolean;
+  options?: string[];
+}
+
+// ==================== SEARCH TYPES ====================
+
+export interface UnifiedSearchRequestDto {
+  query?: string;
+  ownerId?: string;
+  createdAt?: {
+    from?: string;
+    to?: string;
+  };
+  metadataOperations?: MetadataOperationDto[];
+  lookupFields?: string[];
+  page?: number;
+  size?: number;
+  sortBy?: string;
+  sortDirection?: 'asc' | 'desc';
+}
+
+export interface MetadataOperationDto {
+  metadataId: number;
+  operator: 'EQUAL' | 'NOT_EQUAL' | 'CONTAINS' | 'NOT_CONTAINS' | 'GT' | 'LT' | 'GTE' | 'LTE';
+  value: string;
+}
+
 export interface GlobalSearchResultDto {
-  folders: SearchFoldersRes[];
-  documents: SearchDocumentsRes[];
+  documents: DocumentSearchResultDto[];
+  folders: FolderSearchResultDto[];
   totalElements: number;
   totalPages: number;
   currentPage: number;
-  size: number;
+  pageSize: number;
+  searchTime: number;
+  searchType: 'DATABASE' | 'ELASTICSEARCH';
 }
 
-export interface SearchFoldersRes {
-  folder: FolderResDto;
-  score: number;
-  highlight: Record<string, string>;
-}
-
-export interface SearchDocumentsRes {
-  document: DocumentResponseDto;
-  score: number;
-  highlight: Record<string, string>;
-  // Enhanced fields for version search
+export interface DocumentSearchResultDto {
   documentId: number;
   versionId: number;
   name: string;
   title: string;
+  description?: string;
   path: string;
+  folderId: number;
   sizeBytes: number;
   mimeType: string;
   versionNumber: number;
+  activeVersion?: number;
   createdAt: string;
   updatedAt: string;
   isPublic: boolean;
-  userPermissions: any;
-  versions: DocumentVersionInfo[];
+  ownedBy: UserDto;
+  createdBy: UserDto;
+  filingCategory?: DocumentFilingCategoryResponseDto;
+  metadata: DocumentMetadataResponseDto[];
+  userPermissions: DocumentPermissionResDto;
+  score?: number;
 }
 
-export interface DocumentVersionInfo {
-  versionId: number;
-  versionNumber: number;
-  sizeBytes: number;
-  mimeType: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-// ==================== UNIFIED SEARCH TYPES ====================
-
-export interface UnifiedSearchRequestDto {
-  // Basic search parameters
-  query?: string;
-  page?: number;
-  size?: number;
-
-  // Content type filters
-  includeFolders?: boolean;
-  includeDocuments?: boolean;
-
-  // Simple filters (triggers DB search when no text query)
-  ownerId?: string; // Search by owner (user ID)
-
-  // Creation date - supports both single date and date range
-  createdAt?: string; // Single creation date
-  createdAtFrom?: string; // Start of date range
-  createdAtTo?: string; // End of date range
-  
-  // Search field toggles (for Elasticsearch)
-  lookUpNames?: boolean;
-  lookUpMetadataValue?: boolean;
-  lookUpOcrContent?: boolean;
-  lookUpDescription?: boolean;
-  lookUpTags?: boolean;
-
-  // Sorting
-  sortBy?: string;
-  sortDesc?: boolean;
-
-  // Advanced search features (always triggers Elasticsearch)
-  metadataOperations?: MetadataOperationDto; // AND/OR metadata search
-}
-
-export interface CategoryMetadataSearchDto {
-  // Category selection
-  categoryId?: number;
-  categoryName?: string;
-  
-  // Metadata field filters
-  metadataFilters?: MetadataFilter[];
-}
-
-export interface MetadataFilter {
-  // Field identification
-  metadataDefinitionId?: number;
-  
-  // Filter operation
-  operator: FilterOperator;
-  
-  // Values
-  value?: string;
-  fromValue?: any;
-  toValue?: any;
-  values?: string[];
-}
-
-export interface MetadataOperationDto {
-  // Operation type between metadata conditions
-  operationType: 'AND' | 'OR';
-  
-  // List of metadata conditions
-  conditions: MetadataCondition[];
-}
-
-export interface MetadataCondition {
-  // Model and metadata field identification
-  metadataDefinitionId: number;  // ID of the CategoryMetadataDefinition
-  
-  // Filter operation
-  operator: FilterOperator;    // EQUALS, CONTAINS, RANGE, GT, LT, GTE, LTE, IN, NOT_IN
-  
-  // Values
-  value?: string;               // For EQUALS, CONTAINS
-  fromValue?: any;              // For RANGE, GTE
-  toValue?: any;                // For RANGE, LTE
-  values?: string[];            // For IN, NOT_IN (for LIST type)
-}
-
-// ==================== SEARCH REQUEST TYPES ====================
-
-export interface ModelMetadataFilterDto {
-  modelId: number;
-  modelName?: string;
-  metadataFieldFilters?: Record<string, any>;
-  metadataFieldRanges?: Record<string, any>;
-  metadataFieldTypes?: Record<string, string>;
-  metadataFilters?: MetadataFieldFilter[];
-}
-
-export interface MetadataFieldFilter {
-  fieldName: string;
-  fieldType: string;
-  value?: any;
-  fromValue?: any;
-  toValue?: any;
-  operator: string; // "equals", "contains", "startsWith", "endsWith", "range", "gt", "lt", "gte", "lte"
-}
-
-export interface SearchRequestDto {
-  // Basic search parameters
-  query?: string;
-  page?: number;
-  size?: number;
-
-  // Search field toggles
-  lookUpFolderName?: boolean;
-  lookUpDocumentName?: boolean;
-  lookUpMetadataKey?: boolean;
-  lookUpMetadataValue?: boolean;
-  lookUpCategoryName?: boolean;
-  lookUpOcrContent?: boolean;
-  lookUpDescription?: boolean;
-  lookUpTags?: boolean;
-  lookUpModel?: boolean;
-  lookUpCreatedAt?: boolean;
-
-  // Content type filters
-  includeFolders?: boolean;
-  includeDocuments?: boolean;
-
-  // Model-based metadata filtering
-  modelMetadataFilter?: ModelMetadataFilterDto;
-  
-  // Legacy ID-based filtering (kept for backward compatibility)
-  modelId?: number;
-  modelIds?: number[];
-  metadataId?: number;
-  metadataIds?: number[];
-  categoryId?: number;
-  categoryIds?: number[];
-
-  // Metadata search parameters
-  metadataKey?: string;
-  metadataValue?: string;
-  metadataKeyValue?: string;
-  metadataCategory?: string;
-  metadataType?: string;
-  
-  // Range search for metadata
-  metadataRangeField?: string;
-  metadataRangeFrom?: any;
-  metadataRangeTo?: any;
-  metadataRangeInclusive?: boolean;
-  
-  // Creation date range search
-  createdAtFrom?: string;
-  createdAtTo?: string;
-  createdAtInclusive?: boolean;
-  
-  // Model/Type filtering
-  modelType?: string;
-  modelTypes?: string[];
-  mimeType?: string;
-  mimeTypes?: string[];
-
-  // Sorting
-  sortBy?: string; // "score", "name", "createdAt", "updatedAt"
-  sortDesc?: boolean;
-}
-
-// ==================== ADVANCED SEARCH TYPES ====================
-
-export enum FilterOperator {
-  EQUALS = 'EQUALS',
-  NOT_EQUALS = 'NOT_EQUALS',
-  CONTAINS = 'CONTAINS',
-  STARTS_WITH = 'STARTS_WITH',
-  ENDS_WITH = 'ENDS_WITH',
-  RANGE = 'RANGE',
-  GT = 'GT',
-  LT = 'LT',
-  GTE = 'GTE',
-  LTE = 'LTE',
-  IN = 'IN',
-  NOT_IN = 'NOT_IN',
-  IS_NULL = 'IS_NULL',
-  IS_NOT_NULL = 'IS_NOT_NULL'
-}
-
-export enum FilterLogic {
-  AND = 'AND',
-  OR = 'OR'
-}
-
-export enum SortOption {
-  RELEVANCE = 'RELEVANCE',
-  NAME = 'NAME',
-  CREATED_DATE = 'CREATED_DATE',
-  UPDATED_DATE = 'UPDATED_DATE',
-  SIZE = 'SIZE',
-  TYPE = 'TYPE'
-}
-
-export enum SortDirection {
-  ASC = 'ASC',
-  DESC = 'DESC'
-}
-
-export interface MetadataFilter {
-  metadataDefinitionId?: number;
-  fieldName: string;
-  fieldType: string;
-  operator: FilterOperator;
-  value?: string;
-  fromValue?: any;
-  toValue?: any;
-  values?: string[];
-  caseInsensitive?: boolean;
-  inclusive?: boolean;
-}
-
-export interface CategoryMetadataSearchDto {
-  categoryId?: number;
-  categoryName?: string;
-  metadataFilters?: MetadataFilter[];
-}
-
-export interface SearchScope {
-  searchInName?: boolean;
-  searchInDescription?: boolean;
-  searchInMetadata?: boolean;
-  searchInOcrText?: boolean;
-  searchInTags?: boolean;
-  searchInPath?: boolean;
-}
-
-export interface DateRangeFilter {
-  from?: string;
-  to?: string;
-  inclusive?: boolean;
-}
-
-export interface AdvancedSearchRequestDto {
-  // Basic search
-  query?: string;
-  searchScope?: SearchScope;
-  page?: number;
-  size?: number;
-  
-  // Category-based filtering
-  categoryFilter?: CategoryMetadataSearchDto;
-  categoryFilters?: CategoryMetadataSearchDto[];
-  categoryFilterLogic?: FilterLogic;
-  
-  // Content type filters
-  includeFolders?: boolean;
-  includeDocuments?: boolean;
-  
-  // Document type filters
-  mimeTypes?: string[];
-  fileExtensions?: string[];
-  
-  // Date filters
-  createdAt?: DateRangeFilter;
-  updatedAt?: DateRangeFilter;
-  
-  // Folder filters
-  folderIds?: number[];
-  includeSubfolders?: boolean;
-  
-  // Tag filters
-  tags?: string[];
-  tagFilterLogic?: FilterLogic;
-  
-  // Advanced options
-  searchInOcrContent?: boolean;
-  searchInAllVersions?: boolean;
-  sortBy?: SortOption;
-  sortDirection?: SortDirection;
-}
-
-export interface AdvancedSearchResponseDto {
-  documents: any[];
-  folders: any[];
-  pagination: {
-    currentPage: number;
-    pageSize: number;
-    totalPages: number;
-    totalElements: number;
-    hasNext: boolean;
-    hasPrevious: boolean;
-  };
-  metadata: {
-    query?: string;
-    searchTimeMs: number;
-    hasMore: boolean;
-    appliedFilters?: string;
-  };
-}
-
-export interface Filters {
-  lookUpFolderName: boolean;
-  lookUpDocumentName: boolean;
-  lookUpMetadataKey: boolean;
-  lookUpMetadataValue: boolean;
-  lookUpCategoryName: boolean;
-  lookUpOcrContent: boolean;
-  lookUpDescription: boolean;
-  includeFolders: boolean;
-  includeDocuments: boolean;
-  sortBy: ElasticSortFields;
-  sortDesc: boolean;
-}
-
-export interface SearchResult {
-  type: SearchResultType;
-  score: number;
-  objectId: number;
-  highlight: Record<string, string>;
-}
-
-// Error types
-export interface ErrorDto {
-  status: number;
-  message: string;
-}
-
-// Moving types
-export enum MovingType {
-  FOLDER = 'FOLDER',
-  DOCUMENT = 'DOCUMENT'
-}
-
-export interface AllowedFoldersToMove {
+export interface FolderSearchResultDto {
   id: number;
   name: string;
   path: string;
-  description?: string;
+  parentId?: number;
+  sizeBytes: number;
   isPublic: boolean;
-  size: number;
+  ownedBy: UserDto;
   createdAt: string;
   updatedAt: string;
+  documentCount: number;
+  folderCount: number;
+  userPermissions: FolderPermissionResDto;
+  score?: number;
 }
 
-// ==================== AUDIT LOG TYPES ====================
+export interface AdvancedSearchRequestDto {
+  query?: string;
+  ownerId?: string;
+  createdAt?: {
+    from?: string;
+    to?: string;
+  };
+  metadataOperations?: MetadataOperationDto[];
+  lookupFields?: string[];
+  page?: number;
+  size?: number;
+  sortBy?: string;
+  sortDirection?: 'asc' | 'desc';
+}
 
-export interface AuditLog {
+export interface AdvancedSearchResponseDto {
+  documents: DocumentSearchResultDto[];
+  folders: FolderSearchResultDto[];
+  totalElements: number;
+  totalPages: number;
+  currentPage: number;
+  pageSize: number;
+  searchTime: number;
+}
+
+export interface SearchRequestDto {
+  query: string;
+  page?: number;
+  size?: number;
+}
+
+export interface Filters {
+  ownerId?: string;
+  createdAt?: {
+    from?: string;
+    to?: string;
+  };
+  metadataOperations?: MetadataOperationDto[];
+}
+
+export interface ModelMetadataFilterDto {
+  metadataId: number;
+  operator: string;
+  value: string;
+}
+
+export interface MetadataFieldFilter {
+  metadataId: number;
+  operator: string;
+  value: string;
+}
+
+// Additional search-related types for frontend components
+export interface MetadataFilter {
+  id: string;
+  metadataId: number;
+  metadataName: string;
+  fieldName?: string; // Alias for metadataName
+  operator: FilterOperator;
+  value: string;
+  values?: string[]; // For multi-value filters
+  fromValue?: string; // For range filters
+  toValue?: string; // For range filters
+  categoryId?: string; // Changed to string for component compatibility
+  categoryName?: string;
+  metadataDefinitionId?: number; // Alias for metadataId
+  fieldType?: string; // Data type of the field
+}
+
+export const FilterOperator = {
+  EQUAL: 'EQUAL',
+  EQUALS: 'EQUAL', // Alias for compatibility
+  NOT_EQUAL: 'NOT_EQUAL',
+  CONTAINS: 'CONTAINS',
+  NOT_CONTAINS: 'NOT_CONTAINS',
+  GT: 'GT',
+  LT: 'LT',
+  GTE: 'GTE',
+  LTE: 'LTE',
+  STARTS_WITH: 'STARTS_WITH',
+  ENDS_WITH: 'ENDS_WITH',
+  IS_EMPTY: 'IS_EMPTY',
+  IS_NOT_EMPTY: 'IS_NOT_EMPTY',
+  IN: 'IN',
+  RANGE: 'RANGE'
+} as const;
+
+export type FilterOperator = typeof FilterOperator[keyof typeof FilterOperator];
+
+export const SearchScope = {
+  DOCUMENTS: 'DOCUMENTS',
+  FOLDERS: 'FOLDERS',
+  BOTH: 'BOTH'
+} as const;
+
+export type SearchScope = typeof SearchScope[keyof typeof SearchScope];
+
+export interface CategoryMetadataDefinitionDto {
   id: number;
-  userId: string;
-  userEmail: string;
-  username: string;
-  entityType: string;
-  entityId: string;
-  action: string;
-  timestamp: string;
-  details: string; // JSON string
+  name: string;
+  description?: string;
+  metadataFields: MetadataFieldDefinitionDto[];
+  key?: string; // Alias for name
+  dataType?: string; // Data type of the metadata
+  mandatory?: boolean; // Whether the field is required
+  list?: {
+    option?: string[]; // List options
+  } | boolean; // Whether the field is a list type
 }
 
-export interface AuditLogStatistics {
-  [key: string]: number;
+export interface MetadataFieldDefinitionDto {
+  id: number;
+  name: string;
+  type: MetadataType;
+  required: boolean;
+  options?: string[];
+  categoryId: number;
+}
+
+// Search configuration for frontend components
+export interface SearchConfiguration {
+  query?: string;
+  scope?: SearchScope;
+  filters?: {
+    contentType?: 'documents' | 'folders' | 'both';
+    searchScope?: {
+      lookUpNames?: boolean;
+      lookUpDescription?: boolean;
+      lookUpMetadataValue?: boolean;
+      lookUpOcrContent?: boolean;
+      lookUpTags?: boolean;
+      searchInName?: boolean; // Legacy
+      searchInDescription?: boolean; // Legacy
+      searchInMetadata?: boolean; // Legacy
+      searchInOcrText?: boolean; // Legacy
+      searchInTags?: boolean; // Legacy
+    };
+    dateRange?: {
+      from?: string;
+      to?: string;
+    };
+    selectedCategories?: number[];
+    metadataFilters?: MetadataFilter[];
+  };
+  ownerId?: string;
+  dateRange?: {
+    from?: string;
+    to?: string;
+  };
+  sortBy?: string;
+  sortDirection?: 'asc' | 'desc';
+  page?: number;
+  size?: number;
 }
 
 // ==================== COMMENT TYPES ====================
 
 export interface Comment {
   id: number;
-  userId: string;
-  username: string;
   entityType: string;
   entityId: number;
-  isEdited: boolean;
   text: string;
-  hasReply:boolean;
-  parentCommentId?: number;
+  createdBy: UserDto;
   createdAt: string;
   updatedAt: string;
+  parentId?: number;
   replies?: Comment[];
 }
 
@@ -1033,7 +794,7 @@ export interface CommentCreateReq {
   entityType: string;
   entityId: number;
   text: string;
-  parentCommentId?: number;
+  parentId?: number;
 }
 
 export interface CommentUpdateReq {
@@ -1048,20 +809,12 @@ export interface CommentCountResponse {
 
 export interface Favorite {
   id: number;
-  userId: string;
-  username: string;
-  documentId: number;
-  documentName: string;
+  documentId?: number;
+  folderId?: number;
+  user: UserDto;
   createdAt: string;
-}
-
-export interface FolderFavorite {
-  id: number;
-  userId: string;
-  username: string;
-  folderId: number;
-  folderName: string;
-  createdAt: string;
+  document?: DocumentResponseDto;
+  folder?: FolderResDto;
 }
 
 export interface FavoriteCheckResponse {
@@ -1079,10 +832,10 @@ export interface RecycleBinEntry {
   entityType: string;
   entityId: number;
   entityName: string;
-  deletedBy: string;
-  deletedByUsername: string;
+  deletedBy: UserDto;
   deletedAt: string;
-  originalData: string; // JSON string of original entity data
+  originalPath?: string;
+  expiresAt?: string;
 }
 
 export interface RecycleBinMoveReq {
@@ -1108,49 +861,124 @@ export interface RecycleBinCountResponse {
   count: number;
 }
 
+// ==================== AUDIT LOG TYPES ====================
 
-// Document search types
-export interface DocumentSearchItem {
+export interface AuditLog {
   id: number;
-  title: string;
-  name: string;
+  entityType: string;
+  entityId: string;
+  action: string;
   description: string;
-  type: string;
-  ownerName: string;
-  mimeType: string;
-  sizeBytes: number;
-  path: string;
+  user: UserDto;
+  timestamp: string;
+  ipAddress?: string;
+  userAgent?: string;
+  changes?: Record<string, any>;
 }
 
-export interface DocumentSearchResponse {
-  documents: DocumentSearchItem[];
+export interface AuditLogStatistics {
+  totalActions: number;
+  actionsByType: Record<string, number>;
+  actionsByUser: Record<string, number>;
+  actionsByEntity: Record<string, number>;
+}
+
+// ==================== CLASS A TYPES ====================
+
+export interface ClassAUploadRequestDto {
+  folderId: number;
+  createdBy: string;
+  title: string;
+  fileName: string;
+  categoryId: number;
+}
+
+export interface ClassAResponseDto {
+  id: number;
+  title: string;
+  fileName: string;
+  folderId: number;
+  createdBy: UserDto;
+  createdAt: string;
+  updatedAt: string;
+  categoryId: number;
+  categoryName: string;
+}
+
+export interface ClassADetailResponseDto extends ClassAResponseDto {
+  description?: string;
+  metadata: DocumentMetadataResponseDto[];
+  filingCategory: DocumentFilingCategoryResponseDto;
+}
+
+export interface ClassASearchRequestDto {
+  query?: string;
+  userId?: string;
+  categoryId?: number;
+  name?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  exactDate?: string;
+  page?: number;
+  size?: number;
+}
+
+export interface ClassAStatisticsResponseDto {
+  totalDocuments: number;
+  documentsByCategory: Record<string, number>;
+  documentsByUser: Record<string, number>;
+  documentsByMonth: Record<string, number>;
+}
+
+// ==================== BULK UPLOAD TYPES ====================
+
+export interface BulkUploadRequestDto {
+  files: FileDataDto[];
+  folderId: number;
+  title: string;
+  lang: ExtractorLanguage;
+  fileName?: string;
+  tagsJson?: string;
+  filingCategory?: FilingCategoryDocDto;
+}
+
+export interface FileDataDto {
+  fileName: string;
+  content: string; // Base64 encoded
+  contentType: string;
+  size: number;
+}
+
+export interface BulkUploadResponseDto {
+  document: DocumentResponseDto;
+  success: boolean;
+  message?: string;
+}
+
+// ==================== DOCUMENT SEARCH TYPES ====================
+
+export interface DocumentSearchResponseDto {
+  documents: DocumentSearchResultDto[];
   totalElements: number;
   totalPages: number;
   currentPage: number;
-  size: number;
-  hasNext: boolean;
-  hasPrevious: boolean;
+  pageSize: number;
 }
 
-
-// ==================== DOCUMENT VERSION TYPES ====================
-
-export interface DocumentVersionResponse {
-  id: number;
-  documentId: number;
-  versionNumber: number;
-  minioKey: string;
-  sizeBytes: number;
-  mimeType: string;
-  createdAt: string;
+export interface DocumentSearchResponse {
+  documents: DocumentSearchResultDto[];
+  totalElements: number;
+  totalPages: number;
+  currentPage: number;
+  pageSize: number;
 }
 
 // ==================== RULE EXECUTION TYPES ====================
 
 export interface RuleExecutionRequest {
   ruleId: number;
-  documentId?: number; // Optional: execute rule for specific document
-  forceRevalidation?: boolean;
+  documentIds?: number[];
+  dryRun?: boolean;
 }
 
 export interface RuleExecutionResponse {
@@ -1166,328 +994,110 @@ export interface RuleStatistics {
   ruleId: number;
   ruleName: string;
   totalExecutions: number;
-  lastExecutedAt?: string;
-  linksCreated: number;
-  successRate: number;
+  totalLinksCreated: number;
   averageExecutionTime: number;
+  lastExecutedAt?: string;
+  successRate: number;
 }
 
 export interface BulkRuleExecutionRequest {
   ruleIds: number[];
-  documentId?: number;
-  forceRevalidation?: boolean;
+  documentIds?: number[];
+  dryRun?: boolean;
 }
 
 export interface BulkRuleExecutionResponse {
   totalRules: number;
   successfulRules: number;
   failedRules: number;
+  totalDocumentsProcessed: number;
   totalLinksCreated: number;
   executionTime: number;
   results: RuleExecutionResponse[];
 }
 
 export interface LinkRuleCacheStatistics {
-  totalCachedLinks: number;
-  activeRules: number;
-  lastRevalidation: string;
+  totalCacheEntries: number;
   cacheHitRate: number;
+  averageCacheSize: number;
+  cacheEvictions: number;
 }
 
-// ==================== ENHANCED LINK RULE TYPES ====================
+// ==================== MOVING TYPES ====================
 
-export interface LinkRuleStatistics {
-  totalRules: number;
-  activeRules: number;
-  inactiveRules: number;
-  totalLinks: number;
-  rulesByType: Record<string, number>;
+export enum MovingType {
+  DOCUMENT = 'DOCUMENT',
+  FOLDER = 'FOLDER'
 }
 
-export interface BulkToggleRequest {
-  ruleIds: number[];
-  enabled: boolean;
-}
-
-export interface BulkToggleResponse {
-  success: number[];
-  failed: number[];
-  message: string;
-}
-
-export interface LinkRuleTestResult {
-  sourceDocumentId: number;
-  targetDocumentId: number;
-  matchScore: number;
-  matchedConditions: string[];
-}
-
-export interface LinkRuleTestResponse {
-  ruleId: number;
-  testResults: LinkRuleTestResult[];
-  summary: {
-    totalMatches: number;
-    averageScore: number;
-    executionTime: number;
-  };
-}
-
-// ==================== DOCUMENT LINK ENHANCED TYPES ====================
-
-export interface DocumentLinkSearchParams {
-  page?: number;
-  size?: number;
-  linkType?: string;
-  isManual?: boolean;
-  search?: string;
-  fromDate?: string;
-  toDate?: string;
-  mimeType?: string;
-}
-
-export interface RelatedDocumentSearchParams extends DocumentLinkSearchParams {
-  sortBy?: string;
-  sortDirection?: 'asc' | 'desc';
-}
-
-export interface BulkDeleteRequest {
-  linkIds: number[];
-}
-
-export interface BulkDeleteResponse {
-  success: number[];
-  failed: number[];
-  message: string;
-}
-
-// ==================== ASYNC OPERATION TYPES ====================
-
-export interface AsyncOperationResponse {
-  message: string;
-  status: string;
-  operationId?: string;
-  estimatedCompletionTime?: number;
-}
-
-export interface LinkRuleApplicationResponse extends AsyncOperationResponse {
-  ruleId: number;
-  documentsProcessed?: number;
-  linksCreated?: number;
-}
-
-export interface DocumentRuleApplicationResponse extends AsyncOperationResponse {
-  documentId: number;
-  rulesApplied?: number;
-  linksCreated?: number;
-}
-
-export interface ReapplyAllRulesResponse extends AsyncOperationResponse {
-  totalRules?: number;
-  totalDocuments?: number;
-  totalLinksCreated?: number;
-}
-
-// ==================== CACHE MANAGEMENT TYPES ====================
-
-export interface CacheClearResponse {
-  message: string;
-  clearedAt: string;
-  itemsCleared?: number;
-}
-
-export interface CacheStatistics {
-  totalItems: number;
-  hitRate: number;
-  missRate: number;
-  averageAccessTime: number;
-  lastAccess: string;
-  memoryUsage: number;
-}
-
-// ==================== ENHANCED CLASS A DOCUMENT TYPES ====================
-
-export interface ClassAUploadRequestDto {
-  folderId: number;
-  createdBy: string;
-  title: string;
-  fileName?: string;
-  tagsJson?: string;
-  categoryId: number;
-}
-
-export interface ClassAResponseDto {
+export interface AllowedFoldersToMove {
   id: number;
   name: string;
-  title: string;
-  description?: string;
-  folderId: number;
-  createdBy: UserDto;
-  ownedBy: UserDto;
-  createdAt: string;
-  updatedAt: string;
-  isPublic: boolean;
-  categoryId: number;
-  categoryName: string;
-  activeVersionId: number;
-  minioKey: string;
-  sizeBytes: number;
-  mimeType: string;
-  fileExtension?: string;
-  folderPath?: string;
-}
-
-export interface ClassADetailResponseDto {
-  id: number;
-  name: string;
-  title: string;
-  description?: string;
-  folderId: number;
-  createdBy: UserDto;
-  ownedBy: UserDto;
-  createdAt: string;
-  updatedAt: string;
-  isPublic: boolean;
-  categoryId: number;
-  categoryName: string;
-  categoryDescription?: string;
-  activeVersionId: number;
-  minioKey: string;
-  sizeBytes: number;
-  mimeType: string;
-  fileExtension?: string;
-  folderPath?: string;
-  metadataDefinitions: MetadataInfoDto[];
-  userPermissions?: {
-    canEdit: boolean;
-    canDelete: boolean;
-    canView: boolean;
-  };
-}
-
-export interface ClassASearchRequestDto {
-  // Search query
-  query?: string;
-  
-  // User filtering
-  userId?: string;
-  
-  // Category filtering
-  categoryId?: number;
-  
-  // Document name search
-  name?: string;
-  
-  // Date filtering
-  dateFrom?: string;
-  dateTo?: string;
-  exactDate?: string;
-  
-  // Pagination
-  page?: number;
-  size?: number;
-  sortBy?: string;
-  sortDirection?: 'asc' | 'desc';
-}
-
-export interface ClassAStatisticsResponseDto {
-  // Total counts
-  totalDocuments: number;
-  totalSizeBytes: number;
-  
-  // Category breakdown
-  categoryStats: Array<{
-    categoryId: number;
-    categoryName: string;
-    documentCount: number;
-    totalSizeBytes: number;
-  }>;
-  
-  // File type statistics
-  fileTypeStats: Array<{
-    mimeType: string;
-    fileExtension: string;
-    documentCount: number;
-    totalSizeBytes: number;
-  }>;
-  
-  // Size distribution
-  sizeDistribution: {
-    small: number;    // < 1MB
-    medium: number;   // 1MB - 10MB
-    large: number;    // 10MB - 100MB
-    xlarge: number;   // > 100MB
-  };
-  
-  // Recent activity
-  recentActivity: {
-    today: number;
-    thisWeek: number;
-    thisMonth: number;
-  };
-  
-  // User statistics
-  userStats: Array<{
-    userId: string;
-    userName: string;
-    documentCount: number;
-    totalSizeBytes: number;
-  }>;
-  
-  // Top users
-  topUsers: Array<{
-    userId: string;
-    userName: string;
-    documentCount: number;
-  }>;
-}
-
-// ==================== BULK UPLOAD TYPES ====================
-
-export interface BulkUploadRequestDto {
-  folderId: number;
-  createdBy: string;
-  title: string;
-  fileName?: string;
-  tagsJson?: string;
-  categoryId: number;
-  files: File[];
-  lang: ExtractorLanguage;
-  filingCategories: FilingCategoryDocDto[];
-}
-
-export interface BulkUploadResponseDto {
-  firstDocument: DocumentResponseDto;
-  classADocuments: ClassAResponseDto[];
-  totalFiles: number;
-  processedFiles: number;
-}
-
-// ==================== DOCUMENT SEARCH TYPES ====================
-
-export interface DocumentSearchResultDto {
-  id: number;
-  title: string;
-  name: string;
-  description?: string;
-  type: string;
-  ownerName: string;
-  mimeType: string;
-  sizeBytes: number;
   path: string;
+  canMove: boolean;
+  reason?: string;
 }
 
-export interface DocumentSearchResponseDto {
-  documents: DocumentSearchResultDto[];
-  totalElements: number;
-  totalPages: number;
-  currentPage: number;
-  size: number;
-  hasNext: boolean;
-  hasPrevious: boolean;
+// ==================== SHARING TYPES ====================
+
+export interface TypeShareAccessDocWithTypeReq {
+  granteeId: string;
+  granteeType: GranteeType;
+  canView: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+  canManagePermissions: boolean;
 }
 
-// ==================== DOCUMENT UPDATE TYPES ====================
+export interface TypeShareAccessDocumentRes {
+  id: number;
+  documentId: number;
+  granteeId: string;
+  granteeType: GranteeType;
+  granteeName: string;
+  canView: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+  canManagePermissions: boolean;
+  grantedBy: UserDto;
+  grantedAt: string;
+  revokedAt?: string;
+  revokedBy?: UserDto;
+}
+
+export interface TypeShareAccessWithTypeReq {
+  granteeId: string;
+  granteeType: GranteeType;
+  canView: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+  canManagePermissions: boolean;
+  inherits: boolean;
+}
+
+export interface TypeShareAccessRes {
+  id: number;
+  folderId: number;
+  granteeId: string;
+  granteeType: GranteeType;
+  granteeName: string;
+  canView: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+  canManagePermissions: boolean;
+  inherits: boolean;
+  grantedBy: UserDto;
+  grantedAt: string;
+  revokedAt?: string;
+  revokedBy?: UserDto;
+}
+
+// ==================== UPDATE DOCUMENT TYPES ====================
 
 export interface UpdateDocumentDescriptionRequestDto {
   description: string;
 }
+
+// ==================== COMMON TYPES ====================
+
+// Additional types can be added here if needed

@@ -21,7 +21,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { FilingCategoryService } from '@/api/services/filingCategoryService';
-import { UserService } from '@/api/services/userService';
+import { userManagementService } from '@/api/services/userManagementService';
 import { FilingCategoryResponseDto, UserDto } from '@/types/api';
 
 interface ClassAFilterModalProps {
@@ -118,7 +118,8 @@ export default function ClassAFilterModal({
     try {
       setLoadingUsers(true);
       const params = searchQuery ? { query: searchQuery, size: 100 } : { size: 100 };
-      const fetchedUsers = await UserService.getAllUsers(params);
+      const response = await userManagementService.searchUsers(searchQuery || '', [], 0, 100);
+      const fetchedUsers = response.content || [];
       setUsers(fetchedUsers);
       setFilteredUsers(fetchedUsers);
     } catch (error) {

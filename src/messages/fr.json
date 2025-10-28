@@ -73,7 +73,7 @@
     "signOut": "Se déconnecter",
     "signInTitle": "Se connecter à AebDMS",
     "signInSubtitle": "Système de gestion de documents",
-    "signInWithKeycloak": "Se connecter avec Keycloak",
+    "signIn": "Se connecter",
     "signingIn": "Connexion en cours...",
     "signingOut": "Déconnexion en cours...",
     "authError": "Erreur d'authentification",
@@ -82,7 +82,7 @@
     "tryAgain": "Réessayer",
     "goToHome": "Aller à l'accueil",
     "contactAdmin": "Si vous continuez à rencontrer des problèmes, veuillez contacter votre administrateur.",
-    "redirectingToKeycloak": "Vous serez redirigé vers Keycloak pour l'authentification",
+    "redirectingToAuth": "Vous serez redirigé pour l'authentification sécurisée",
     "checkingAuth": "Vérification de l'authentification...",
     "redirectingToSignIn": "Redirection vers la connexion...",
     "loadingSession": "Chargement de la session..."

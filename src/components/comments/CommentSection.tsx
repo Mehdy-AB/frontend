@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { Comment, UserDto } from '../../types/api';
 import { commentService, CommentRequest, CommentUpdateRequest } from '../../api/services/commentService';
-import { UserService } from '../../api/services/userService';
+import { userManagementService } from '../../api/services/userManagementService';
 import { formatDate } from '../../utils/documentUtils';
 import { CommentDeleteModal } from '../modals/CommentDeleteModal';
 import { useSession } from 'next-auth/react';
@@ -73,7 +73,7 @@ export default function CommentSection({
     }
 
     try {
-      const userDetails = await UserService.getUserById(userId);
+      const userDetails = await userManagementService.getUserById(userId);
       if (userDetails) {
         setUserCache(prev => new Map(prev).set(userId, userDetails));
         return userDetails;

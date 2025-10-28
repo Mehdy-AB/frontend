@@ -4,16 +4,23 @@ import { signIn, getSession } from 'next-auth/react'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import { Shield, Lock, FileText, Users, ArrowRight, Loader2 } from 'lucide-react'
+import { Shield, Lock, FileText, Users, ArrowRight, Loader2, Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import LanguageSelector from '../../../components/i18n/LanguageSelector'
 
 export default function SignInContent() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [isCheckingSession, setIsCheckingSession] = useState(true)
+  const [showPassword, setShowPassword] = useState(false)
+  const [formData, setFormData] = useState({
+    username: '',
+    password: ''
+  })
   const router = useRouter()
   
   // Safe translation hook with fallback
@@ -24,10 +31,17 @@ export default function SignInContent() {
     // Fallback translations if context is not available
     t = (key: string) => {
       const fallbacks: Record<string, string> = {
-        'signInFailed': 'Sign in failed. Please try again.',
+        'signInFailed': 'Sign in failed. Please check your credentials.',
         'unexpectedError': 'An unexpected error occurred.',
         'signingIn': 'Signing in...',
-        'signInWithKeycloak': 'Sign in with Keycloak'
+        'signIn': 'Sign In',
+        'username': 'Username',
+        'password': 'Password',
+        'welcomeBack': 'Welcome Back',
+        'signInDescription': 'Sign in to access your documents and continue your work',
+        'enterCredentials': 'Enter your credentials to access your account',
+        'forgotPassword': 'Forgot your password?',
+        'contactAdmin': 'Need help? Contact your system administrator'
       }
       return fallbacks[key] || key
     }
@@ -50,13 +64,25 @@ export default function SignInContent() {
     checkSession()
   }, [router])
 
-  const handleSignIn = async () => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }))
+    // Clear error when user starts typing
+    if (error) setError('')
+  }
+
+  const handleSignIn = async (e: React.FormEvent) => {
+    e.preventDefault()
     setIsLoading(true)
     setError('')
     
     try {
-      const result = await signIn('keycloak', { 
-        callbackUrl: '/',
+      const result = await signIn('credentials', { 
+        username: formData.username,
+        password: formData.password,
         redirect: false 
       })
       
@@ -99,7 +125,7 @@ export default function SignInContent() {
         <div className="hidden lg:block space-y-8">
           <div className="space-y-4">
             <div className="flex items-center space-x-3">
-              <div className=" flex items-center justify-center">
+              <div className="flex items-center justify-center">
                 <img 
                   src="/logo.svg" 
                   alt="Logo" 
@@ -108,7 +134,7 @@ export default function SignInContent() {
               </div>
               <div>
                 <h1 className="text-3xl font-bold text-foreground">DATAVEX</h1>
-                <p className="text-muted-foreground"> Fast. Secure. Reliable DMS.</p>
+                <p className="text-muted-foreground">Fast. Secure. Reliable DMS.</p>
               </div>
             </div>
           </div>
@@ -119,7 +145,7 @@ export default function SignInContent() {
               <span className="text-primary"> Made Simple</span>
             </h2>
             <p className="text-lg text-muted-foreground leading-relaxed">
-              Access your documents, collaborate with your team, and manage your files with enterprise-grade security through Keycloak authentication.
+              Access your documents, collaborate with your team, and manage your files with enterprise-grade security and authentication.
             </p>
           </div>
 
@@ -129,7 +155,7 @@ export default function SignInContent() {
               <Shield className="h-6 w-6 text-primary" />
               <div>
                 <h3 className="font-semibold text-foreground">Enterprise Security</h3>
-                <p className="text-sm text-muted-foreground">Protected by Keycloak SSO</p>
+                <p className="text-sm text-muted-foreground">Protected by secure authentication</p>
               </div>
             </div>
             <div className="flex items-center space-x-3 p-4 bg-white/50 rounded-lg border border-white/20">
@@ -156,9 +182,9 @@ export default function SignInContent() {
               <div className="mx-auto h-16 w-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-4">
                 <Shield className="h-8 w-8 text-primary" />
               </div>
-              <CardTitle className="text-2xl font-bold">Welcome Back</CardTitle>
+              <CardTitle className="text-2xl font-bold">{t('welcomeBack')}</CardTitle>
               <CardDescription className="text-base">
-                Sign in to access your documents and continue your work
+                {t('signInDescription')}
               </CardDescription>
             </CardHeader>
             
@@ -169,33 +195,73 @@ export default function SignInContent() {
                 </Alert>
               )}
 
-              <div className="space-y-4">
+              <form onSubmit={handleSignIn} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="username">{t('username')}</Label>
+                  <Input
+                    id="username"
+                    name="username"
+                    type="text"
+                    value={formData.username}
+                    onChange={handleInputChange}
+                    placeholder="Enter your username"
+                    required
+                    disabled={isLoading}
+                    className="h-12"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="password">{t('password')}</Label>
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      name="password"
+                      type={showPassword ? 'text' : 'password'}
+                      value={formData.password}
+                      onChange={handleInputChange}
+                      placeholder="Enter your password"
+                      required
+                      disabled={isLoading}
+                      className="h-12 pr-10"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-12 px-3 py-2 hover:bg-transparent"
+                      onClick={() => setShowPassword(!showPassword)}
+                      disabled={isLoading}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
                 <Button
-                  onClick={handleSignIn}
-                  disabled={isLoading}
+                  type="submit"
+                  disabled={isLoading || !formData.username || !formData.password}
                   size="lg"
                   className="w-full h-12 text-base font-medium bg-primary hover:bg-primary/90 transition-all duration-200 shadow-lg hover:shadow-xl"
                 >
                   {isLoading ? (
                     <div className="flex items-center space-x-2">
                       <Loader2 className="h-5 w-5 animate-spin" />
-                      <span>Signing in...</span>
+                      <span>{t('signingIn')}</span>
                     </div>
                   ) : (
                     <div className="flex items-center space-x-2">
                       <Shield className="h-5 w-5" />
-                      <span>Sign in with Keycloak</span>
+                      <span>{t('signIn')}</span>
                       <ArrowRight className="h-4 w-4" />
                     </div>
                   )}
                 </Button>
-
-                <div className="text-center">
-                  <p className="text-sm text-muted-foreground">
-                    You'll be redirected to Keycloak for secure authentication
-                  </p>
-                </div>
-              </div>
+              </form>
 
               {/* Security Notice */}
               <div className="mt-8 p-4 bg-muted/50 rounded-lg border">
@@ -204,7 +270,7 @@ export default function SignInContent() {
                   <div>
                     <h4 className="text-sm font-medium text-foreground">Secure Authentication</h4>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Your credentials are handled securely through Keycloak. We never store your password.
+                      Your credentials are handled securely. We use industry-standard encryption and never store your password.
                     </p>
                   </div>
                 </div>
@@ -215,7 +281,7 @@ export default function SignInContent() {
           {/* Footer */}
           <div className="text-center mt-8">
             <p className="text-sm text-muted-foreground">
-              Need help? Contact your system administrator
+              {t('contactAdmin')}
             </p>
           </div>
         </div>

@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import FolderActionModal from '@/components/modals/FolderActionModal';
-import DeleteConfirmationModal from '@/components/modals/DeleteConfirmationModal';
+import ConfirmationModal from '@/components/modals/ConfirmationModal';
 import { 
   Folder, 
   MoreVertical, 
@@ -831,13 +831,18 @@ export default function FoldersPage() {
       />
 
 
-      <DeleteConfirmationModal
+      <ConfirmationModal
         isOpen={showDeleteModal}
         onClose={handleCancelDelete}
         onConfirm={handleConfirmDelete}
+        title="Delete Folder"
+        message="Are you sure you want to delete this folder?"
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="destructive"
+        loading={isDeleting}
         itemName={deleteFolder?.name || ''}
         itemType="folder"
-        isLoading={isDeleting}
       />
 
       {/* Comment Modal */}

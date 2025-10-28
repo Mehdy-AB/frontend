@@ -1,174 +1,97 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { 
-  FolderTree, 
   Plus, 
-  Search, 
   Edit,
   Trash2,
-  Users,
+  Users as UsersIcon,
   ChevronDown,
   ChevronRight,
+  MoreVertical,
+  UserPlus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { notificationApiClient } from '@/api/notificationClient';
 import { GroupDto } from '@/types/api';
-import { useLanguage } from '../../../contexts/LanguageContext';
+import Pagination from '@/components/main/Pagination';
+import ServerSearchInput from '@/components/main/ServerSearchInput';
+import { useServerSideSearch } from '@/components/main/useServerSideSearch';
+import { formatDate } from '@/lib/dateFormatter';
+import CreateGroupModal, { CreateGroupData } from '@/components/modals/CreateGroupModal';
+import EditGroupModal, { EditGroupData } from '@/components/modals/EditGroupModal';
+import AssignGroupModal from '@/components/modals/AssignGroupModal';
+import ViewGroupUsersModal from '@/components/modals/ViewGroupUsersModal';
+import ConfirmationModal from '@/components/modals/ConfirmationModal';
 
 export default function GroupsPage() {
-  const { t } = useLanguage();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedItems, setSelectedItems] = useState<string[]>([]);
-  const [groups, setGroups] = useState<GroupDto[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // Real API data fetching
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const groupsData = await notificationApiClient.getAllGroups({
-        page: 0,
-        size: 100,
-        query: searchQuery || undefined,
-        desc: false
+  const pageSize = 20;
+  
+  // Use the server-side search hook
+  const {
+    displayData: displayGroups,
+    searchQuery,
+    setSearchQuery,
+    page,
+    setPage,
+    totalPages,
+    totalElements,
+    loading,
+    tableLoading,
+    isLocalFiltering,
+    error,
+    fetchData,
+    clearError,
+    updateItem,
+    addItem,
+    removeItem
+  } = useServerSideSearch<GroupDto>({
+    fetchFunction: async (page, searchTerm) => {
+      return await notificationApiClient.getAllGroups({
+        page,
+        size: pageSize,
+        desc: false,
+        name: searchTerm
       });
-      
-      setGroups(groupsData);
-    } catch (err: any) {
-      console.error('Error fetching groups data:', err);
-      setError(err.message || 'Failed to load data');
-    } finally {
-      setLoading(false);
-    }
-  };
+    },
+    searchFields: (group) => [group.name],
+    debounceMs: 800
+  });
 
-  useEffect(() => {
-    fetchData();
-  }, [searchQuery]);
-
-  // Debounce search query
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchData();
-    }, 300);
-    
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
-  // Real API utility functions
-  const getUsersInGroup = async (groupId: string) => {
-    try {
-      return await notificationApiClient.getGroupMembers(groupId, { max: 100 });
-    } catch (error) {
-      console.error('Error fetching group members:', error);
-      return [];
-    }
-  };
-
-  if (loading) {
-    return <GroupsSkeleton />;
-  }
-
-  if (error) {
-    return (
-      <Card className="flex flex-col items-center justify-center py-12">
-        <CardContent className="text-center">
-          <div className="text-destructive text-lg mb-4">{error}</div>
-          <Button onClick={() => fetchData()}>
-            Retry
-          </Button>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-semibold">Group Management</h1>
-          <p className="text-muted-foreground">Manage user groups and memberships</p>
-        </div>
-        <Button className="gap-2">
-          <Plus className="h-4 w-4" />
-          Add Group
-        </Button>
-      </div>
-
-      {/* Search and Filters */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="flex items-center gap-3">
-          <div className="relative w-64">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-            <Input
-              type="text"
-              placeholder="Search groups..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-          
-          <Select defaultValue="all-groups">
-            <SelectTrigger className="w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all-groups">All Groups</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="inactive">Inactive</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">
-            {selectedItems.length} selected
-          </span>
-          {selectedItems.length > 0 && (
-            <>
-              <Button variant="outline" size="sm">
-                Add Members
-              </Button>
-              <Button variant="destructive" size="sm">
-                Delete
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Groups Table */}
-      <Card>
-        <GroupsTable 
-          groups={groups} 
-          getUsersInGroup={getUsersInGroup}
-          selectedItems={selectedItems}
-          setSelectedItems={setSelectedItems}
-        />
-      </Card>
-    </div>
-  );
-}
-
-// Groups Table Component
-function GroupsTable({ groups, getUsersInGroup, selectedItems, setSelectedItems }: any) {
+  const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
+  
+  // Modal states
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  const [isViewUsersModalOpen, setIsViewUsersModalOpen] = useState(false);
+  
+  // Loading states
+  const [isCreateLoading, setIsCreateLoading] = useState(false);
+  const [isEditLoading, setIsEditLoading] = useState(false);
+  const [isAssignLoading, setIsAssignLoading] = useState(false);
+  
+  // Selected items for modals
+  const [groupToEdit, setGroupToEdit] = useState<GroupDto | null>(null);
+  const [groupToDelete, setGroupToDelete] = useState<GroupDto | null>(null);
+  const [groupToAssign, setGroupToAssign] = useState<GroupDto | null>(null);
+  const [groupToViewUsers, setGroupToViewUsers] = useState<GroupDto | null>(null);
+
+  const handlePageChange = useCallback((newPage: number) => {
+    if (newPage === page) return;
+    setPage(newPage);
+  }, [page, setPage]);
 
   const toggleGroupExpansion = (groupId: string) => {
     setExpandedGroups(prev =>
@@ -178,136 +101,403 @@ function GroupsTable({ groups, getUsersInGroup, selectedItems, setSelectedItems 
     );
   };
 
-  const renderGroup = (group: GroupDto, level = 0) => {
-    const usersInGroup = getUsersInGroup(group.id);
-    const isExpanded = expandedGroups.includes(group.id);
-
-    return (
-      <>
-        <tr key={group.id} className="border-b border-ui hover:bg-neutral-background/50">
-          <td className="p-4" style={{ paddingLeft: `${level * 24 + 16}px` }}>
-            <input type="checkbox" className="rounded border-ui" />
-          </td>
-          <td className="p-4">
-            <div className="flex items-center gap-3">
-              {(group as any).subGroups && (group as any).subGroups.length > 0 && (
-                <button 
-                  onClick={() => toggleGroupExpansion(group.id)}
-                  className="p-1 rounded hover:bg-ui transition-colors"
-                >
-                  {isExpanded ? (
-                    <ChevronDown className="h-4 w-4" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4" />
-                  )}
-                </button>
-              )}
-              <div className="h-10 w-10 bg-primary-light rounded-full flex items-center justify-center">
-                <FolderTree className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <div className="font-medium text-neutral-text-dark">{group.name}</div>
-                <div className="text-sm text-neutral-text-light">{group.path}</div>
-              </div>
-            </div>
-          </td>
-          <td className="p-4">
-            <div className="text-sm text-neutral-text-dark">{group.description}</div>
-          </td>
-          <td className="p-4">
-            <div className="text-sm text-neutral-text-light">{usersInGroup.length} users</div>
-          </td>
-          <td className="p-4">
-            <div className="flex gap-2">
-              <button className="p-1 rounded hover:bg-ui transition-colors">
-                <Edit className="h-4 w-4" />
-              </button>
-              <button className="p-1 rounded hover:bg-error/10 transition-colors">
-                <Trash2 className="h-4 w-4 text-error" />
-              </button>
-            </div>
-          </td>
-        </tr>
-
-        {/* Expanded Group Details */}
-        {isExpanded && (
-          <tr className="bg-neutral-background/30">
-            <td colSpan={5} className="p-4" style={{ paddingLeft: `${level * 24 + 64}px` }}>
-              <div>
-                <h4 className="font-medium text-neutral-text-dark mb-3">Group Members</h4>
-                <div className="space-y-2">
-                  {usersInGroup.map((user: any) => (
-                    <div key={user.id} className="flex justify-between items-center p-2 bg-surface rounded border border-ui">
-                      <span className="text-sm">{user.firstName} {user.lastName}</span>
-                      <button className="text-xs text-error hover:text-error-dark">
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-                  <button className="w-full text-xs text-primary hover:text-primary-dark text-center py-2 border border-dashed border-ui rounded">
-                    Add User to Group
-                  </button>
-                </div>
-              </div>
-            </td>
-          </tr>
-        )}
-
-        {/* Render Subgroups */}
-        {isExpanded && (group as any).subGroups?.map((subGroup: any) => 
-          renderGroup(subGroup, level + 1)
-        )}
-      </>
+  const toggleSelectGroup = (groupId: string) => {
+    setSelectedItems(prev =>
+      prev.includes(groupId)
+        ? prev.filter(id => id !== groupId)
+        : [...prev, groupId]
     );
   };
 
-  return (
-    <div className="overflow-hidden">
-      <table className="w-full">
-        <thead className="bg-neutral-background">
-          <tr>
-            <th className="text-left p-4 w-8">
-              <input type="checkbox" className="rounded border-ui" />
-            </th>
-            <th className="text-left p-4 text-sm font-medium text-neutral-text-dark">Group</th>
-            <th className="text-left p-4 text-sm font-medium text-neutral-text-dark">Description</th>
-            <th className="text-left p-4 text-sm font-medium text-neutral-text-dark">Members</th>
-            <th className="text-left p-4 text-sm font-medium text-neutral-text-dark">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {groups.map((group: GroupDto) => renderGroup(group))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
+  const handleCreateGroup = async (data: CreateGroupData) => {
+    try {
+      setIsCreateLoading(true);
+      const newGroup = await notificationApiClient.createGroup(data);
+      // Add to local state
+      addItem(newGroup);
+      setIsCreateModalOpen(false);
+    } catch (error) {
+      console.error('Error creating group:', error);
+    } finally {
+      setIsCreateLoading(false);
+    }
+  };
 
-// Loading Skeleton
-function GroupsSkeleton() {
+  const handleEditClick = (group: GroupDto) => {
+    setGroupToEdit(group);
+    setIsEditModalOpen(true);
+  };
+
+  const handleEditConfirm = async (data: EditGroupData) => {
+    if (!groupToEdit) return;
+    
+    try {
+      setIsEditLoading(true);
+      await notificationApiClient.updateGroup(groupToEdit.id, data);
+      // Update local state
+      updateItem(groupToEdit.id, (item) => ({
+        ...item,
+        name: data.name,
+        description: data.description
+      }));
+      setIsEditModalOpen(false);
+      setGroupToEdit(null);
+    } catch (error) {
+      console.error('Error editing group:', error);
+    } finally {
+      setIsEditLoading(false);
+    }
+  };
+
+  const handleDeleteClick = (group: GroupDto) => {
+    setGroupToDelete(group);
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!groupToDelete) return;
+    
+    try {
+      await notificationApiClient.deleteGroup(groupToDelete.id);
+      // Remove from local state
+      removeItem(groupToDelete.id);
+      setIsDeleteModalOpen(false);
+      setGroupToDelete(null);
+    } catch (error) {
+      console.error('Error deleting group:', error);
+    }
+  };
+
+  const handleAssignClick = (group: GroupDto) => {
+    setGroupToAssign(group);
+    setIsAssignModalOpen(true);
+  };
+
+  const handleAssignConfirm = async (userIds: string[]) => {
+    if (!groupToAssign) return;
+    
+    try {
+      setIsAssignLoading(true);
+      await notificationApiClient.assignUsersToGroup(groupToAssign.id, userIds);
+      // Refetch data to update user count
+      await fetchData(true);
+      setIsAssignModalOpen(false);
+      setGroupToAssign(null);
+    } catch (error) {
+      console.error('Error assigning users to group:', error);
+    } finally {
+      setIsAssignLoading(false);
+    }
+  };
+
+  const handleViewUsersClick = (group: GroupDto) => {
+    setGroupToViewUsers(group);
+    setIsViewUsersModalOpen(true);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading groups...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-6">
+      {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <div className="h-8 bg-muted rounded w-64 animate-pulse shimmer mb-2"></div>
-          <div className="h-4 bg-muted rounded w-96 animate-pulse shimmer"></div>
+          <h1 className="text-3xl font-bold">Group Management</h1>
+          <p className="text-muted-foreground">Manage user groups and their members</p>
         </div>
-        <div className="h-10 bg-muted rounded w-32 animate-pulse shimmer"></div>
+        <Button className="gap-2" onClick={() => setIsCreateModalOpen(true)}>
+          <Plus className="h-4 w-4" />
+          Add Group
+        </Button>
       </div>
 
-      <div className="flex gap-4">
-        <div className="h-10 bg-muted rounded w-64 animate-pulse shimmer"></div>
-        <div className="h-10 bg-muted rounded w-32 animate-pulse shimmer"></div>
-      </div>
+      {/* Error Display */}
+      {error && (
+        <Card className="border-destructive">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-destructive">{error}</div>
+              <Button variant="outline" size="sm" onClick={() => { clearError(); fetchData(false); }}>
+                Retry
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
-      <Card className="animate-pulse">
-        <div className="h-12 bg-muted rounded-t-lg shimmer"></div>
-        {[...Array(5)].map((_, i) => (
-          <div key={i} className="h-16 border-b flex items-center px-4">
-            <div className="h-4 bg-muted rounded w-full shimmer"></div>
+      {/* Search and Stats */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-center gap-4">
+            <ServerSearchInput
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder="Search groups by name..."
+            />
+            <div className="text-sm text-muted-foreground whitespace-nowrap">
+              {totalElements} group{totalElements !== 1 ? 's' : ''} total
+            </div>
           </div>
-        ))}
+        </CardContent>
       </Card>
+
+      {/* Groups Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            {selectedItems.length > 0 && (
+              <span className="text-sm font-normal text-muted-foreground">
+                {selectedItems.length} selected
+              </span>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-muted">
+                <tr>
+                  <th className="text-left p-4">
+                    <input 
+                      type="checkbox" 
+                      className="rounded border-ui"
+                      checked={selectedItems.length === displayGroups.length && displayGroups.length > 0}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedItems(displayGroups.map(g => g.id));
+                        } else {
+                          setSelectedItems([]);
+                        }
+                      }}
+                    />
+                  </th>
+                  <th className="text-left p-4 text-sm font-medium">Group</th>
+                  <th className="text-left p-4 text-sm font-medium">Description</th>
+                  <th className="text-left p-4 text-sm font-medium">Members</th>
+                  <th className="text-left p-4 text-sm font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {displayGroups.map((group: GroupDto) => {
+                  const isExpanded = expandedGroups.includes(group.id);
+
+                  return (
+                    <React.Fragment key={group.id}>
+                      <tr className="border-b hover:bg-muted/50">
+                        <td className="p-4">
+                          <input 
+                            type="checkbox" 
+                            className="rounded border-ui"
+                            checked={selectedItems.includes(group.id)}
+                            onChange={() => toggleSelectGroup(group.id)}
+                          />
+                        </td>
+                        <td className="p-4">
+                          <div className="flex items-center gap-3">
+                            <button 
+                              onClick={() => toggleGroupExpansion(group.id)}
+                              className="p-1 rounded hover:bg-muted transition-colors"
+                            >
+                              {isExpanded ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
+                              )}
+                            </button>
+                            <div className="h-10 w-10 bg-primary-light rounded-full flex items-center justify-center">
+                              <UsersIcon className="h-5 w-5 text-primary" />
+                            </div>
+                            <div>
+                              <div className="font-medium">{group.name}</div>
+                              <div className="text-sm text-muted-foreground">{group.id.substring(0, 8)}...</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <div className="text-sm text-muted-foreground max-w-md truncate">
+                            {group.description || 'No description'}
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <button
+                            onClick={() => handleViewUsersClick(group)}
+                            className="flex items-center gap-2 text-sm hover:text-primary transition-colors"
+                          >
+                            <UsersIcon className="h-4 w-4" />
+                            <span>{group.userCount || 0} users</span>
+                          </button>
+                        </td>
+                        <td className="p-4">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm">
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => handleEditClick(group)}>
+                                <Edit className="h-4 w-4 mr-2" />
+                                Edit Group
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleAssignClick(group)}>
+                                <UserPlus className="h-4 w-4 mr-2" />
+                                Assign Users
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleViewUsersClick(group)}>
+                                <UsersIcon className="h-4 w-4 mr-2" />
+                                View Users
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem 
+                                onClick={() => handleDeleteClick(group)} 
+                                className="text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete Group
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </td>
+                      </tr>
+                      
+                      {isExpanded && (
+                        <tr className="bg-muted/30">
+                          <td colSpan={5} className="p-4 pl-20">
+                            <div className="space-y-2">
+                              <div>
+                                <p className="text-sm font-medium mb-2">Group Details</p>
+                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                  <div>
+                                    <span className="text-muted-foreground">Created:</span>{' '}
+                                    <span>{formatDate(group.createdAt)}</span>
+                                  </div>
+                                  {group.updatedAt && (
+                                    <div>
+                                      <span className="text-muted-foreground">Updated:</span>{' '}
+                                      <span>{formatDate(group.updatedAt)}</span>
+                                    </div>
+                                  )}
+                                  <div>
+                                    <span className="text-muted-foreground">Members:</span>{' '}
+                                    <span>{group.userCount || 0} users</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+            
+            {displayGroups.length === 0 && !tableLoading && (
+              <div className="text-center py-12">
+                <UsersIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground">
+                  {searchQuery ? 'No groups match your search' : 'No groups found'}
+                </p>
+              </div>
+            )}
+
+            {/* Loading indicator */}
+            {tableLoading && (
+              <div className="flex items-center justify-center py-4 text-sm text-muted-foreground">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2"></div>
+                {isLocalFiltering ? 'Fetching comprehensive results...' : 'Loading groups...'}
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Pagination
+        currentPage={page}
+        totalPages={totalPages}
+        totalElements={totalElements}
+        pageSize={pageSize}
+        onPageChange={handlePageChange}
+      />
+
+      {/* Modals */}
+      <CreateGroupModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onSubmit={handleCreateGroup}
+        loading={isCreateLoading}
+      />
+
+      {groupToEdit && (
+        <EditGroupModal
+          isOpen={isEditModalOpen}
+          onClose={() => {
+            setIsEditModalOpen(false);
+            setGroupToEdit(null);
+          }}
+          onSubmit={handleEditConfirm}
+          group={groupToEdit}
+          loading={isEditLoading}
+        />
+      )}
+
+      {groupToAssign && (
+        <AssignGroupModal
+          isOpen={isAssignModalOpen}
+          onClose={() => {
+            setIsAssignModalOpen(false);
+            setGroupToAssign(null);
+          }}
+          onSubmit={handleAssignConfirm}
+          groupId={groupToAssign.id}
+          groupName={groupToAssign.name}
+          loading={isAssignLoading}
+        />
+      )}
+
+      {groupToViewUsers && (
+        <ViewGroupUsersModal
+          isOpen={isViewUsersModalOpen}
+          onClose={() => {
+            setIsViewUsersModalOpen(false);
+            setGroupToViewUsers(null);
+          }}
+          groupId={groupToViewUsers.id}
+          groupName={groupToViewUsers.name}
+          onUserRemoved={async (userId) => {
+            // Refetch data to update user count
+            await fetchData(true);
+          }}
+        />
+      )}
+
+      <ConfirmationModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => {
+          setIsDeleteModalOpen(false);
+          setGroupToDelete(null);
+        }}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Group"
+        message={groupToDelete ? `Are you sure you want to delete group "${groupToDelete.name}"? This action cannot be undone.` : ''}
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="destructive"
+        loading={false}
+        itemName={groupToDelete?.name}
+        itemType="group"
+      />
     </div>
   );
 }
+

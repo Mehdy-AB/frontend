@@ -33,6 +33,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../../../components
 import { useLanguage } from '../../../../contexts/LanguageContext';
 import { notificationApiClient } from '../../../../api/notificationClient';
 import { useNotification } from '../../../../contexts/NotificationContext';
+import UserAvatar from '../../../../components/main/UserAvatar';
+import ServerSearchInput from '../../../../components/main/ServerSearchInput';
+import Pagination from '../../../../components/main/Pagination';
+import { useServerSideSearch } from '../../../../components/main/useServerSideSearch';
 import { 
   FilingCategoryRequestDto, 
   FilingCategoryResponseDto, 
@@ -55,16 +59,7 @@ interface ExtendedCategoryMetadataDefinitionDto extends CategoryMetadataDefiniti
 export default function ModelsPage() {
   const { t } = useLanguage();
   const { addNotification } = useNotification();
-  const [categories, setCategories] = useState<FilingCategoryResponseDto[]>([]);
-  const [lists, setLists] = useState<MetaDataListRes[]>([]);
-  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'categories' | 'lists'>('categories');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchResults, setSearchResults] = useState<{
-    categories: FilingCategoryResponseDto[];
-    lists: MetaDataListRes[];
-  }>({ categories: [], lists: [] });
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showCreateListModal, setShowCreateListModal] = useState(false);
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
@@ -77,7 +72,62 @@ export default function ModelsPage() {
   const [showImportModal, setShowImportModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportQuantity, setExportQuantity] = useState(100);
-  const [refreshing, setRefreshing] = useState(false);
+  
+  const pageSize = 20;
+
+  // Categories server-side search
+  const {
+    displayData: displayCategories,
+    searchQuery: categoriesSearchQuery,
+    setSearchQuery: setCategoriesSearchQuery,
+    page: categoriesPage,
+    setPage: setCategoriesPage,
+    totalPages: categoriesTotalPages,
+    totalElements: categoriesTotalElements,
+    loading: categoriesLoading,
+    tableLoading: categoriesTableLoading,
+    addItem: addCategory,
+    updateItem: updateCategory,
+    removeItem: removeCategory,
+    fetchData: fetchCategories
+  } = useServerSideSearch<FilingCategoryResponseDto>({
+    fetchFunction: async (page, searchTerm) => {
+      return await notificationApiClient.getAllFilingCategories({
+        page,
+        size: pageSize,
+        name: searchTerm || undefined,
+      });
+    },
+    searchFields: (category) => [category.name, category.description || ''],
+    debounceMs: 500
+  });
+
+  // Lists server-side search
+  const {
+    displayData: displayLists,
+    searchQuery: listsSearchQuery,
+    setSearchQuery: setListsSearchQuery,
+    page: listsPage,
+    setPage: setListsPage,
+    totalPages: listsTotalPages,
+    totalElements: listsTotalElements,
+    loading: listsLoading,
+    tableLoading: listsTableLoading,
+    addItem: addList,
+    updateItem: updateList,
+    removeItem: removeList,
+    fetchData: fetchLists
+  } = useServerSideSearch<MetaDataListRes>({
+    fetchFunction: async (page, searchTerm) => {
+      return await notificationApiClient.getAllMetadataLists({
+        page,
+        size: pageSize,
+        name: searchTerm || undefined,
+      });
+    },
+    searchFields: (list) => [list.name, list.description || ''],
+    debounceMs: 500
+  });
 
   // Set up notification callback for API client
   useEffect(() => {
@@ -90,182 +140,45 @@ export default function ModelsPage() {
     });
   }, [addNotification]);
 
-  // Fetch data from API
-  const fetchData = async () => {
+  // Handle editing category - fetch latest data from backend
+  const handleEditCategory = async (category: FilingCategoryResponseDto) => {
     try {
-      setLoading(true);
-      
-      // Fetch both categories and lists in parallel
-      const [categoriesResponse, listsResponse] = await Promise.all([
-        notificationApiClient.getAllFilingCategories({ size: 1000 }),
-        notificationApiClient.getAllMetadataLists({ size: 1000 })
-      ]);
-      
-      setCategories(categoriesResponse.content);
-      setLists(listsResponse.content);
+      const latestCategory = await notificationApiClient.getFilingCategoryById(category.id);
+      setEditingCategory(latestCategory);
     } catch (error) {
-      console.error('Error fetching data:', error);
+      console.error('Error fetching category:', error);
       addNotification({
         type: 'error',
         title: 'Error',
-        message: 'Failed to load models and lists'
+        message: 'Failed to load category details'
       });
-    } finally {
-      setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, [addNotification]);
-
-  // Refresh function
-  const handleRefresh = async () => {
+  // Handle editing list - fetch latest data from backend
+  const handleEditList = async (list: MetaDataListRes) => {
     try {
-      setRefreshing(true);
-      await fetchData();
-      addNotification({
-        type: 'success',
-        title: 'Refresh Successful',
-        message: 'Data has been refreshed'
-      });
+      const latestList = await notificationApiClient.getMetadataListById(list.id);
+      setEditingList(latestList);
     } catch (error) {
-      console.error('Error refreshing data:', error);
+      console.error('Error fetching list:', error);
       addNotification({
         type: 'error',
-        title: 'Refresh Error',
-        message: 'Failed to refresh data'
+        title: 'Error',
+        message: 'Failed to load list details'
       });
-    } finally {
-      setRefreshing(false);
     }
   };
 
   // Handle editing list from metadata click
-  const handleEditListFromMetadata = (listData: any) => {
+  const handleEditListFromMetadata = async (listData: any) => {
     // Find the actual list object from our lists state
-    const actualList = lists.find(l => l.name === listData.name);
+    const actualList = displayLists.find(l => l.name === listData.name);
     if (actualList) {
-      setEditingList(actualList);
+      await handleEditList(actualList);
     }
   };
 
-  // Backend search function
-  const performBackendSearch = useCallback(async (query: string) => {
-    if (query.trim().length === 0) {
-      setSearchResults({ categories: [], lists: [] });
-      return;
-    }
-
-    setIsSearching(true);
-    try {
-      // Search categories and lists in parallel
-      const [categoryResults, listResults] = await Promise.all([
-        notificationApiClient.getAllFilingCategories({
-          name: query.trim(),
-          size: 100
-        }),
-        notificationApiClient.getAllMetadataLists({
-          name: query.trim(),
-          size: 100
-        })
-      ]);
-      
-      setSearchResults({
-        categories: categoryResults.content || [],
-        lists: listResults.content || []
-      });
-    } catch (error) {
-      console.error('Search error:', error);
-      addNotification({
-        type: 'error',
-        title: 'Search Error',
-        message: 'Failed to search models and lists'
-      });
-    } finally {
-      setIsSearching(false);
-    }
-  }, [addNotification]);
-
-  // Debounced search function
-  const debouncedSearch = useCallback(
-    (() => {
-      let timeoutId: NodeJS.Timeout;
-      return (query: string) => {
-        clearTimeout(timeoutId);
-        timeoutId = setTimeout(() => {
-          performBackendSearch(query);
-        }, 400);
-      };
-    })(),
-    [performBackendSearch]
-  );
-
-  // Local filtering function
-  const filterLocally = useCallback((items: any[], query: string, fields: string[]) => {
-    if (!query.trim()) return items;
-    
-    const lowercaseQuery = query.toLowerCase();
-    return items.filter(item => 
-      fields.some(field => {
-        const value = field.split('.').reduce((obj, key) => obj?.[key], item);
-        return value && value.toString().toLowerCase().includes(lowercaseQuery);
-      })
-    );
-  }, []);
-
-  // Memoized filtered data - always show local results first
-  const filteredCategories = useMemo(() => {
-    // Always get local results first
-    const localResults = filterLocally(categories, searchQuery, ['name', 'description']);
-    
-    // If we have backend search results and they're different from local, combine them
-    if (searchQuery.trim().length > 2 && searchResults.categories.length > 0) {
-      // Merge local and backend results, removing duplicates
-      const combined = [...localResults];
-      searchResults.categories.forEach(backendItem => {
-        if (!combined.find(localItem => localItem.id === backendItem.id)) {
-          combined.push(backendItem);
-        }
-      });
-      return combined;
-    }
-    
-    return localResults;
-  }, [categories, searchQuery, searchResults.categories, filterLocally]);
-
-  const filteredLists = useMemo(() => {
-    // Always get local results first
-    const localResults = filterLocally(lists, searchQuery, ['name', 'description']);
-    
-    // If we have backend search results and they're different from local, combine them
-    if (searchQuery.trim().length > 2 && searchResults.lists.length > 0) {
-      // Merge local and backend results, removing duplicates
-      const combined = [...localResults];
-      searchResults.lists.forEach(backendItem => {
-        if (!combined.find(localItem => localItem.id === backendItem.id)) {
-          combined.push(backendItem);
-        }
-      });
-      return combined;
-    }
-    
-    return localResults;
-  }, [lists, searchQuery, searchResults.lists, filterLocally]);
-
-  // Handle search input change
-  const handleSearchChange = useCallback((value: string) => {
-    setSearchQuery(value);
-    debouncedSearch(value);
-  }, [debouncedSearch]);
-
-  // Handle Enter key press for immediate search
-  const handleSearchKeyPress = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      performBackendSearch(searchQuery);
-    }
-  }, [searchQuery, performBackendSearch]);
 
   const getDataTypeIcon = (dataType: MetadataType) => {
     switch (dataType) {
@@ -293,11 +206,10 @@ export default function ModelsPage() {
   const handleCreateCategory = async (categoryData: FilingCategoryRequestDto) => {
     try {
       const newCategory = await notificationApiClient.createFilingCategory(categoryData);
-      setCategories(prev => [...prev, newCategory]);
+      addCategory(newCategory);
       
       // Refetch lists to get any new lists that were created
-      const listsResponse = await notificationApiClient.getAllMetadataLists({ size: 1000 });
-      setLists(listsResponse.content);
+      fetchLists(false);
       
       setShowCreateModal(false);
     } catch (error) {
@@ -308,11 +220,10 @@ export default function ModelsPage() {
   const handleUpdateCategory = async (id: number, categoryData: FilingCategoryRequestDto) => {
     try {
       const updatedCategory = await notificationApiClient.updateFilingCategory(id, categoryData);
-      setCategories(prev => prev.map(cat => cat.id === id ? updatedCategory : cat));
+      updateCategory(id, () => updatedCategory);
       
       // Refetch lists to get any new lists that were created
-      const listsResponse = await notificationApiClient.getAllMetadataLists({ size: 1000 });
-      setLists(listsResponse.content);
+      fetchLists(false);
       
       setEditingCategory(null);
     } catch (error) {
@@ -329,7 +240,7 @@ export default function ModelsPage() {
     if (!deletingItem) return;
     try {
       await notificationApiClient.deleteFilingCategory(deletingItem.id);
-      setCategories(prev => prev.filter(cat => cat.id !== deletingItem.id));
+      removeCategory(deletingItem.id);
       setShowDeleteConfirm(false);
       setDeletingItem(null);
     } catch (error) {
@@ -341,7 +252,7 @@ export default function ModelsPage() {
   const handleCreateList = async (listData: MetaDataListReq) => {
     try {
       const newList = await notificationApiClient.createMetadataList(listData);
-      setLists(prev => [...prev, newList]);
+      addList(newList);
       setShowCreateListModal(false);
     } catch (error) {
       console.error('Error creating list:', error);
@@ -351,7 +262,7 @@ export default function ModelsPage() {
   const handleUpdateList = async (id: number, listData: MetaDataListReq) => {
     try {
       const updatedList = await notificationApiClient.updateMetadataList(id, listData);
-      setLists(prev => prev.map(list => list.id === id ? updatedList : list));
+      updateList(id, () => updatedList);
       setEditingList(null);
     } catch (error) {
       console.error('Error updating list:', error);
@@ -367,7 +278,7 @@ export default function ModelsPage() {
     if (!deletingItem) return;
     try {
       await notificationApiClient.deleteMetadataList(deletingItem.id);
-      setLists(prev => prev.filter(list => list.id !== deletingItem.id));
+      removeList(deletingItem.id);
       setShowDeleteConfirm(false);
       setDeletingItem(null);
     } catch (error) {
@@ -500,7 +411,7 @@ export default function ModelsPage() {
       for (const [listName, listData] of listsToCreate) {
         try {
           // Check if list already exists
-          const existingList = lists.find(l => l.name === listName);
+          const existingList = displayLists.find(l => l.name === listName);
           if (existingList) {
             createdLists.set(listName, existingList.id);
             continue;
@@ -622,10 +533,6 @@ export default function ModelsPage() {
     }
   };
 
-  if (loading) {
-    return <ModelsSkeleton />;
-  }
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
       <div className="max-w-7xl mx-auto space-y-8">
@@ -638,23 +545,29 @@ export default function ModelsPage() {
               <div className="flex items-center gap-4 mt-4">
                 <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm font-medium">
                   <FolderTree className="h-4 w-4" />
-                  {searchQuery ? filteredCategories.length : categories.length} Models
+                  {categoriesTotalElements} Models
                 </div>
                 <div className="flex items-center gap-2 px-3 py-1 bg-purple-50 text-purple-700 rounded-full text-sm font-medium">
                   <List className="h-4 w-4" />
-                  {searchQuery ? filteredLists.length : lists.length} Lists
+                  {listsTotalElements} Lists
                 </div>
               </div>
             </div>
             <div className="flex gap-3">
               <Button 
-                onClick={handleRefresh}
+                onClick={() => {
+                  if (activeTab === 'categories') {
+                    fetchCategories(false);
+                  } else {
+                    fetchLists(false);
+                  }
+                }}
                 variant="outline"
-                disabled={refreshing}
+                disabled={activeTab === 'categories' ? categoriesLoading : listsLoading}
                 className="flex items-center gap-2 bg-white hover:bg-slate-50 border-slate-300"
               >
-                <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-                {refreshing ? 'Refreshing...' : 'Refresh'}
+                <RefreshCw className={`h-4 w-4 ${activeTab === 'categories' ? (categoriesLoading ? 'animate-spin' : '') : (listsLoading ? 'animate-spin' : '')}`} />
+                {activeTab === 'categories' ? (categoriesLoading ? 'Refreshing...' : 'Refresh') : (listsLoading ? 'Refreshing...' : 'Refresh')}
               </Button>
               <Button 
                 onClick={() => setShowImportModal(true)}
@@ -703,62 +616,41 @@ export default function ModelsPage() {
                   className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm"
                 >
                   <FolderTree className="h-4 w-4" />
-                  {t('models.title')} ({searchQuery ? filteredCategories.length : categories.length})
+                  {t('models.title')} ({categoriesTotalElements})
                 </TabsTrigger>
                 <TabsTrigger 
                   value="lists" 
                   className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm"
                 >
                   <List className="h-4 w-4" />
-                  Metadata Lists ({searchQuery ? filteredLists.length : lists.length})
+                  Metadata Lists ({listsTotalElements})
                 </TabsTrigger>
               </TabsList>
 
               {/* Search Section */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 h-4 w-4" />
-                  <Input
-                    type="text"
-                    placeholder={t('common.search')}
-                    value={searchQuery}
-                    onChange={(e) => handleSearchChange(e.target.value)}
-                    onKeyPress={handleSearchKeyPress}
-                    className="pl-10 w-64 h-10 border-slate-300 focus:border-blue-500 focus:ring-blue-500"
-                  />
-                  {isSearching ? (
-                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                      <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+              <div className="flex items-center gap-4">
+                {activeTab === 'categories' ? (
+                  <>
+                    <ServerSearchInput
+                      value={categoriesSearchQuery}
+                      onChange={setCategoriesSearchQuery}
+                      placeholder="Search filing categories by name or description..."
+                    />
+                    <div className="text-sm text-muted-foreground whitespace-nowrap">
+                      {categoriesTotalElements} {categoriesTotalElements !== 1 ? 'categories' : 'category'}
                     </div>
-                  ) : (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => performBackendSearch(searchQuery)}
-                      className="absolute right-1 top-1/2 transform -translate-y-1/2 h-8 w-8 p-0 hover:bg-slate-100"
-                    >
-                      <Search className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-                {searchQuery && (
-                  <div className="flex items-center gap-3">
-                    <div className="text-sm text-slate-600 bg-slate-100 px-3 py-1 rounded-full">
-                      {activeTab === 'categories' ? filteredCategories.length : filteredLists.length} result{(activeTab === 'categories' ? filteredCategories.length : filteredLists.length) !== 1 ? 's' : ''}
+                  </>
+                ) : (
+                  <>
+                    <ServerSearchInput
+                      value={listsSearchQuery}
+                      onChange={setListsSearchQuery}
+                      placeholder="Search metadata lists by name or description..."
+                    />
+                    <div className="text-sm text-muted-foreground whitespace-nowrap">
+                      {listsTotalElements} {listsTotalElements !== 1 ? 'lists' : 'list'}
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setSearchQuery('');
-                        setSearchResults({ categories: [], lists: [] });
-                      }}
-                      className="h-8 px-3 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg"
-                    >
-                      <X className="h-4 w-4 mr-1" />
-                      Clear
-                    </Button>
-                  </div>
+                  </>
                 )}
               </div>
             </div>
@@ -766,55 +658,53 @@ export default function ModelsPage() {
             {/* Content Area */}
             <TabsContent value="categories" className="mt-6">
               <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                {searchQuery && filteredCategories.length === 0 && !isSearching ? (
-                  <div className="text-center py-16 text-slate-500">
-                    <div className="flex flex-col items-center gap-4">
-                      <div className="h-16 w-16 bg-slate-100 rounded-full flex items-center justify-center">
-                        <Search className="h-8 w-8 text-slate-400" />
-                      </div>
-                      <div>
-                        <p className="text-lg font-medium">No models found for "{searchQuery}"</p>
-                        <p className="text-sm">Try adjusting your search terms or create a new model</p>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <CategoriesTab 
-                    categories={filteredCategories} 
-                    lists={lists}
-                    getDataTypeIcon={getDataTypeIcon}
-                    getDataTypeColor={getDataTypeColor}
-                    onEdit={setEditingCategory}
-                    onDelete={handleDeleteCategory}
-                    onDuplicate={handleDuplicateCategory}
-                    onEditList={handleEditListFromMetadata}
-                  />
-                )}
+                <CategoriesTab 
+                  categories={displayCategories} 
+                  lists={displayLists}
+                  getDataTypeIcon={getDataTypeIcon}
+                  getDataTypeColor={getDataTypeColor}
+                  onEdit={handleEditCategory}
+                  onDelete={handleDeleteCategory}
+                  onDuplicate={handleDuplicateCategory}
+                  onEditList={handleEditListFromMetadata}
+                  loading={categoriesTableLoading}
+                />
               </div>
+              
+              {/* Pagination */}
+              <Pagination
+                currentPage={categoriesPage}
+                totalPages={categoriesTotalPages}
+                totalElements={categoriesTotalElements}
+                pageSize={pageSize}
+                onPageChange={(newPage) => {
+                  setCategoriesPage(newPage);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              />
             </TabsContent>
 
             <TabsContent value="lists" className="mt-6">
               <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                {searchQuery && filteredLists.length === 0 && !isSearching ? (
-                  <div className="text-center py-16 text-slate-500">
-                    <div className="flex flex-col items-center gap-4">
-                      <div className="h-16 w-16 bg-slate-100 rounded-full flex items-center justify-center">
-                        <Search className="h-8 w-8 text-slate-400" />
-                      </div>
-                      <div>
-                        <p className="text-lg font-medium">No lists found for "{searchQuery}"</p>
-                        <p className="text-sm">Try adjusting your search terms or create a new list</p>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <ListsTab 
-                    lists={filteredLists}
-                    onEdit={setEditingList}
-                    onDelete={handleDeleteList}
-                  />
-                )}
+                <ListsTab 
+                  lists={displayLists}
+                  onEdit={handleEditList}
+                  onDelete={handleDeleteList}
+                  loading={listsTableLoading}
+                />
               </div>
+              
+              {/* Pagination */}
+              <Pagination
+                currentPage={listsPage}
+                totalPages={listsTotalPages}
+                totalElements={listsTotalElements}
+                pageSize={pageSize}
+                onPageChange={(newPage) => {
+                  setListsPage(newPage);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              />
             </TabsContent>
           </Tabs>
         </div>
@@ -824,7 +714,7 @@ export default function ModelsPage() {
       {(showCreateModal || editingCategory) && (
         <CategoryModal 
           category={editingCategory}
-          lists={lists}
+          lists={displayLists}
           onClose={() => {
             setShowCreateModal(false);
             setEditingCategory(null);
@@ -1136,7 +1026,7 @@ export default function ModelsPage() {
 }
 
 // Categories Tab Component
-function CategoriesTab({ categories, lists, getDataTypeIcon, getDataTypeColor, onEdit, onDelete, onDuplicate, onEditList }: any) {
+function CategoriesTab({ categories, lists, getDataTypeIcon, getDataTypeColor, onEdit, onDelete, onDuplicate, onEditList, loading }: any) {
   const [expandedCategories, setExpandedCategories] = useState<number[]>([]);
 
   const toggleCategoryExpansion = (categoryId: number) => {
@@ -1146,6 +1036,14 @@ function CategoriesTab({ categories, lists, getDataTypeIcon, getDataTypeColor, o
         : [...prev, categoryId]
     );
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
+      </div>
+    );
+  }
 
   if (categories.length === 0) {
     return (
@@ -1218,7 +1116,24 @@ function CategoriesTab({ categories, lists, getDataTypeIcon, getDataTypeColor, o
                     </div>
                   </td>
                   <td className="p-6">
-                    <div className="text-sm text-slate-600">{category.createdBy.firstName} {category.createdBy.lastName}</div>
+                    {category.createdBy ? (
+                      <div className="flex items-center gap-3">
+                        <UserAvatar 
+                          user={category.createdBy}
+                          size="sm"
+                        />
+                        <div className="flex flex-col">
+                          <div className="text-sm font-medium text-slate-900">
+                            {category.createdBy.displayName}
+                          </div>
+                          <div className="text-xs text-slate-500">
+                            {category.createdBy.email}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-slate-500 italic">Unknown</div>
+                    )}
                   </td>
                   <td className="p-6">
                     <div className="flex gap-2">
@@ -1317,7 +1232,15 @@ function MetadataDefinitionCard({ metadata, getDataTypeIcon, getDataTypeColor, o
 }
 
 // Lists Tab Component
-function ListsTab({ lists, onEdit, onDelete }: any) {
+function ListsTab({ lists, onEdit, onDelete, loading }: any) {
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
+      </div>
+    );
+  }
+
   if (lists.length === 0) {
     return (
       <div className="text-center py-16 text-slate-500">

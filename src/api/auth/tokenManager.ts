@@ -1,10 +1,11 @@
 import { getSession, signOut } from 'next-auth/react';
+import { authService } from '../services/authService';
 
 export interface TokenRefreshResponse {
-  access_token: string;
-  refresh_token?: string;
-  expires_in: number;
-  token_type?: string;
+  accessToken: string;
+  refreshToken?: string;
+  expiresIn: number;
+  tokenType?: string;
 }
 
 export class TokenManager {
@@ -156,31 +157,12 @@ export class TokenManager {
       const refreshToken = this.refreshToken ?? (await this.getRefreshTokenFromSession());
       if (!refreshToken) throw new Error('No refresh token');
 
-      const issuer = process.env.NEXT_PUBLIC_KEYCLOAK_ISSUER || 'http://localhost:9090/realms/AeB_Dms';
-      const clientId = process.env.NEXT_PUBLIC_KEYCLOAK_ID || 'dms-backend-app';
-      const clientSecret = process.env.KEYCLOAK_SECRET || 'fbOTgjSIZPHi1Cl6tQ2pFGPFa9fPr6Zi';
-
-      const res = await fetch(`${issuer}/protocol/openid-connect/token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          grant_type: 'refresh_token',
-          refresh_token: refreshToken,
-          client_id: clientId,
-          client_secret: clientSecret,
-        }),
-      });
-
-      if (!res.ok) {
-        const errBody = await res.text().catch(() => '');
-        throw new Error(`Refresh failed: ${res.status} ${errBody}`);
-      }
-
-      const tokens: TokenRefreshResponse = await res.json();
+      const response = await authService.refreshToken(refreshToken);
+      
       // update memory
-      this.accessToken = tokens.access_token;
-      this.refreshToken = tokens.refresh_token ?? this.refreshToken;
-      this.accessTokenExpires = Date.now() + tokens.expires_in * 1000;
+      this.accessToken = response.accessToken;
+      this.refreshToken = response.refreshToken ?? this.refreshToken;
+      this.accessTokenExpires = Date.now() + (response.expiresIn * 1000);
 
       // Notify NextAuth/session consumers that tokens changed (optional)
       if (typeof window !== 'undefined') {

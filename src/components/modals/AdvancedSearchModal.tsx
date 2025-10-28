@@ -4,9 +4,9 @@ import React, { useEffect, useState, useRef } from "react";
 import { X, Search, Filter, ChevronDown, Trash2, Loader2, Plus, X as XIcon } from "lucide-react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { FilingCategoryService } from "../../api/services/filingCategoryService";
-import { UserService } from "../../api/services/userService";
-import { EnhancedSearchService, SearchConfiguration } from "../../api/services/enhancedSearchService";
+import { filingCategoryService } from "../../api/services/filingCategoryService";
+import { userManagementService } from "../../api/services/userManagementService";
+import { searchService } from "../../api/services/searchService";
 import {
   AdvancedSearchRequestDto,
   FilingCategoryResponseDto,
@@ -15,6 +15,7 @@ import {
   FilterOperator,
   CategoryMetadataDefinitionDto,
   UserDto,
+  SearchConfiguration,
 } from "../../types/api";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -151,10 +152,11 @@ export default function AdvancedSearchModal({
   const fetchUsers = async (searchQuery?: string) => {
     try {
       setLoadingUsers(true);
-      const params = searchQuery ? { query: searchQuery, size: 100 } : { size: 100 };
-      const fetchedUsers = await UserService.getAllUsers(params);
-      setUsers(fetchedUsers);
-      setFilteredUsers(fetchedUsers);
+      const fetchedUsers = searchQuery 
+        ? await userManagementService.searchUsers(searchQuery, undefined, 0, 100)
+        : await userManagementService.getUsers(0, 100);
+      setUsers(fetchedUsers.content || []);
+      setFilteredUsers(fetchedUsers.content || []);
     } catch (error) {
       console.error("Error fetching users:", error);
     } finally {
@@ -165,8 +167,9 @@ export default function AdvancedSearchModal({
   const fetchCategories = async (searchQuery?: string) => {
     try {
       setLoadingCategories(true);
-      const params = searchQuery ? { name: searchQuery, size: 100 } : { size: 100 };
-      const response = await FilingCategoryService.getAllFilingCategories(params);
+      const response = searchQuery 
+        ? await filingCategoryService.searchFilingCategories(searchQuery, 0, 100)
+        : await filingCategoryService.getFilingCategories(0, 100);
       const fetchedCategories = response.content || [];
       setCategories(fetchedCategories);
       setFilteredCategories(fetchedCategories);
@@ -188,8 +191,8 @@ export default function AdvancedSearchModal({
     setFilteredUsers(
       users.filter(
         (user) => 
-          user.firstName.toLowerCase().includes(q) || 
-          user.lastName.toLowerCase().includes(q) ||
+          (user.firstName?.toLowerCase().includes(q)) || 
+          (user.lastName?.toLowerCase().includes(q)) ||
           user.email.toLowerCase().includes(q) ||
           user.username.toLowerCase().includes(q)
       )
@@ -285,14 +288,16 @@ export default function AdvancedSearchModal({
     // add its metadata definitions as filters (category-scoped)
     if (category.metadataDefinitions && category.metadataDefinitions.length > 0) {
       const newFilters = category.metadataDefinitions.map((def: CategoryMetadataDefinitionDto) => ({
-        categoryId: String(category.id),
-        metadataDefinitionId: def.id,
+        id: `filter-${def.id}`,
+        metadataId: def.id,
+        metadataName: def.name,
         fieldName: def.key,
         fieldType: def.dataType,
-        operator: getDefaultOperator(def.dataType),
+        operator: getDefaultOperator(def.dataType || 'STRING'),
         value: "",
-        caseInsensitive: true,
-        inclusive: true,
+        categoryId: String(category.id),
+        categoryName: category.name,
+        metadataDefinitionId: def.id,
       }));
 
       setMetadataFilters(newFilters);
@@ -371,25 +376,8 @@ export default function AdvancedSearchModal({
         } : undefined
       };
 
-      // Save search to history
-      EnhancedSearchService.saveSearchToHistory({
-        query: hasQuery ? query.trim() : '',
-        searchType: 'unified',
-        filters: {
-          lookUpNames: searchScope.lookUpNames,
-          lookUpDescription: searchScope.lookUpDescription,
-          lookUpOcrContent: searchScope.lookUpOcrContent,
-          lookUpMetadataValue: searchScope.lookUpMetadataValue,
-          lookUpTags: searchScope.lookUpTags,
-          includeFolders: contentType === 'folders' || contentType === 'both',
-          includeDocuments: contentType === 'documents' || contentType === 'both',
-          dateRange: hasDateFilter ? {
-            from: dateFilterType === 'single' ? createdDate : createdFrom,
-            to: dateFilterType === 'range' ? createdTo : undefined,
-            enabled: true
-          } : undefined
-        }
-      });
+      // Save search to history (if needed)
+      // searchService.saveSearchQuery(searchQuery, filters);
 
       // If onSearch callback is provided, use it instead of navigating
       if (onSearch) {
@@ -456,7 +444,7 @@ export default function AdvancedSearchModal({
                 <SelectValue placeholder="Select or type custom value..." />
               </SelectTrigger>
               <SelectContent>
-                {metadataDef.list.option?.map((opt: string) => (
+                {typeof metadataDef.list === 'object' && metadataDef.list.option?.map((opt: string) => (
                   <SelectItem key={opt} value={opt}>
                     {opt}
                   </SelectItem>
@@ -507,7 +495,7 @@ export default function AdvancedSearchModal({
                   <SelectValue placeholder="Add from list..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {metadataDef.list.option?.map((opt: string) => (
+                  {typeof metadataDef.list === 'object' && metadataDef.list.option?.map((opt: string) => (
                     <SelectItem key={opt} value={opt}>
                       {opt}
                     </SelectItem>
@@ -542,7 +530,7 @@ export default function AdvancedSearchModal({
             <SelectValue placeholder="Select..." />
           </SelectTrigger>
           <SelectContent>
-          {metadataDef.list.option?.map((opt: string) => (
+          {typeof metadataDef.list === 'object' && metadataDef.list.option?.map((opt: string) => (
               <SelectItem key={opt} value={opt}>
               {opt}
               </SelectItem>

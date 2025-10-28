@@ -1,119 +1,140 @@
-// api/services/commentService.ts
-import { notificationApiClient } from '../notificationClient';
-import { Comment, PageResponse } from '../../types/api';
+import { apiClient } from '../client';
+import {
+  Comment,
+  CommentCreateReq,
+  CommentUpdateReq,
+  PageResponse,
+  CommentCountResponse,
+} from '../../types/api';
 
-export interface CommentRequest {
-  entityType: 'DOCUMENT' | 'FOLDER';
-  entityId: number;
-  text: string;
-  parentCommentId?: number;
-}
+export class CommentService {
+  private baseUrl = '/api/v1/comments';
 
-export interface CommentUpdateRequest {
-  text: string;
-}
-
-export interface CommentParams {
-  page?: number;
-  size?: number;
-  sortBy?: string;
-  sortDir?: 'asc' | 'desc';
-}
-
-export interface CommentCountResponse {
-  count: number;
-}
-
-class CommentService {
-  /**
-   * Add a new comment
-   */
-  async addComment(data: CommentRequest) {
-    return notificationApiClient.addComment(data);
-  }
-
-  /**
-   * Get comments for a specific entity (document or folder)
-   */
-  async getCommentsByEntity(
-    entityType: 'DOCUMENT' | 'FOLDER', 
-    entityId: number, 
-    params?: CommentParams
+  // Get comments for entity with pagination
+  async getComments(
+    entityType: string,
+    entityId: number,
+    page: number = 0,
+    size: number = 20,
+    sortBy: string = 'createdAt',
+    sortDirection: 'asc' | 'desc' = 'desc'
   ): Promise<PageResponse<Comment>> {
-    return notificationApiClient.getCommentsByEntity(entityType, entityId, params);
+    const params = new URLSearchParams({
+      page: page.toString(),
+      size: size.toString(),
+      sortBy,
+      sortDirection,
+    });
+
+    return apiClient.get<PageResponse<Comment>>(`${this.baseUrl}/${entityType}/${entityId}?${params}`);
   }
 
-  /**
-   * Get comments by user ID
-   */
-  async getCommentsByUser(userId: string, params?: CommentParams): Promise<PageResponse<Comment>> {
-    return notificationApiClient.getCommentsByUser(userId, params);
+  // Get comment by ID
+  async getCommentById(commentId: number): Promise<Comment> {
+    return apiClient.get<Comment>(`${this.baseUrl}/${commentId}`);
   }
 
-  /**
-   * Get current user's comments
-   */
-  async getMyComments(params?: CommentParams): Promise<PageResponse<Comment>> {
-    return notificationApiClient.getMyComments(params);
+  // Create new comment
+  async createComment(commentData: CommentCreateReq): Promise<Comment> {
+    return apiClient.post<Comment>(this.baseUrl, commentData);
   }
 
-  /**
-   * Get replies to a specific comment
-   */
-  async getCommentReplies(commentId: number, params?: CommentParams): Promise<PageResponse<Comment>> {
-    return notificationApiClient.getCommentReplies(commentId, params);
+  // Update comment
+  async updateComment(commentId: number, commentData: CommentUpdateReq): Promise<Comment> {
+    return apiClient.put<Comment>(`${this.baseUrl}/${commentId}`, commentData);
   }
 
-  /**
-   * Get a specific comment by ID
-   */
-  async getComment(commentId: number): Promise<Comment> {
-    return notificationApiClient.getComment(commentId);
+  // Delete comment
+  async deleteComment(commentId: number): Promise<void> {
+    return apiClient.delete<void>(`${this.baseUrl}/${commentId}`);
   }
 
-  /**
-   * Update a comment's text
-   */
-  async updateComment(commentId: number, data: CommentUpdateRequest) {
-    return notificationApiClient.updateComment(commentId, data);
+  // Get comment replies
+  async getCommentReplies(
+    commentId: number,
+    page: number = 0,
+    size: number = 20
+  ): Promise<PageResponse<Comment>> {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      size: size.toString(),
+    });
+
+    return apiClient.get<PageResponse<Comment>>(`${this.baseUrl}/${commentId}/replies?${params}`);
   }
 
-  /**
-   * Delete a comment
-   */
-  async deleteComment(commentId: number) {
-    return notificationApiClient.deleteComment(commentId);
+  // Get comment count for entity
+  async getCommentCount(entityType: string, entityId: number): Promise<CommentCountResponse> {
+    return apiClient.get<CommentCountResponse>(`${this.baseUrl}/${entityType}/${entityId}/count`);
   }
 
-  /**
-   * Get comment count for an entity
-   */
-  async getCommentCount(entityType: 'DOCUMENT' | 'FOLDER', entityId: number): Promise<CommentCountResponse> {
-    return notificationApiClient.getCommentCount(entityType, entityId);
+  // Get comments by user
+  async getCommentsByUser(
+    userId: string,
+    page: number = 0,
+    size: number = 20
+  ): Promise<PageResponse<Comment>> {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      size: size.toString(),
+    });
+
+    return apiClient.get<PageResponse<Comment>>(`${this.baseUrl}/user/${userId}?${params}`);
   }
 
-  /**
-   * Get comment count for a user
-   */
-  async getUserCommentCount(userId: string): Promise<CommentCountResponse> {
-    return notificationApiClient.getUserCommentCount(userId);
+  // Search comments
+  async searchComments(
+    query: string,
+    page: number = 0,
+    size: number = 20
+  ): Promise<PageResponse<Comment>> {
+    const params = new URLSearchParams({
+      query,
+      page: page.toString(),
+      size: size.toString(),
+    });
+
+    return apiClient.get<PageResponse<Comment>>(`${this.baseUrl}/search?${params}`);
   }
 
-  /**
-   * Get current user's comment count
-   */
-  async getMyCommentCount(): Promise<CommentCountResponse> {
-    return notificationApiClient.getMyCommentCount();
+  // Get comment statistics
+  async getCommentStatistics(): Promise<{
+    totalComments: number;
+    commentsByEntity: Record<string, number>;
+    commentsByUser: Record<string, number>;
+    averageCommentsPerEntity: number;
+  }> {
+    return apiClient.get(`${this.baseUrl}/statistics`);
   }
 
-  /**
-   * Get all comments (admin only)
-   */
-  async getAllComments(params?: CommentParams): Promise<PageResponse<Comment>> {
-    return notificationApiClient.getAllComments(params);
+  // Get recent comments
+  async getRecentComments(limit: number = 10): Promise<Comment[]> {
+    return apiClient.get<Comment[]>(`${this.baseUrl}/recent`, {
+      params: { limit },
+    });
+  }
+
+  // Bulk operations
+  async bulkDeleteComments(commentIds: number[]): Promise<void> {
+    return apiClient.delete<void>(`${this.baseUrl}/bulk`, {
+      data: { commentIds },
+    });
+  }
+
+  // Get comment thread (comment with all replies)
+  async getCommentThread(commentId: number): Promise<Comment> {
+    return apiClient.get<Comment>(`${this.baseUrl}/${commentId}/thread`);
+  }
+
+  // Pin/unpin comment
+  async toggleCommentPin(commentId: number, pinned: boolean): Promise<Comment> {
+    return apiClient.patch<Comment>(`${this.baseUrl}/${commentId}/pin`, { pinned });
+  }
+
+  // Get pinned comments for entity
+  async getPinnedComments(entityType: string, entityId: number): Promise<Comment[]> {
+    return apiClient.get<Comment[]>(`${this.baseUrl}/${entityType}/${entityId}/pinned`);
   }
 }
 
-// Create and export a singleton instance
 export const commentService = new CommentService();
-export default commentService;
