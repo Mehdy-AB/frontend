@@ -18,9 +18,8 @@ import {
   ChevronDown,
   Loader2
 } from 'lucide-react';
-import { FilingCategoryService } from '@/api/services/filingCategoryService';
-import { userManagementService } from '@/api/services/userManagementService';
-import { FilingCategoryResponseDto, UserDto } from '@/types/api';
+import { filingCategoryService } from '@/api/services/filingCategoryService';
+import { FilingCategoryResponseDto } from '@/types/api';
 
 interface ClassAFilterPanelProps {
   isOpen: boolean;
@@ -31,9 +30,7 @@ interface ClassAFilterPanelProps {
 
 export interface ClassAFilters {
   query?: string;
-  userId?: string;
   categoryId?: number;
-  name?: string;
   dateFrom?: string;
   dateTo?: string;
   exactDate?: string;
@@ -50,13 +47,7 @@ export default function ClassAFilterPanel({
 }: ClassAFilterPanelProps) {
   const [filters, setFilters] = useState<ClassAFilters>(currentFilters);
   
-  // User selection state
-  const [users, setUsers] = useState<UserDto[]>([]);
-  const [filteredUsers, setFilteredUsers] = useState<UserDto[]>([]);
-  const [selectedUser, setSelectedUser] = useState<UserDto | null>(null);
-  const [showUserDropdown, setShowUserDropdown] = useState(false);
-  const [loadingUsers, setLoadingUsers] = useState(false);
-  const [userSearchQuery, setUserSearchQuery] = useState('');
+  // Removed Created By filter per request
 
   // Category selection state
   const [categories, setCategories] = useState<FilingCategoryResponseDto[]>([]);
@@ -69,29 +60,11 @@ export default function ClassAFilterPanel({
   useEffect(() => {
     if (isOpen) {
       fetchCategories();
-      fetchUsers();
       setFilters(currentFilters);
     }
   }, [isOpen, currentFilters]);
 
-  // Local filter for users
-  useEffect(() => {
-    if (!userSearchQuery.trim()) {
-      setFilteredUsers(users);
-      return;
-    }
-
-    const q = userSearchQuery.toLowerCase();
-    setFilteredUsers(
-      users.filter(
-        (user) => 
-          user.firstName.toLowerCase().includes(q) || 
-          user.lastName.toLowerCase().includes(q) ||
-          user.email.toLowerCase().includes(q) ||
-          user.username.toLowerCase().includes(q)
-      )
-    );
-  }, [userSearchQuery, users]);
+  // Removed Created By filter logic
 
   // Local filter for categories
   useEffect(() => {
@@ -110,26 +83,13 @@ export default function ClassAFilterPanel({
     );
   }, [categorySearchQuery, categories]);
 
-  const fetchUsers = async (searchQuery?: string) => {
-    try {
-      setLoadingUsers(true);
-      const params = searchQuery ? { query: searchQuery, size: 100 } : { size: 100 };
-      const response = await userManagementService.searchUsers(searchQuery || '', [], 0, 100);
-      const fetchedUsers = response.content || [];
-      setUsers(fetchedUsers);
-      setFilteredUsers(fetchedUsers);
-    } catch (error) {
-      console.error("Error fetching users:", error);
-    } finally {
-      setLoadingUsers(false);
-    }
-  };
+  // Removed Created By fetch
 
   const fetchCategories = async (searchQuery?: string) => {
     try {
       setLoadingCategories(true);
       const params = searchQuery ? { name: searchQuery, size: 100 } : { size: 100 };
-      const response = await FilingCategoryService.getAllFilingCategories(params);
+      const response = await filingCategoryService.getAllFilingCategories(params);
       const fetchedCategories = response.content || [];
       setCategories(fetchedCategories);
       setFilteredCategories(fetchedCategories);
@@ -161,20 +121,13 @@ export default function ClassAFilterPanel({
   const getActiveFiltersCount = () => {
     let count = 0;
     if (filters.query) count++;
-    if (filters.userId) count++;
     if (filters.categoryId) count++;
-    if (filters.name) count++;
     if (filters.dateFrom || filters.dateTo || filters.exactDate) count++;
     return count;
   };
 
   // Selection functions
-  const selectUser = (user: UserDto) => {
-    setSelectedUser(user);
-    handleFilterChange('userId', user.id.toString());
-    setShowUserDropdown(false);
-    setUserSearchQuery('');
-  };
+  // Removed Created By selector
 
   const selectCategory = (category: FilingCategoryResponseDto) => {
     setSelectedCategory(category);
@@ -183,10 +136,7 @@ export default function ClassAFilterPanel({
     setCategorySearchQuery('');
   };
 
-  const removeUser = () => {
-    setSelectedUser(null);
-    handleFilterChange('userId', undefined);
-  };
+  // Removed Created By remove
 
   const removeCategory = () => {
     setSelectedCategory(null);
@@ -237,73 +187,65 @@ export default function ClassAFilterPanel({
               </CardContent>
             </Card>
 
-            {/* Document Name Filter */}
-            <Card>
+            {/* Date Search */}
+            <Card className="md:col-span-2">
               <CardHeader>
                 <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <FileText className="h-4 w-4" />
-                  Document Name
+                  <Calendar className="h-4 w-4" />
+                  Date Search
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <Input
-                  placeholder="Enter specific document name"
-                  value={filters.name || ''}
-                  onChange={(e) => handleFilterChange('name', e.target.value || undefined)}
-                />
-              </CardContent>
-            </Card>
+                <div className="space-y-4">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Search Type</Label>
+                    <Select
+                      value={filters.dateSearchType || 'exact'}
+                      onValueChange={(value) => handleFilterChange('dateSearchType', value as 'exact' | 'range')}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select date search type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="exact">Exact Date</SelectItem>
+                        <SelectItem value="range">Date Range</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-            {/* User Search Dropdown */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <User className="h-4 w-4" />
-                  Created By
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="relative">
-                  <input 
-                    type="text" 
-                    value={userSearchQuery} 
-                    onChange={(e) => { setUserSearchQuery(e.target.value); setShowUserDropdown(true); }} 
-                    onFocus={() => setShowUserDropdown(true)} 
-                    placeholder={selectedUser ? `${selectedUser.firstName} ${selectedUser.lastName}` : "Search users..."} 
-                    className="w-full px-3 py-2 pr-10 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" 
-                  />
-                  <ChevronDown className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 ${showUserDropdown ? 'rotate-180' : ''}`} />
-                  
-                  {showUserDropdown && (
-                    <div className="absolute z-30 w-full mt-2 bg-white border border-gray-100 rounded-md shadow-lg max-h-64 overflow-auto">
-                      {loadingUsers ? (
-                        <div className="p-4 text-center text-sm text-slate-500">
-                          <Loader2 className="w-4 h-4 animate-spin mx-auto mb-2" />
-                          Loading...
-                        </div>
-                      ) : filteredUsers.length === 0 ? (
-                        <div className="p-4 text-center text-sm text-slate-500">No users found</div>
-                      ) : (
-                        filteredUsers.map((user) => (
-                          <button key={user.id} onClick={() => selectUser(user)} className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 border-b last:border-b-0">
-                            <div className="font-medium text-slate-900">{user.firstName} {user.lastName}</div>
-                            <div className="text-xs text-slate-500">{user.email}</div>
-                          </button>
-                        ))
-                      )}
+                  {filters.dateSearchType === 'exact' ? (
+                    <div>
+                      <Label htmlFor="exactDate" className="text-xs text-muted-foreground">Exact Date & Time</Label>
+                      <Input
+                        id="exactDate"
+                        type="datetime-local"
+                        value={filters.exactDate ? filters.exactDate.slice(0, 16) : ''}
+                        onChange={(e) => handleFilterChange('exactDate', e.target.value ? e.target.value + ':00Z' : undefined)}
+                      />
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="dateFrom" className="text-xs text-muted-foreground">From Date</Label>
+                        <Input
+                          id="dateFrom"
+                          type="date"
+                          value={filters.dateFrom || ''}
+                          onChange={(e) => handleFilterChange('dateFrom', e.target.value || undefined)}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="dateTo" className="text-xs text-muted-foreground">To Date</Label>
+                        <Input
+                          id="dateTo"
+                          type="date"
+                          value={filters.dateTo || ''}
+                          onChange={(e) => handleFilterChange('dateTo', e.target.value || undefined)}
+                        />
+                      </div>
                     </div>
                   )}
                 </div>
-                {selectedUser && (
-                  <div className="mt-2">
-                    <Badge variant="secondary" className="text-xs">
-                      {selectedUser.firstName} {selectedUser.lastName}
-                      <button onClick={() => removeUser()} className="ml-2 text-gray-400 hover:text-gray-600">
-                        <X className="w-3 h-3" />
-                      </button>
-                    </Badge>
-                  </div>
-                )}
               </CardContent>
             </Card>
 
@@ -371,68 +313,6 @@ export default function ClassAFilterPanel({
                 )}
               </CardContent>
             </Card>
-
-            {/* Date Search */}
-            <Card className="md:col-span-2">
-              <CardHeader>
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Calendar className="h-4 w-4" />
-                  Date Search
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Search Type</Label>
-                    <Select
-                      value={filters.dateSearchType || 'exact'}
-                      onValueChange={(value) => handleFilterChange('dateSearchType', value as 'exact' | 'range')}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select date search type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="exact">Exact Date</SelectItem>
-                        <SelectItem value="range">Date Range</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {filters.dateSearchType === 'exact' ? (
-                    <div>
-                      <Label htmlFor="exactDate" className="text-xs text-muted-foreground">Exact Date & Time</Label>
-                      <Input
-                        id="exactDate"
-                        type="datetime-local"
-                        value={filters.exactDate ? filters.exactDate.slice(0, 16) : ''}
-                        onChange={(e) => handleFilterChange('exactDate', e.target.value ? e.target.value + ':00Z' : undefined)}
-                      />
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="dateFrom" className="text-xs text-muted-foreground">From Date</Label>
-                        <Input
-                          id="dateFrom"
-                          type="date"
-                          value={filters.dateFrom || ''}
-                          onChange={(e) => handleFilterChange('dateFrom', e.target.value || undefined)}
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="dateTo" className="text-xs text-muted-foreground">To Date</Label>
-                        <Input
-                          id="dateTo"
-                          type="date"
-                          value={filters.dateTo || ''}
-                          onChange={(e) => handleFilterChange('dateTo', e.target.value || undefined)}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
           </div>
 
           {/* Active Filters Summary */}
@@ -452,30 +332,13 @@ export default function ClassAFilterPanel({
                       />
                     </Badge>
                   )}
-                  {selectedUser && (
-                    <Badge variant="outline" className="flex items-center gap-1">
-                      User: {selectedUser.firstName} {selectedUser.lastName}
-                      <X 
-                        className="h-3 w-3 cursor-pointer" 
-                        onClick={() => removeUser()}
-                      />
-                    </Badge>
-                  )}
+                  {/* Created By filter removed */}
                   {selectedCategory && (
                     <Badge variant="outline" className="flex items-center gap-1">
                       Model: {selectedCategory.name}
                       <X 
                         className="h-3 w-3 cursor-pointer" 
                         onClick={() => removeCategory()}
-                      />
-                    </Badge>
-                  )}
-                  {filters.name && (
-                    <Badge variant="outline" className="flex items-center gap-1">
-                      Name: {filters.name}
-                      <X 
-                        className="h-3 w-3 cursor-pointer" 
-                        onClick={() => handleFilterChange('name', undefined)}
                       />
                     </Badge>
                   )}

@@ -4,7 +4,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { 
   MessageSquare, 
-  User, 
   MoreVertical, 
   Edit3, 
   Trash2, 
@@ -14,12 +13,13 @@ import {
   ChevronDown,
   ChevronUp
 } from 'lucide-react';
-import { Comment, UserDto } from '../../types/api';
-import { commentService, CommentRequest, CommentUpdateRequest } from '../../api/services/commentService';
+import { Comment, UserDto, CommentCreateReq, CommentUpdateReq } from '../../types/api';
+import { commentService } from '../../api/services/commentService';
 import { userManagementService } from '../../api/services/userManagementService';
 import { formatDate } from '../../utils/documentUtils';
 import { CommentDeleteModal } from '../modals/CommentDeleteModal';
 import { useSession } from 'next-auth/react';
+import UserAvatar from '../main/UserAvatar';
 
 interface CommentSectionProps {
   entityType: 'DOCUMENT' | 'FOLDER';
@@ -63,7 +63,7 @@ export default function CommentSection({
 
   // Check if current user can edit/delete a comment
   const canEditComment = (comment: Comment): boolean => {
-    return session?.user?.id === comment.userId;
+    return session?.user?.id === (comment.user?.id || comment.createdBy?.id);
   };
 
   // Fetch user details
@@ -104,10 +104,7 @@ export default function CommentSection({
       const mainComments = response.content.filter(comment => !comment.parentCommentId);
       const replies = response.content.filter(comment => comment.parentCommentId);
       
-      const commentsWithReplies = await Promise.all(
-        mainComments.map(async (comment) => {
-          const userDetails = await fetchUserDetails(comment.userId);
-          
+      const commentsWithReplies = mainComments.map((comment) => {
           // Check if replies are nested in the comment object or separate
           let commentReplies = comment.replies || [];
           
@@ -116,30 +113,26 @@ export default function CommentSection({
             commentReplies = replies.filter(reply => reply.parentCommentId === comment.id);
           }
           
-          // Fetch user details for replies
-          const repliesWithUserDetails = await Promise.all(
-            commentReplies.map(async (reply) => {
-              const replyUserDetails = await fetchUserDetails(reply.userId);
+          // Add reply UI state (no need to fetch user details, user already has them)
+          const repliesWithState = commentReplies.map((reply) => {
               return {
                 ...reply,
-                userDetails: replyUserDetails || undefined,
+                userDetails: reply.user || reply.createdBy || undefined,
                 showReplies: false,
                 isEditing: false,
                 isReplying: false
               };
-            })
-          );
+          });
 
           return {
             ...comment,
-            replies: repliesWithUserDetails,
-            showReplies: false, // Show replies by default if they exist
+            replies: repliesWithState,
+            showReplies: false,
             isEditing: false,
             isReplying: false,
-            userDetails: userDetails || undefined
+            userDetails: comment.user || comment.createdBy || undefined
           };
-        })
-      );
+      });
       
       setComments(commentsWithReplies);
       setCommentCount(response.totalElements);
@@ -175,7 +168,7 @@ export default function CommentSection({
     
     try {
       setIsAddingComment(true);
-      const commentData: CommentRequest = {
+      const commentData: CommentCreateReq = {
         entityType,
         entityId,
         text: newComment.trim()
@@ -197,7 +190,7 @@ export default function CommentSection({
     if (!editingText.trim()) return;
     
     try {
-      const updateData: CommentUpdateRequest = {
+      const updateData: CommentUpdateReq = {
         text: editingText.trim()
       };
       
@@ -252,11 +245,11 @@ export default function CommentSection({
     
     try {
       setIsAddingReply(true);
-      const commentData: CommentRequest = {
+      const commentData: CommentCreateReq = {
         entityType,
         entityId,
         text: replyText.trim(),
-        parentCommentId
+        parentId: parentCommentId
       };
       
       await commentService.addComment(commentData);
@@ -407,16 +400,17 @@ export default function CommentSection({
           comments.map((comment) => (
             <div key={comment.id} className="bg-surface border border-ui rounded-lg p-4 hover:shadow-sm transition-shadow">
               <div className="flex gap-3 mb-3">
-                <div className="h-10 w-10 bg-primary-light rounded-full flex items-center justify-center flex-shrink-0">
-                  <User className="h-5 w-5 text-primary" />
-                </div>
+                {comment.userDetails && (
+                  <UserAvatar user={comment.userDetails} size="md" />
+                )}
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-start mb-1">
                     <div>
                       <div className="font-medium text-sm text-neutral-text-dark">
-                        {comment.userDetails ? 
-                          `${comment.userDetails.firstName} ${comment.userDetails.lastName}` : 
-                          comment.username
+                        {comment.userDetails?.displayName || 
+                          `${comment.userDetails?.firstName || ''} ${comment.userDetails?.lastName || ''}`.trim() || 
+                          comment.userDetails?.username ||
+                          'Unknown User'
                         }
                       </div>
                       <div className="text-xs text-neutral-text-light">
@@ -520,14 +514,15 @@ export default function CommentSection({
                       {comment.replies.map((reply) => (
                         <div key={reply.id} className="bg-neutral-background border-l-2 border-primary pl-3 py-3 rounded-r-lg">
                           <div className="flex gap-2 mb-2">
-                            <div className="h-6 w-6 bg-primary-light rounded-full flex items-center justify-center flex-shrink-0">
-                              <User className="h-3 w-3 text-primary" />
-                            </div>
+                            {reply.userDetails && (
+                              <UserAvatar user={reply.userDetails} size="sm" />
+                            )}
                             <div className="flex-1">
                               <div className="font-medium text-xs text-neutral-text-dark">
-                                {reply.userDetails ? 
-                                  `${reply.userDetails.firstName} ${reply.userDetails.lastName}` : 
-                                  reply.username
+                                {reply.userDetails?.displayName || 
+                                  `${reply.userDetails?.firstName || ''} ${reply.userDetails?.lastName || ''}`.trim() || 
+                                  reply.userDetails?.username ||
+                                  'Unknown User'
                                 }
                               </div>
                               <div className="text-xs text-neutral-text-light">

@@ -9,9 +9,9 @@ import {
   Plus,
   User,
   Calendar,
-  HardDrive,
-  Folder,
-  File
+  File ,
+  Folder ,
+  HardDrive
 } from 'lucide-react';
 import { FolderResDto, FolderRepoResDto } from '@/types/api';
 
@@ -191,12 +191,12 @@ export function FolderHeader({
             
             <div className="flex items-center gap-1">
               <Folder className="h-3 w-3 text-gray-400" />
-              <span className="text-xs font-medium text-gray-900">{data?.folders.length || 0}</span>
+              <span className="text-xs font-medium text-gray-900">{data?.folders.length || 0} folders</span>
             </div>
             
             <div className="flex items-center gap-1">
               <File className="h-3 w-3 text-gray-400" />
-              <span className="text-xs font-medium text-gray-900">{data?.documents.length || 0}</span>
+              <span className="text-xs font-medium text-gray-900">{data?.documents.length || 0} documents</span>
             </div>
             
             <div className="flex items-center gap-1">

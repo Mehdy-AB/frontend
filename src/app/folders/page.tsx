@@ -1,7 +1,7 @@
 // app/folders/page.tsx
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import FolderActionModal from '@/components/modals/FolderActionModal';
 import ConfirmationModal from '@/components/modals/ConfirmationModal';
@@ -16,16 +16,12 @@ import {
   Edit,
   Trash2,
   Plus,
-  Grid,
-  List,
   Search,
   Settings,
   Eye,
   MessageSquare,
   RefreshCw,
-  Filter,
-  SortAsc,
-  SortDesc
+  Filter
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,44 +35,67 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { notificationApiClient } from '@/api/notificationClient';
-import { FolderResDto, PageResponse, SortFields } from '@/types/api';
+import { FolderResDto, SortFields } from '@/types/api';
 import { useLanguage } from '../../contexts/LanguageContext';
 import  CommentCountBadge  from '../../components/comments/CommentCountBadge';
 import CreateFolderModal from '@/components/modals/CreateFolderModal';
 import FolderCommentModal from '@/components/modals/FolderCommentModal';
-import RenameFolderModal from '@/components/modals/RenameFolderModal';
 import EditFolderModal from '@/components/modals/EditFolderModal';
 import { useRouter } from 'next/navigation';
+import { useServerSideSearch } from '@/components/main/useServerSideSearch';
+import SearchPagination from '@/components/search/SearchPagination';
+import UserAvatar from '@/components/main/UserAvatar';
+import ServerSearchInput from '@/components/main/ServerSearchInput';
 
 // Types from API
 type SortOption = 'name' | 'createdAt' | 'updatedAt' | 'size';
-type FilterOption = 'all' | 'my' | 'shared' | 'public';
 
 export default function FoldersPage() {
   const { t } = useLanguage();
-  const [folders, setFolders] = useState<FolderResDto[]>([]);
-  const [allFolders, setAllFolders] = useState<FolderResDto[]>([]); // Store all folders for local filtering
-  const [localSearchResults, setLocalSearchResults] = useState<FolderResDto[]>([]); // Store local search results
-  const [pageData, setPageData] = useState<PageResponse<FolderResDto> | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [tableLoading, setTableLoading] = useState(false); // For table-only loading
-  const [error, setError] = useState<string | null>(null);
-  const [currentPage, setCurrentPage] = useState(0); // API uses 0-based pagination
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const router = useRouter();
   const [sortBy, setSortBy] = useState<SortOption>('name');
   const [sortDesc, setSortDesc] = useState(false);
-  const [pageSize] = useState(12);
-  const [isLocalFiltering, setIsLocalFiltering] = useState(false);
-  const router = useRouter();
+  const pageSize = 12;
   
+  // Use optimized server-side search hook
+  const {
+    displayData: folders,
+    searchQuery,
+    setSearchQuery,
+    page,
+    setPage,
+    totalPages,
+    totalElements,
+    loading,
+    tableLoading,
+    isLocalFiltering,
+    error,
+    fetchData,
+    removeItem
+  } = useServerSideSearch<FolderResDto>({
+    fetchFunction: async (currentPage, searchTerm) => {
+      const response = await notificationApiClient.getRepository({
+        page: currentPage,
+        size: pageSize,
+        name: searchTerm || undefined,
+        desc: sortDesc,
+        sort: sortBy as SortFields
+      });
+      return response;
+    },
+    searchFields: (folder) => [folder.name, folder.description || '', folder.ownedBy?.email || ''],
+    debounceMs: 300
+  });
+
+  // Refetch when sort changes
+  useEffect(() => {
+    fetchData(true);
+  }, [sortBy, sortDesc]);
+
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showRenameModal, setShowRenameModal] = useState(false);
   const [showEditFolderModal, setShowEditFolderModal] = useState(false);
   const [selectedFolder, setSelectedFolder] = useState<FolderResDto | null>(null);
-  const [renameFolder, setRenameFolder] = useState<{ id: number; name: string } | null>(null);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [showFolderActionModal, setShowFolderActionModal] = useState(false);
   const [folderAction, setFolderAction] = useState<'rename' | 'move' | null>(null);
@@ -91,134 +110,11 @@ export default function FoldersPage() {
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      await fetchFolders();
+      await fetchData(true);
     } finally {
       setIsRefreshing(false);
     }
   };
-
-  // Real API call to fetch folders
-    const fetchFolders = async (isSearchRequest = false) => {
-      try {
-        if (isSearchRequest) {
-          setTableLoading(true);
-        } else {
-          setLoading(true);
-        }
-      setError(null);
-      
-      const sortField = sortBy as SortFields;
-      
-      let response: PageResponse<FolderResDto>;
-      
-        // Get regular folders (repository)
-        response = await notificationApiClient.getRepository({
-          page: currentPage,
-          size: pageSize,
-          name: debouncedSearchQuery || undefined,
-          desc: sortDesc,
-          sort: sortField
-        });
-      
-      setFolders(response.content);
-      setAllFolders(response.content); // Store all folders for local filtering
-      setPageData(response);
-    } catch (err: any) {
-        console.error('Error fetching folders:', err);
-      setError(err.message || 'Failed to load folders');
-      } finally {
-        if (isSearchRequest) {
-          setTableLoading(false);
-        } else {
-          setLoading(false);
-        }
-      }
-    };
-
-  // Local filtering function - prioritize startsWith matches
-  const filterFoldersLocally = (query: string, allFoldersData: FolderResDto[]) => {
-    if (!query.trim()) {
-      return allFoldersData;
-    }
-    
-    const lowerQuery = query.toLowerCase().trim();
-    
-    // First, get folders that start with the query (highest priority)
-    const startsWithMatches = allFoldersData.filter(folder => 
-      folder.name.toLowerCase().startsWith(lowerQuery) ||
-      (folder.description && folder.description.toLowerCase().startsWith(lowerQuery))
-    );
-    
-    // Then, get folders that contain the query (lower priority)
-    const containsMatches = allFoldersData.filter(folder => 
-      !folder.name.toLowerCase().startsWith(lowerQuery) &&
-      !(folder.description && folder.description.toLowerCase().startsWith(lowerQuery)) &&
-      (folder.name.toLowerCase().includes(lowerQuery) ||
-       (folder.description && folder.description.toLowerCase().includes(lowerQuery)))
-    );
-    
-    // Combine results with startsWith matches first
-    return [...startsWithMatches, ...containsMatches];
-  };
-
-  // Debounce search query for API calls
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearchQuery(searchQuery);
-    }, 300); // 300ms debounce for API calls
-
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
-  // Fetch folders when dependencies change (excluding searchQuery)
-  useEffect(() => {
-    // Use full page loading for initial load, table loading for filter changes
-    const isInitialLoad = currentPage === 0 && sortBy === 'name' && sortDesc === false;
-    fetchFolders(!isInitialLoad);
-  }, [currentPage, sortBy, sortDesc]);
-  
-  // Get display folders (local search results or API results)
-  const getDisplayFolders = (): FolderResDto[] => {
-    if (isLocalFiltering && localSearchResults.length > 0) {
-      return localSearchResults;
-    }
-    return folders;
-  };
-
-  // Handle local filtering immediately when search query changes
-  useEffect(() => {
-    if (!searchQuery.trim()) {
-      // If no search query, show all folders
-      setFolders(allFolders);
-      setLocalSearchResults([]);
-      setIsLocalFiltering(false);
-      return;
-    }
-
-    // First, filter locally for immediate response
-    const localResults = filterFoldersLocally(searchQuery, allFolders);
-    setLocalSearchResults(localResults);
-    setIsLocalFiltering(false); // Local filtering is done immediately
-  }, [searchQuery, allFolders]);
-
-  // Handle API fetch with debounced search query
-  useEffect(() => {
-    if (!debouncedSearchQuery.trim()) {
-      return;
-    }
-
-    // After debounce delay, fetch from API for more comprehensive results
-    const timer = setTimeout(() => {
-      // Only fetch if we still have a search query (user hasn't cleared it)
-      if (debouncedSearchQuery.trim()) {
-        fetchFolders(true).finally(() => {
-          setLocalSearchResults([]); // Clear local results when API results come in
-        });
-      }
-    }, 500); // Additional delay after debounce for API call
-    
-    return () => clearTimeout(timer);
-  }, [debouncedSearchQuery]);
 
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return '0 Bytes';
@@ -253,7 +149,7 @@ export default function FoldersPage() {
 
     try {
       await notificationApiClient.deleteFolder(folderId);
-      fetchFolders(); // Refresh the list
+      await fetchData(true); // Refresh the list
     } catch (error: any) {
       console.error('Error deleting folder:', error);
       alert('Failed to delete folder: ' + (error.message || 'Unknown error'));
@@ -310,17 +206,8 @@ export default function FoldersPage() {
     try {
       await notificationApiClient.deleteFolder(deleteFolder.id);
       
-      // Update the frontend list directly instead of refetching
-      setFolders(prevFolders => prevFolders.filter(f => f.id !== deleteFolder.id));
-      
-      // Update page data if it exists
-      setPageData(prevPageData => {
-        if (!prevPageData) return prevPageData;
-        return {
-          ...prevPageData,
-          totalElements: prevPageData.totalElements - 1
-        };
-      });
+      // Use optimistic update from hook
+      removeItem(deleteFolder.id);
       
       // Close the modal
       setShowDeleteModal(false);
@@ -328,6 +215,8 @@ export default function FoldersPage() {
       
     } catch (error) {
       console.error('Error deleting folder:', error);
+      // Refresh on error to get accurate state
+      await fetchData(true);
     } finally {
       setIsDeleting(false);
     }
@@ -342,28 +231,11 @@ export default function FoldersPage() {
   const handleFolderActionSuccess = (updatedItem?: { id: number; name: string; type: 'folder' | 'document'; action: 'rename' | 'move' }) => {
     if (updatedItem && updatedItem.type === 'folder') {
       if (updatedItem.action === 'rename') {
-        // Update the name in the local state
-        setFolders(prevFolders => 
-          prevFolders.map(folder => 
-            folder.id === updatedItem.id 
-              ? { ...folder, name: updatedItem.name }
-              : folder
-          )
-        );
+        // Refresh data to get updated folder
+        fetchData(true);
       } else if (updatedItem.action === 'move') {
-        // Remove the folder from the current list since it's moved to another location
-        setFolders(prevFolders => 
-          prevFolders.filter(folder => folder.id !== updatedItem.id)
-        );
-        
-        // Update page data if it exists
-        setPageData(prevPageData => {
-          if (!prevPageData) return prevPageData;
-          return {
-            ...prevPageData,
-            totalElements: prevPageData.totalElements - 1
-          };
-        });
+        // Remove from list when moved
+        removeItem(updatedItem.id);
       }
     }
   };
@@ -411,7 +283,7 @@ export default function FoldersPage() {
             <div className="flex items-center gap-6 text-sm">
               <div className="flex items-center gap-2 px-3 py-1.5 bg-primary/5 rounded-lg">
                 <div className="h-2 w-2 rounded-full bg-primary"></div>
-                <span className="font-medium text-foreground">{pageData?.totalElements || 0}</span>
+                <span className="font-medium text-foreground">{totalElements || 0}</span>
                 <span className="text-muted-foreground">folders</span>
               </div>
               <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/5 rounded-lg">
@@ -422,7 +294,7 @@ export default function FoldersPage() {
               {searchQuery && (
                 <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/5 rounded-lg">
                   <div className="h-2 w-2 rounded-full bg-green-500"></div>
-                  <span className="font-medium text-foreground">{getDisplayFolders().length}</span>
+                  <span className="font-medium text-foreground">{folders.length}</span>
                   <span className="text-muted-foreground">results</span>
                 </div>
               )}
@@ -458,29 +330,15 @@ export default function FoldersPage() {
         <div className="flex flex-col lg:flex-row gap-4 p-4 bg-gradient-to-r from-muted/30 to-muted/50 rounded-xl border">
           {/* Search Section */}
           <div className="flex-1">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-              <Input
-                type="text"
-                placeholder={t('common.search')}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 pr-4 h-10 border-2 focus:border-primary/50 transition-all duration-200 shadow-sm hover:shadow-md bg-background"
-                onKeyDown={(e) => e.key === 'Enter' && fetchFolders(true)}
-              />
-              {searchQuery && (
-                <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                  <div className="h-4 w-4 rounded-full bg-primary/20 flex items-center justify-center">
-                    <div className="h-2 w-2 rounded-full bg-primary animate-pulse"></div>
-                  </div>
-                </div>
-              )}
-            </div>
+            <ServerSearchInput
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder={t('common.search') + ' folders by name, description, or owner...'}
+              className="h-10"
+            />
           </div>
 
-          {/* Sort and View Controls */}
-          <div className="flex items-center gap-3">
-            {/* Sort Dropdown */}
+            {/* Sort Controls */}
             <div className="flex items-center gap-2">
               <Filter className="h-4 w-4 text-muted-foreground" />
               <Select value={`${sortBy}-${sortDesc ? 'desc' : 'asc'}`} onValueChange={(value) => {
@@ -501,105 +359,11 @@ export default function FoldersPage() {
                 </SelectContent>
               </Select>
             </div>
-            
-            {/* View Toggle */}
-            <div className="flex bg-background rounded-lg p-1 border">
-              <Button
-                variant={viewMode === 'grid' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setViewMode('grid')}
-                className="h-8 w-8 p-0"
-              >
-                <Grid className="h-4 w-4" />
-              </Button>
-              <Button
-                variant={viewMode === 'list' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setViewMode('list')}
-                className="h-8 w-8 p-0"
-              >
-                <List className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
         </div>
       </div>
 
-      {/* Folders Grid/List */}
-      {viewMode === 'grid' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {/* Show skeleton cards when initially loading */}
-          {showSkeletonRows && [...Array(8)].map((_, i) => (
-            <Card key={`skeleton-${i}`} className="animate-pulse">
-              <CardContent className="p-4">
-                <div className="h-6 bg-muted rounded w-3/4 mb-2"></div>
-                <div className="h-4 bg-muted rounded w-full mb-4"></div>
-                <div className="flex justify-between">
-                  <div className="h-4 bg-muted rounded w-20"></div>
-                  <div className="h-4 bg-muted rounded w-16"></div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-          
-          {/* Show actual folder cards */}
-          {!showSkeletonRows && getDisplayFolders().map((folder) => (
-            <FolderCard 
-              key={folder.id} 
-              folder={folder} 
-              formatFileSize={formatFileSize} 
-              formatDate={formatDate}
-              onRename={(id, name) => handleRenameFolder(id, name)}
-              onDelete={handleDeleteWrapper}
-              onDownload={handleDownloadFolder}
-              onShare={handleShareFolder}
-              onEditPermissions={handleEditFolderPermissions}
-              onMove={handleMove}
-              onComment={handleOpenCommentModal}
-              openDropdownId={openDropdownId}
-              setOpenDropdownId={setOpenDropdownId}
-              router={router}
-            />
-          ))}
-          
-          {/* Show empty state when no folders */}
-          {!showSkeletonRows && !loading && getDisplayFolders().length === 0 && (
-            <div className="col-span-full flex flex-col items-center justify-center py-12">
-              <div className="h-16 w-16 bg-muted rounded-full flex items-center justify-center mb-4">
-                <Folder className="h-8 w-8 text-muted-foreground" />
-              </div>
-              <h3 className="text-lg font-medium text-foreground mb-2">No folders yet</h3>
-              <p className="text-muted-foreground mb-4 text-center">
-                {searchQuery ? `No folders found matching "${searchQuery}"` : "Create your first folder to get started"}
-              </p>
-              {!searchQuery && (
-                <Button
-                  onClick={() => setShowCreateModal(true)}
-                  className="bg-primary hover:bg-primary/90"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Folder
-                </Button>
-              )}
-            </div>
-          )}
-          
-          {/* Loading skeleton cards - for search and filter changes */}
-          {tableLoading && [...Array(4)].map((_, i) => (
-            <Card key={`loading-${i}`} className="animate-pulse">
-              <CardContent className="p-4">
-                <div className="h-6 bg-muted rounded w-3/4 mb-2"></div>
-                <div className="h-4 bg-muted rounded w-full mb-4"></div>
-                <div className="flex justify-between">
-                  <div className="h-4 bg-muted rounded w-20"></div>
-                  <div className="h-4 bg-muted rounded w-16"></div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <Card>
+      {/* Folders Table */}
+      <Card>
           <div>
             <table className="w-full relative" style={{ zIndex: 1 }}>
               <thead className="bg-gradient-to-r from-muted/30 to-muted/50 border-b">
@@ -644,7 +408,7 @@ export default function FoldersPage() {
                 ))}
                 
                 {/* Show actual folder rows */}
-                {!showSkeletonRows && getDisplayFolders().map((folder) => (
+                {!showSkeletonRows && folders.map((folder) => (
                   <FolderRow 
                     key={folder.id} 
                     folder={folder} 
@@ -663,7 +427,7 @@ export default function FoldersPage() {
                 ))}
                 
                 {/* Show empty state when no folders */}
-                {!showSkeletonRows && !loading && getDisplayFolders().length === 0 && (
+                {!showSkeletonRows && !loading && folders.length === 0 && (
                   <tr>
                     <td colSpan={6} className="p-12 text-center">
                       <div className="flex flex-col items-center gap-4">
@@ -723,7 +487,6 @@ export default function FoldersPage() {
             </table>
           </div>
         </Card>
-      )}
 
       {/* Loading indicator */}
       {tableLoading && (
@@ -737,75 +500,31 @@ export default function FoldersPage() {
       {searchQuery && !tableLoading && (
         <div className="flex items-center justify-center py-2 text-sm text-muted-foreground">
           <div className="h-2 w-2 rounded-full bg-green-500 mr-2"></div>
-          Showing {getDisplayFolders().length} results for "{searchQuery}"
-          {debouncedSearchQuery !== searchQuery && (
+          Showing {folders.length} results for "{searchQuery}"
+          {isLocalFiltering && (
             <span className="ml-2 text-xs text-blue-500">(comprehensive search in progress...)</span>
           )}
         </div>
       )}
 
       {/* Pagination */}
-      {pageData && pageData.totalPages > 1 && (
-        <div className="flex justify-between items-center pt-6 border-t">
-          <div className="text-sm text-muted-foreground">
-            Showing {folders.length} of {pageData.totalElements} folders
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 0))}
-              disabled={pageData.first}
-            >
-              Previous
-            </Button>
-            {[...Array(Math.min(pageData.totalPages, 5))].map((_, i) => {
-              const pageNumber = currentPage > 2 ? currentPage - 2 + i : i;
-              if (pageNumber >= pageData.totalPages) return null;
-              return (
-                <Button
-                  key={pageNumber}
-                  variant={currentPage === pageNumber ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setCurrentPage(pageNumber)}
-                  className="w-9"
-                >
-                  {pageNumber + 1}
-                </Button>
-              );
-            })}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage(prev => Math.min(prev + 1, pageData.totalPages - 1))}
-              disabled={pageData.last}
-            >
-              Next
-            </Button>
-          </div>
-        </div>
-      )}
+      <SearchPagination
+        totalPages={totalPages}
+        currentPage={page}
+        totalElements={totalElements}
+        itemsPerPage={pageSize}
+        onPageChange={setPage}
+      />
       
       {/* Modals */}
       <CreateFolderModal 
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
         parentId={null}
-        onSuccess={fetchFolders}
+        onSuccess={() => fetchData(true)}
       />
       
 
-      
-      <RenameFolderModal 
-        isOpen={showRenameModal}
-        onClose={() => {
-          setShowRenameModal(false);
-          setRenameFolder(null);
-        }}
-        folderId={renameFolder?.id || null}
-        currentName={renameFolder?.name || ''}
-        onSuccess={fetchFolders}
-      />
       
       {showEditFolderModal && selectedFolder && (
         <EditFolderModal
@@ -996,106 +715,7 @@ function FolderMenu({
   return typeof window !== 'undefined' ? createPortal(menuContent, document.body) : null;
 }
 
-// Folder Card Component for Grid View
-function FolderCard({ 
-  folder, 
-  formatFileSize, 
-  formatDate,
-  onRename,
-  onDelete,
-  onDownload,
-  onShare,
-  onEditPermissions,
-  onMove,
-  onComment,
-  openDropdownId,
-  setOpenDropdownId,
-  router
-}: { 
-  folder: FolderResDto; 
-  formatFileSize: (bytes: number) => string;
-  formatDate: (dateString: string) => string;
-  onRename: (id: number, name: string) => void;
-  onDelete: (id: number, name: string) => void;
-  onDownload: (id: number) => void;
-  onShare: (id: number) => void;
-  onEditPermissions?: (folder: FolderResDto) => void;
-  onMove?: (folder: FolderResDto) => void;
-  onComment?: (folder: FolderResDto) => void;
-  openDropdownId: string | null;
-  setOpenDropdownId: (id: string | null) => void;
-  router: any;
-}) {
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const folderId = `folder-${folder.id}`;
-  const showMenu = openDropdownId === folderId;
-  
-  return (
-    <Card className="group hover:shadow-lg transition-all duration-300 hover:scale-[1.02] border-2 hover:border-primary/20">
-      <CardContent className="p-4">
-      <div className="flex items-start justify-between mb-3">
-          <div className="h-12 w-12 bg-gradient-to-br from-primary/10 to-primary/20 rounded-lg flex items-center justify-center shadow-sm group-hover:shadow-md transition-all duration-200">
-          <Folder className="h-6 w-6 text-primary group-hover:scale-110 transition-transform duration-200" />
-        </div>
-          <div className="relative" style={{ zIndex: 10 }}>
-            <button 
-              ref={buttonRef}
-              onClick={() => setOpenDropdownId(showMenu ? null : folderId)}
-              className="p-1 rounded hover:bg-gray-100 transition-opacity"
-            >
-              <MoreVertical className="h-4 w-4" />
-            </button>
-            
-            {showMenu && (
-              <FolderMenu 
-                folder={folder}
-                onEditPermissions={onEditPermissions}
-                onMove={onMove}
-                onRename={onRename}
-                onDelete={(folder) => onDelete(folder.id, folder.name)}
-                onComment={onComment}
-                onClose={() => setOpenDropdownId(null)}
-                buttonRef={buttonRef}
-              />
-            )}
-          </div>
-        </div>
-
-        <div className='cursor-pointer group hover:underline hover:text-primary' onClick={() => router.push(`/folders/${folder.id}`)}>
-            <h3 className="font-medium mb-1 truncate" >{folder.name}</h3>
-            <p className="text-sm text-muted-foreground mb-3 line-clamp-2 hover:text-primary">{folder.description}</p>
-      </div>
-
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <div className="flex items-center gap-4">
-          <span className="flex items-center gap-1">
-            <Calendar className="h-3 w-3" />
-            {formatDate(folder.updatedAt)}
-          </span>
-          <span>{formatFileSize(folder.size)}</span>
-        </div>
-        <div className="flex items-center gap-2">
-            <Badge variant={folder.isPublic ? "outline" : "secondary"} className="h-5 px-1">
-          {folder.isPublic ? (
-                <><Globe className="h-3 w-3 mr-1" />Public</>
-          ) : (
-                <><Lock className="h-3 w-3 mr-1" />Private</>
-          )}
-            </Badge>
-            <CommentCountBadge 
-              entityType="FOLDER" 
-              entityId={folder.id} 
-              showIcon={true}
-              className="text-xs"
-            />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-// Folder Row Component for List View
+// Folder Row Component for Table View
 function FolderRow({ 
   folder, 
   formatFileSize, 
@@ -1143,7 +763,13 @@ function FolderRow({
         </div>
       </td>
       <td className="p-4">
-        <div className="text-sm">{folder.ownedBy.firstName} {folder.ownedBy.lastName}</div>
+        <div className="flex items-center gap-3">
+          <UserAvatar user={folder.ownedBy} size="sm" />
+          <div>
+            <div className="text-sm font-medium">{folder.ownedBy.firstName} {folder.ownedBy.lastName}</div>
+            <div className="text-xs text-muted-foreground">{folder.ownedBy.email}</div>
+          </div>
+        </div>
       </td>
       <td className="p-4">
         <div className="text-sm text-muted-foreground">{formatFileSize(folder.size)}</div>
@@ -1161,100 +787,44 @@ function FolderRow({
         </Badge>
       </td>
       <td className="p-4">
-        <div className="relative" style={{ zIndex: 10 }}>
-          <button 
-            ref={buttonRef}
-            onClick={() => setOpenDropdownId(showMenu ? null : folderId)}
-            className="p-1 rounded hover:bg-gray-100 transition-opacity"
+        <div className="flex items-center gap-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onEditPermissions) {
+                onEditPermissions(folder);
+              }
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary bg-primary/10 hover:bg-primary/20 rounded-md transition-colors"
+            title="Manage Permissions"
           >
-            <MoreVertical className="h-4 w-4" />
+            <Settings className="h-3.5 w-3.5" />
+            Permissions
           </button>
-          
-          {showMenu && (
-            <FolderMenu 
-              folder={folder}
-              onEditPermissions={onEditPermissions}
-              onMove={onMove}
-              onRename={onRename}
-              onDelete={(folder) => onDelete(folder.id, folder.name)}
-              onComment={onComment}
-              onClose={() => setOpenDropdownId(null)}
-              buttonRef={buttonRef}
-            />
-          )}
+          <div className="relative" style={{ zIndex: 10 }}>
+            <button 
+              ref={buttonRef}
+              onClick={() => setOpenDropdownId(showMenu ? null : folderId)}
+              className="p-1 rounded hover:bg-gray-100 transition-opacity"
+            >
+              <MoreVertical className="h-4 w-4" />
+            </button>
+            
+            {showMenu && (
+              <FolderMenu 
+                folder={folder}
+                onEditPermissions={onEditPermissions}
+                onMove={onMove}
+                onRename={onRename}
+                onDelete={(folder) => onDelete(folder.id, folder.name)}
+                onComment={onComment}
+                onClose={() => setOpenDropdownId(null)}
+                buttonRef={buttonRef}
+              />
+            )}
+          </div>
         </div>
       </td>
     </tr>
-  );
-}
-
-// Loading Skeleton for Table/Grid
-function FoldersLoadingSkeleton({ viewMode }: { viewMode: 'grid' | 'list' }) {
-  if (viewMode === 'grid') {
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        {[...Array(8)].map((_, i) => (
-          <Card key={i} className="animate-pulse">
-            <CardContent className="p-4">
-              <div className="h-6 bg-muted rounded w-3/4 mb-2"></div>
-              <div className="h-4 bg-muted rounded w-full mb-4"></div>
-              <div className="flex justify-between">
-                <div className="h-4 bg-muted rounded w-20"></div>
-                <div className="h-4 bg-muted rounded w-16"></div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    );
-  }
-
-  return (
-    <Card>
-      <div>
-        <table className="w-full relative" style={{ zIndex: 1 }}>
-          <thead className="bg-gradient-to-r from-muted/30 to-muted/50 border-b">
-            <tr>
-              <th className="text-left p-4 text-sm font-semibold text-foreground">Name</th>
-              <th className="text-left p-4 text-sm font-semibold text-foreground">Owner</th>
-              <th className="text-left p-4 text-sm font-semibold text-foreground">Size</th>
-              <th className="text-left p-4 text-sm font-semibold text-foreground">Last Modified</th>
-              <th className="text-left p-4 text-sm font-semibold text-foreground">Visibility</th>
-              <th className="text-left p-4 text-sm font-semibold text-foreground">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {[...Array(5)].map((_, i) => (
-              <tr key={i} className="border-b last:border-b-0">
-                <td className="p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 bg-muted rounded-lg animate-pulse"></div>
-                    <div className="space-y-2">
-                      <div className="h-4 bg-muted rounded w-32 animate-pulse"></div>
-                      <div className="h-3 bg-muted rounded w-24 animate-pulse"></div>
-                    </div>
-                  </div>
-                </td>
-                <td className="p-4">
-                  <div className="h-4 bg-muted rounded w-20 animate-pulse"></div>
-                </td>
-                <td className="p-4">
-                  <div className="h-4 bg-muted rounded w-16 animate-pulse"></div>
-                </td>
-                <td className="p-4">
-                  <div className="h-4 bg-muted rounded w-20 animate-pulse"></div>
-                </td>
-                <td className="p-4">
-                  <div className="h-6 bg-muted rounded w-16 animate-pulse"></div>
-                </td>
-                <td className="p-4">
-                  <div className="h-4 bg-muted rounded w-4 animate-pulse"></div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Card>
   );
 }

@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { useNotifications } from '@/hooks/useNotifications';
 import { notificationApiClient } from '@/api/notificationClient';
-import { DocumentService } from '@/api/services/documentService';
+import { tagService } from '@/api/services/tagService';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SearchSelect } from '@/components/main/SearchSelect';
 import {
@@ -84,6 +84,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
   const [currentFileIndex, setCurrentFileIndex] = useState(0);
   const [dragActive, setDragActive] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0, fileName: '' });
   const [language, setLanguage] = useState<ExtractorLanguage>('ENG' as ExtractorLanguage);
   const [filingCategories, setFilingCategories] = useState<FilingCategoryResponseDto[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(false);
@@ -121,7 +122,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
     const loadAvailableTags = async () => {
       try {
         setIsLoadingTags(true);
-        const tags = await DocumentService.getAvailableTags({ silent: true });
+        const tags = await tagService.getAvailableTags();
         setAvailableTags(tags);
       } catch (error) {
         console.error('Error loading available tags:', error);
@@ -339,7 +340,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
   // Create new tag handler
   const handleCreateTag = async (tagData: { name: string; description?: string; color?: string }) => {
     try {
-      const newTag = await DocumentService.createTag(tagData, { silent: true });
+      const newTag = await tagService.createTag(tagData);
       
       // Add the new tag to available tags
       setAvailableTags(prev => [...prev, newTag]);
@@ -467,40 +468,126 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
       setUploading(true);
       
       const mainFile = files[0];
+      const hasCategory = mainFile.filingCategory !== null;
+      const totalFiles = files.length;
+      let successCount = 0;
+      const filesToRemove: number[] = []; // Track indices of successfully uploaded files
       
-      // Upload using the new multi-file API endpoint
-      await notificationApiClient.uploadMultipleDocuments(
-        files.map(f => f.file),
-        folderId,
-        mainFile.title,
-        language,
-        mainFile.filingCategory?.id,
-        mainFile.fileName,
-        mainFile.tags.map(tag => tag.id),
-        mainFile.filingCategory ? {
-          id: mainFile.filingCategory.id,
-          metaDataDto: mainFile.filingCategory.metadataDefinitions
-            .filter(def => mainFile.metadata[def.key])
-            .map((def, index) => ({
-              id: def.id || index + 1,
-              value: mainFile.metadata[def.key]
-            }))
-        } : null
-      );
+      // Prepare filing category DTO with metadata if category is selected
+      const filingCategoryDto = mainFile.filingCategory ? {
+        id: mainFile.filingCategory.id,
+        metaDataDto: mainFile.filingCategory.metadataDefinitions
+          .filter(def => mainFile.metadata[def.key])
+          .map((def, index) => ({
+            id: def.id || index + 1,
+            value: mainFile.metadata[def.key]
+          }))
+      } : null;
 
-      showSuccess('Upload successful', `${files.length} files uploaded successfully. First file moved to repository, others to unclassified documents.`);
+      if (hasCategory) {
+        // Scenario 1: User selected a category
+        // First file goes to regular upload endpoint
+        try {
+          setUploadProgress({ current: 1, total: totalFiles, fileName: mainFile.name });
+          await notificationApiClient.uploadDocument(
+            mainFile.file,
+            folderId,
+            mainFile.title,
+            language,
+            filingCategoryDto,
+            mainFile.fileName,
+            mainFile.tags.map(tag => tag.id)
+          );
+          filesToRemove.push(0); // Mark first file for removal
+          successCount++;
+        } catch (error) {
+          console.error('Error uploading main file:', error);
+          showError('Upload failed', `Failed to upload main file: ${mainFile.name}`);
+        }
+
+        // Rest of the files go to unclassified endpoint
+        if (files.length > 1) {
+          for (let i = 1; i < files.length; i++) {
+            const file = files[i];
+            try {
+              setUploadProgress({ current: i + 1, total: totalFiles, fileName: file.name });
+              await notificationApiClient.uploadUnclassifiedDocument(
+                file.file,
+                folderId,
+                mainFile.filingCategory!.id,  // Use same category as main file
+                '', // createdBy will be set from token on backend
+                file.title || file.name,
+                file.fileName
+              );
+              filesToRemove.push(i); // Mark file for removal
+              successCount++;
+            } catch (error) {
+              console.error(`Error uploading file ${file.name}:`, error);
+              showError('Upload failed', `Failed to upload: ${file.name}`);
+            }
+          }
+        }
+
+        if (successCount > 0) {
+          showSuccess(
+            'Upload successful', 
+            successCount === 1 
+              ? 'Document uploaded successfully to repository' 
+              : `${successCount} file${successCount !== 1 ? 's' : ''} uploaded successfully`
+          );
+        }
+      } else {
+        // Scenario 2: No category selected
+        // All files go to regular upload endpoint sequentially (without category/metadata)
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          try {
+            setUploadProgress({ current: i + 1, total: totalFiles, fileName: file.name });
+            await notificationApiClient.uploadDocument(
+              file.file,
+              folderId,
+              file.title || file.name,
+              language,
+              null, // No category
+              file.fileName,
+              i === 0 ? mainFile.tags.map(tag => tag.id) : [] // Only first file gets tags
+            );
+            filesToRemove.push(i); // Mark file for removal
+            successCount++;
+          } catch (error) {
+            console.error(`Error uploading file ${file.name}:`, error);
+            showError('Upload failed', `Failed to upload: ${file.name}`);
+          }
+        }
+
+        if (successCount > 0) {
+          showSuccess(
+            'Upload successful', 
+            `${successCount} file${successCount !== 1 ? 's' : ''} uploaded successfully to repository`
+          );
+        }
+      }
       
-      // Reset state
-      setFiles([]);
-      setCurrentFileIndex(0);
-      setShowConfiguration(false);
-      onSuccess?.();
-      onClose();
+      // Remove successfully uploaded files
+      if (filesToRemove.length > 0) {
+        setFiles(prevFiles => prevFiles.filter((_, index) => !filesToRemove.includes(index)));
+        setCurrentFileIndex(0);
+        
+        // If all files uploaded successfully, close the modal
+        if (filesToRemove.length === totalFiles) {
+          setShowConfiguration(false);
+          onSuccess?.();
+          onClose();
+        }
+      }
+      
+      setUploadProgress({ current: 0, total: 0, fileName: '' });
     } catch (error: any) {
       console.error('Error uploading files:', error);
       showError('Upload failed', error.message || 'Failed to upload files. Please try again.');
     } finally {
       setUploading(false);
+      setUploadProgress({ current: 0, total: 0, fileName: '' });
     }
   };
 
@@ -532,6 +619,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
     };
 
     if (definition.dataType === MetadataType.LIST && definition.list) {
+      const allowCustomValue = definition.list.mandatory ?? false; // When list.mandatory=true, allow custom values
       const isCustomValue = value && !definition.list.option.includes(value);
       const showCustomInput = isCustomValue || value === "__custom__";
       
@@ -564,13 +652,15 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                   {option}
                 </SelectItem>
               ))}
-              {/* Always allow custom input for list fields */}
-              <SelectItem value="__custom__">
-                <div className="flex items-center gap-2">
-                  <Plus className="h-3 w-3" />
-                  Enter custom value
-                </div>
-              </SelectItem>
+              {/* Only show custom input option if list.mandatory is true */}
+              {allowCustomValue && (
+                <SelectItem value="__custom__">
+                  <div className="flex items-center gap-2">
+                    <Plus className="h-3 w-3" />
+                    Enter custom value
+                  </div>
+                </SelectItem>
+              )}
             </SelectContent>
           </Select>
           
@@ -676,7 +766,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                   Drop files here or click to browse
                 </p>
                 <p className="text-neutral-text-light mb-4">
-                  Upload multiple files. First file will be processed immediately, others will be classified later.
+                  Upload multiple files. If category is selected: first file goes to repository, rest to unclassified. Without category: all go to repository.
                 </p>
                 <input
                   ref={fileInputRef}
@@ -747,50 +837,67 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                     </div>
                     
                     <div className="max-h-48 overflow-y-auto space-y-1">
-                      {files.map((file, index) => (
-                        <div
-                          key={index}
-                          className={`flex items-center gap-2 px-2 py-1.5 rounded border text-sm ${
-                            index === 0
-                              ? 'bg-green-50 border-green-200'
-                              : 'bg-white border-gray-300'
-                          }`}
-                        >
-                          {getFileIcon(file.file)}
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium text-gray-900 truncate text-xs">
-                              {file.name}
-                            </div>
-                            <div className="text-xs text-gray-500">
-                              {formatFileSize(file.file.size)}
-                            </div>
-                          </div>
-                          
-                          <div className="flex items-center gap-1">
-                            {index === 0 ? (
-                              <span className="px-1.5 py-0.5 text-xs bg-green-100 text-green-800 rounded">
-                                Main
-                              </span>
+                      {files.map((file, index) => {
+                        const isUploading = uploading && uploadProgress.current === index + 1;
+                        const isUploaded = uploading && uploadProgress.current > index + 1;
+                        
+                        return (
+                          <div
+                            key={index}
+                            className={`flex items-center gap-2 px-2 py-1.5 rounded border text-sm transition-all ${
+                              isUploading
+                                ? 'bg-blue-50 border-blue-300 ring-2 ring-blue-200'
+                                : isUploaded
+                                ? 'bg-green-50 border-green-200 opacity-60'
+                                : index === 0
+                                ? 'bg-green-50 border-green-200'
+                                : 'bg-white border-gray-300'
+                            }`}
+                          >
+                            {isUploading ? (
+                              <div className="h-3 w-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                            ) : isUploaded ? (
+                              <Check className="h-4 w-4 text-green-600" />
                             ) : (
+                              getFileIcon(file.file)
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-gray-900 truncate text-xs">
+                                {file.name}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {formatFileSize(file.file.size)}
+                                {isUploading && <span className="ml-1 text-blue-600">- Uploading...</span>}
+                                {isUploaded && <span className="ml-1 text-green-600">- ✓ Done</span>}
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-1">
+                              {index === 0 ? (
+                                <span className="px-1.5 py-0.5 text-xs bg-green-100 text-green-800 rounded">
+                                  Main
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={() => setAsMain(index)}
+                                  className="px-1.5 py-0.5 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
+                                  disabled={uploading}
+                                >
+                                  Set Main
+                                </button>
+                              )}
+                              
                               <button
-                                onClick={() => setAsMain(index)}
-                                className="px-1.5 py-0.5 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
+                                onClick={() => removeFile(index)}
+                                className="p-0.5 text-red-500 hover:bg-red-50 rounded transition-colors"
                                 disabled={uploading}
                               >
-                                Set Main
+                                <Trash2 className="h-3 w-3" />
                               </button>
-                            )}
-                            
-                            <button
-                              onClick={() => removeFile(index)}
-                              className="p-0.5 text-red-500 hover:bg-red-50 rounded transition-colors"
-                              disabled={uploading}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </button>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -809,7 +916,12 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                           <span className="px-2 py-0.5 text-xs bg-green-100 text-green-800 rounded-full">
                             Main File
                           </span>
-                          <span className="text-xs text-gray-500">Goes to repository</span>
+                          <span className="text-xs text-gray-500">
+                            {files[0]?.filingCategory 
+                              ? `→ Repository${files.length > 1 ? ` (${files.length - 1} others → Unclassified)` : ''}`
+                              : `→ Repository${files.length > 1 ? ` (all ${files.length} files)` : ''}`
+                            }
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -965,7 +1077,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                         <SearchSelect
                           items={availableTags}
                           fetchFunction={async (query: string) => {
-                            const response = await DocumentService.searchTags(query, 0, 20, { silent: true });
+                            const response = await tagService.searchTags(query, 0, 20);
                             return response.content || [];
                           }}
                           onSelect={handleTagSelect}
@@ -1059,35 +1171,70 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
         </div>
 
         {/* Footer */}
-        <div className="flex justify-between items-center p-6 border-t border-ui bg-neutral-background">
-          <div className="text-sm text-neutral-text-light">
-            {files.length > 0 ? `${files.length} file${files.length !== 1 ? 's' : ''} selected` : 'No files selected'}
-          </div>
-          <div className="flex gap-3">
-            <button
-              onClick={handleClose}
-              className="px-4 py-2 border border-ui rounded-lg text-neutral-text-dark hover:bg-surface transition-colors disabled:opacity-50"
-              disabled={uploading}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleUpload} 
-              disabled={files.length === 0 || uploading}
-              className="flex items-center gap-2 bg-primary text-surface px-4 py-2 rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {uploading ? (
-                <>
-                  <div className="h-4 w-4 border-2 border-surface border-t-transparent rounded-full animate-spin"></div>
-                  Uploading...
-                </>
-              ) : (
-                <>
-                  <Upload className="h-4 w-4" />
-                  Upload {files.length > 1 ? 'Files' : 'File'}
-                </>
-              )}
-            </button>
+        <div className="border-t border-ui bg-neutral-background">
+          {/* Upload Progress Bar */}
+          {uploading && uploadProgress.total > 0 && (
+            <div className="px-6 pt-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-neutral-text-dark font-medium">
+                    Uploading file {uploadProgress.current} of {uploadProgress.total}
+                  </span>
+                  <span className="text-neutral-text-light">
+                    {Math.round((uploadProgress.current / uploadProgress.total) * 100)}%
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                  <div 
+                    className="bg-primary h-full rounded-full transition-all duration-300 ease-out"
+                    style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
+                  />
+                </div>
+                <div className="text-xs text-neutral-text-light truncate">
+                  {uploadProgress.fileName && (
+                    <span className="flex items-center gap-2">
+                      <div className="h-3 w-3 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                      <span className="truncate">{uploadProgress.fileName}</span>
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+          
+          <div className="flex justify-between items-center p-6">
+            <div className="text-sm text-neutral-text-light">
+              {files.length > 0 ? `${files.length} file${files.length !== 1 ? 's' : ''} selected` : 'No files selected'}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={handleClose}
+                className="px-4 py-2 border border-ui rounded-lg text-neutral-text-dark hover:bg-surface transition-colors disabled:opacity-50"
+                disabled={uploading}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUpload} 
+                disabled={files.length === 0 || uploading}
+                className="flex items-center gap-2 bg-primary text-surface px-4 py-2 rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {uploading ? (
+                  <>
+                    <div className="h-4 w-4 border-2 border-surface border-t-transparent rounded-full animate-spin"></div>
+                    {uploadProgress.current > 0 
+                      ? `Uploading ${uploadProgress.current} of ${uploadProgress.total}...`
+                      : 'Uploading...'
+                    }
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4" />
+                    Upload {files.length > 1 ? 'Files' : 'File'}
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </div>

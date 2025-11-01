@@ -1,33 +1,41 @@
 import React from 'react';
 import { 
   Search, 
-  Grid, 
-  List, 
   ChevronDown, 
-  ChevronUp 
+  ChevronUp,
+  ArrowUpDown
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 type SortOption = 'name' | 'createdAt' | 'updatedAt' | 'size' | 'type';
-type ViewMode = 'grid' | 'list';
 
 interface FolderToolbarProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
   onSearchSubmit: () => void;
-  viewMode: ViewMode;
-  onViewModeChange: (mode: ViewMode) => void;
   sortBy: SortOption;
   onSortByChange: (sortBy: SortOption) => void;
   sortDesc: boolean;
   onSortDescToggle: () => void;
 }
 
+const sortOptions = {
+  name: 'Name',
+  createdAt: 'Date Created',
+  updatedAt: 'Date Modified',
+  size: 'Size',
+  type: 'Type'
+};
+
 export function FolderToolbar({
   searchQuery,
   onSearchChange,
   onSearchSubmit,
-  viewMode,
-  onViewModeChange,
   sortBy,
   onSortByChange,
   sortDesc,
@@ -51,47 +59,35 @@ export function FolderToolbar({
           </div>
         </div>
 
-        {/* View and Sort Controls */}
-        <div className="flex items-center gap-3">
-          {/* View Toggle */}
-          <div className="flex bg-gray-100 rounded-md p-1">
-            <button
-              onClick={() => onViewModeChange('list')}
-              className={`p-1.5 rounded ${viewMode === 'list' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
-              title="List view"
-            >
-              <List className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => onViewModeChange('grid')}
-              className={`p-1.5 rounded ${viewMode === 'grid' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
-              title="Grid view"
-            >
-              <Grid className="h-4 w-4" />
-            </button>
-          </div>
-
-          {/* Sort Controls */}
-          <div className="flex items-center gap-2">
-            <select
-              value={sortBy}
-              onChange={(e) => onSortByChange(e.target.value as SortOption)}
-              className="px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="name">Name</option>
-              <option value="createdAt">Date Created</option>
-              <option value="updatedAt">Date Modified</option>
-              <option value="size">Size</option>
-              <option value="type">Type</option>
-            </select>
-            <button
-              onClick={onSortDescToggle}
-              className="p-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
-              title={sortDesc ? 'Sort Ascending' : 'Sort Descending'}
-            >
-              {sortDesc ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-            </button>
-          </div>
+        {/* Sort Controls */}
+        <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-900 hover:bg-gray-50 transition-colors">
+                <ArrowUpDown className="h-4 w-4" />
+                <span>Sort by: {sortOptions[sortBy]}</span>
+                <ChevronDown className="h-4 w-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              {Object.entries(sortOptions).map(([key, label]) => (
+                <DropdownMenuItem
+                  key={key}
+                  onClick={() => onSortByChange(key as SortOption)}
+                  className={sortBy === key ? 'bg-gray-100' : ''}
+                >
+                  {label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <button
+            onClick={onSortDescToggle}
+            className="p-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
+            title={sortDesc ? 'Sort Ascending' : 'Sort Descending'}
+          >
+            {sortDesc ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+          </button>
         </div>
       </div>
     </div>

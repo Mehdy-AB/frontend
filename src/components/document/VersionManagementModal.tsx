@@ -127,21 +127,21 @@ export default function VersionManagementModal({
   const handleDownloadVersion = async (versionId: number) => {
     try {
       const version = versions.find(v => v.versionId === versionId);
-      const downloadUrl = await notificationApiClient.downloadDocument(versionId, { version: version?.versionNumber });
+      const downloadUrl = await notificationApiClient.downloadDocument(document.documentId, versionId);
       
       // Log the download operation
       try {
-        await notificationApiClient.fileDownloaded(versionId, { version: version?.versionNumber });
+        await notificationApiClient.fileDownloaded(document.documentId, versionId);
       } catch (logError) {
         console.warn('Failed to log download operation:', logError);
         // Don't throw here as the download was successful
       }
       
       // Create a temporary link to download the file
-      const link = document.createElement('a');
+      const link = window.document.createElement('a');
       link.href = downloadUrl;
       link.download = `${document.name}_v${version?.versionNumber}`;
-      document.body.appendChild(link);
+      window.document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
     } catch (err) {

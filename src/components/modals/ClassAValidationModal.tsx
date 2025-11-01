@@ -18,12 +18,12 @@ import {
   AlertCircle,
   Loader2
 } from 'lucide-react';
-import { apiClient } from '@/api/client';
 import { ClassAResponseDto, ClassADetailResponseDto, ExtractorLanguage, FilingCategoryDocDto, MetaDataDto, TagResponseDto, CategoryMetadataDefinitionDto } from '@/types/api';
 import { useLanguage } from '@/contexts/LanguageContext';
 import FileViewer from '@/components/viewers/FileViewer';
 import { SearchSelect } from '@/components/main/SearchSelect';
-import { DocumentService } from '@/api/services/documentService';
+import { unclassifiedDocumentService } from '@/api/services/unclassifiedDocumentService';
+import { tagService } from '@/api/services/tagService';
 import { X, Tag, Plus } from 'lucide-react';
 import CreateTagModal from '@/components/modals/CreateTagModal';
 
@@ -45,10 +45,12 @@ export default function ClassAValidationModal({
   const [loading, setLoading] = useState(false);
   const [validating, setValidating] = useState(false);
   const [metadata, setMetadata] = useState<Record<string, string>>({});
-  const [title, setTitle] = useState(document.title);
-  const [name, setName] = useState(document.name);
+  const [title, setTitle] = useState(document.title || '');
+  const [name, setName] = useState(document.name || '');
   const [description, setDescription] = useState(document.description || '');
   const [selectedTags, setSelectedTags] = useState<TagResponseDto[]>([]);
+  const [availableTags, setAvailableTags] = useState<TagResponseDto[]>([]);
+  const [isLoadingTags, setIsLoadingTags] = useState(false);
   const [language, setLanguage] = useState<ExtractorLanguage>(ExtractorLanguage.ENG);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [downloadUrl, setDownloadUrl] = useState<string>('');
@@ -62,13 +64,26 @@ export default function ClassAValidationModal({
       setTitle(document.title);
       setName(document.name);
       setDescription(document.description || '');
+      loadAvailableTags();
     }
   }, [isOpen, document]);
+
+  const loadAvailableTags = async () => {
+    try {
+      setIsLoadingTags(true);
+      const tags = await tagService.getAvailableTags();
+      setAvailableTags(tags);
+    } catch (e) {
+      console.error('Error loading available tags:', e);
+    } finally {
+      setIsLoadingTags(false);
+    }
+  };
 
   const fetchDocumentDetails = async () => {
     try {
       setLoading(true);
-      const details = await apiClient.getClassADocument(document.id);
+      const details = await unclassifiedDocumentService.getUnclassifiedDocumentById(document.id);
       setDocumentDetails(details);
       
       // Initialize metadata with empty values
@@ -99,7 +114,7 @@ export default function ClassAValidationModal({
   const fetchDownloadUrl = async () => {
     try {
       setLoadingDownloadUrl(true);
-      const response = await apiClient.getClassADocumentUrl(document.id);
+      const response = await unclassifiedDocumentService.getDownloadUrl(document.id);
       setDownloadUrl(response.url);
     } catch (error: any) {
       console.error('Error fetching download URL:', {
@@ -127,7 +142,7 @@ export default function ClassAValidationModal({
 
   const handleCreateTag = async (tagData: { name: string; description?: string; color?: string }) => {
     try {
-      const newTag = await DocumentService.createTag(tagData);
+      const newTag = await tagService.createTag(tagData);
       setSelectedTags([...selectedTags, newTag]);
     } catch (error) {
       console.error('Error creating tag:', error);
@@ -137,29 +152,7 @@ export default function ClassAValidationModal({
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
-    if (!title.trim()) {
-      newErrors.title = 'Title is required';
-    }
-
-    if (!name.trim()) {
-      newErrors.name = 'Name is required';
-    }
-
-    // Check if filingCategory is required (it should always be present)
-    if (!document.categoryId) {
-      newErrors.filingCategory = 'Filing category is required';
-    }
-
-    if (documentDetails && documentDetails.metadataDefinitions && Array.isArray(documentDetails.metadataDefinitions)) {
-      documentDetails.metadataDefinitions.forEach(def => {
-        if (def && ((def as any).mandatory || false)) {
-          const fieldKey = (def as any).key || def.metadataName;
-          if (!metadata[fieldKey]?.trim()) {
-            newErrors[fieldKey] = `${fieldKey} is required`;
-          }
-        }
-      });
-    }
+    if (!title.trim()) newErrors.title = 'Title is required';
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -174,9 +167,9 @@ export default function ClassAValidationModal({
       setValidating(true);
 
       // Prepare filing category data - always required
-      let filingCategoryDto: FilingCategoryDocDto;
+      let filingCategoryDto: FilingCategoryDocDto | undefined;
       
-      if (documentDetails && documentDetails.metadataDefinitions && Array.isArray(documentDetails.metadataDefinitions) && documentDetails.metadataDefinitions.length > 0) {
+      if (document.categoryId && documentDetails && documentDetails.metadataDefinitions && Array.isArray(documentDetails.metadataDefinitions) && documentDetails.metadataDefinitions.length > 0) {
         const metaDataDto: MetaDataDto[] = documentDetails.metadataDefinitions
           .filter(def => {
             if (!def) return false;
@@ -195,20 +188,19 @@ export default function ClassAValidationModal({
           id: document.categoryId,
           metaDataDto
         };
-      } else {
-        filingCategoryDto = {
-          id: document.categoryId,
-          metaDataDto: []
-        };
       }
 
-      // Move ClassA document to main documents table
-      await apiClient.moveClassAToDocument(document.id, {
+      // Allow user to change extension; if empty, fallback to original name
+      const trimmed = (name || '').trim();
+      const finalFileName = trimmed.length > 0 ? trimmed : (document.name || '');
+
+      // Move ClassA document to main documents table (multipart form)
+      await unclassifiedDocumentService.classifyDocument(document.id, {
+        folderId: document.folderId,
         title: title.trim(),
-        name: name.trim(),
-        description: description.trim(),
-        tags: selectedTags.length > 0 ? selectedTags.map(tag => tag.name).join(',') : undefined,
         lang: language,
+        fileName: finalFileName,
+        tagsIds: selectedTags.length > 0 ? selectedTags.map(tag => tag.id) : undefined,
         filingCategory: filingCategoryDto
       });
 
@@ -230,7 +222,13 @@ export default function ClassAValidationModal({
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString();
+    const d = new Date(dateString);
+    const day = d.getDate().toString().padStart(2, '0');
+    const month = d.toLocaleString('en-GB', { month: 'short' }).toLowerCase();
+    const year = d.getFullYear();
+    const hours = d.getHours().toString().padStart(2, '0');
+    const minutes = d.getMinutes().toString().padStart(2, '0');
+    return `${day} ${month} ${year} ${hours}:${minutes}`;
   };
 
   const getFileIcon = (mimeType: string) => {
@@ -243,11 +241,15 @@ export default function ClassAValidationModal({
 
   const renderUserInfo = (user: any) => {
     if (!user) return 'Unknown';
-    if (typeof user === 'string') return user;
-    if (typeof user === 'object') {
-      return user.username || user.firstName || user.lastName || 'Unknown';
-    }
-    return String(user);
+    const display = user.displayName || user.fullName || [user.firstName, user.lastName].filter(Boolean).join(' ') || user.username || 'Unknown';
+    const email = user.email ? ` (${user.email})` : '';
+    const avatar = user.imageUrl || user.imgUrl;
+    return (
+      <span className="flex items-center gap-2">
+        {avatar && <img src={avatar} alt={display} className="h-5 w-5 rounded-full object-cover" />}
+        <span>{display}{email}</span>
+      </span>
+    );
   };
 
   const renderMetadataField = (definition: any, index?: number) => {
@@ -274,8 +276,9 @@ export default function ClassAValidationModal({
       const fieldKey = definition.key || definition.metadataName;
       const fieldName = definition.key || definition.metadataName;
       const currentValue = metadata[fieldKey] || '';
+      const allowCustomValue = definition.list?.mandatory === true; // Only when mandatory=true
       const isCustomValue = currentValue && !options.includes(currentValue);
-      const showCustomInput = isCustomValue || currentValue === "__custom__";
+      const showCustomInput = allowCustomValue && (isCustomValue || currentValue === "__custom__");
       
       return (
         <div key={fieldKey} className="space-y-2">
@@ -301,13 +304,15 @@ export default function ClassAValidationModal({
                   {String(option)}
                 </SelectItem>
               ))}
-              {/* Always allow custom input for list fields */}
-              <SelectItem value="__custom__">
-                <div className="flex items-center gap-2">
-                  <Plus className="h-3 w-3" />
-                  Enter custom value
-                </div>
-              </SelectItem>
+              {/* Custom input only allowed when list.mandatory = true */}
+              {allowCustomValue && (
+                <SelectItem value="__custom__">
+                  <div className="flex items-center gap-2">
+                    <Plus className="h-3 w-3" />
+                    Enter custom value
+                  </div>
+                </SelectItem>
+              )}
             </SelectContent>
           </Select>
           
@@ -465,7 +470,7 @@ export default function ClassAValidationModal({
                         mimeType: document.mimeType,
                         sizeBytes: document.sizeBytes
                       } as any}
-                      downloadUrl={downloadUrl}
+                      downloadUrl={downloadUrl.trim()}
                       onError={(error) => console.error('File viewer error:', error)}
                     />
                   ) : (
@@ -577,9 +582,9 @@ export default function ClassAValidationModal({
                   {/* Search and Add Tag Interface */}
                   <div className="space-y-2 mb-4">
                     <SearchSelect
-                      items={[]}
+                      items={availableTags}
                       fetchFunction={async (query: string) => {
-                        const response = await DocumentService.searchTags(query, 0, 20, { silent: true });
+                        const response = await tagService.searchTags(query, 0, 20);
                         return response.content || [];
                       }}
                       onSelect={handleTagSelect}

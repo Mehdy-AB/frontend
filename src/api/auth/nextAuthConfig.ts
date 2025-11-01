@@ -56,16 +56,18 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user, account }) {
       // Initial sign in
       if (account && user) {
-        token.accessToken = user.accessToken;
-        token.refreshToken = user.refreshToken;
-        token.expiresIn = user.expiresIn;
-        token.user = user.user;
-        token.accessTokenExpires = Date.now() + (user.expiresIn * 1000);
+        token.accessToken = (user as any).accessToken;
+        token.refreshToken = (user as any).refreshToken;
+        const rawExpiresIn = (user as any).expiresIn;
+        const expiresInSeconds = typeof rawExpiresIn === 'number' ? rawExpiresIn : 0;
+        token.expiresIn = expiresInSeconds;
+        token.user = (user as any).user;
+        token.accessTokenExpires = Date.now() + (expiresInSeconds * 1000);
         return token;
       }
 
       // Return previous token if the access token has not expired yet
-      if (Date.now() < (token.accessTokenExpires as number)) {
+      if (token.accessTokenExpires && Date.now() < (token.accessTokenExpires as number)) {
         return token;
       }
 
@@ -77,7 +79,9 @@ export const authOptions: NextAuthOptions = {
       // Pass tokens to session
       session.accessToken = token.accessToken;
       session.refreshToken = token.refreshToken;
-      session.user = token.user;
+      if (token.user) {
+        session.user = token.user as any;
+      }
       
       return session;
     }

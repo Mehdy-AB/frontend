@@ -9,154 +9,156 @@ import {
 export class FavoriteService {
   private baseUrl = '/api/v1/favorites';
 
-  // Get user's favorites with pagination
+  // Get user's favorites with pagination (combined documents + folders)
   async getFavorites(
     page: number = 0,
     size: number = 20,
     sortBy: string = 'createdAt',
-    sortDirection: 'asc' | 'desc' = 'desc'
+    sortDir: 'asc' | 'desc' = 'desc',
+    query?: string,
+    type: 'all' | 'documents' | 'folders' = 'all'
+  ): Promise<PageResponse<any>> {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      size: size.toString(),
+      sortBy,
+      sortDir,
+      type,
+    });
+    if (query && query.trim()) params.set('query', query.trim());
+
+    return apiClient.get<PageResponse<any>>(`${this.baseUrl}/my-repo?${params}`);
+  }
+
+  // Add document to favorites
+  async addDocumentToFavorites(documentId: number): Promise<Favorite> {
+    return apiClient.post<Favorite>(`${this.baseUrl}/document/${documentId}`);
+  }
+
+  // Add folder to favorites
+  async addFolderToFavorites(folderId: number): Promise<Favorite> {
+    return apiClient.post<Favorite>(`${this.baseUrl}/folder/${folderId}`);
+  }
+
+  // Remove document from favorites
+  async removeDocumentFromFavorites(documentId: number): Promise<void> {
+    return apiClient.delete<void>(`${this.baseUrl}/document/${documentId}`);
+  }
+
+  // Remove folder from favorites
+  async removeFolderFromFavorites(folderId: number): Promise<void> {
+    return apiClient.delete<void>(`${this.baseUrl}/folder/${folderId}`);
+  }
+
+  // Check if document is favorite
+  async checkDocumentFavorite(documentId: number): Promise<FavoriteCheckResponse> {
+    return apiClient.get<FavoriteCheckResponse>(`${this.baseUrl}/document/${documentId}/check`);
+  }
+
+  // Check if folder is favorite
+  async checkFolderFavorite(folderId: number): Promise<FavoriteCheckResponse> {
+    return apiClient.get<FavoriteCheckResponse>(`${this.baseUrl}/folder/${folderId}/check`);
+  }
+
+  // Get favorite count (combined documents + folders)
+  async getFavoriteCount(): Promise<FavoriteCountResponse> {
+    return apiClient.get<FavoriteCountResponse>(`${this.baseUrl}/my-repo/count`);
+  }
+  
+  // Get document favorites count
+  async getDocumentFavoritesCount(): Promise<FavoriteCountResponse> {
+    return apiClient.get<FavoriteCountResponse>(`${this.baseUrl}/my-favorites/count`);
+  }
+  
+  // Get folder favorites count
+  async getFolderFavoritesCount(): Promise<FavoriteCountResponse> {
+    return apiClient.get<FavoriteCountResponse>(`${this.baseUrl}/my-folder-favorites/count`);
+  }
+
+  // Get my document favorites
+  async getDocumentFavorites(
+    page: number = 0,
+    size: number = 20,
+    sortBy: string = 'createdAt',
+    sortDir: 'asc' | 'desc' = 'desc'
   ): Promise<PageResponse<Favorite>> {
     const params = new URLSearchParams({
       page: page.toString(),
       size: size.toString(),
       sortBy,
-      sortDirection,
+      sortDir,
     });
 
-    return apiClient.get<PageResponse<Favorite>>(`${this.baseUrl}?${params}`);
+    return apiClient.get<PageResponse<Favorite>>(`${this.baseUrl}/my-favorites?${params}`);
   }
 
-  // Get favorite by ID
-  async getFavoriteById(favoriteId: number): Promise<Favorite> {
-    return apiClient.get<Favorite>(`${this.baseUrl}/${favoriteId}`);
-  }
-
-  // Add document to favorites
-  async addDocumentToFavorites(documentId: number): Promise<Favorite> {
-    return apiClient.post<Favorite>(`${this.baseUrl}/documents/${documentId}`);
-  }
-
-  // Add folder to favorites
-  async addFolderToFavorites(folderId: number): Promise<Favorite> {
-    return apiClient.post<Favorite>(`${this.baseUrl}/folders/${folderId}`);
-  }
-
-  // Remove document from favorites
-  async removeDocumentFromFavorites(documentId: number): Promise<void> {
-    return apiClient.delete<void>(`${this.baseUrl}/documents/${documentId}`);
-  }
-
-  // Remove folder from favorites
-  async removeFolderFromFavorites(folderId: number): Promise<void> {
-    return apiClient.delete<void>(`${this.baseUrl}/folders/${folderId}`);
-  }
-
-  // Remove favorite by ID
-  async removeFavorite(favoriteId: number): Promise<void> {
-    return apiClient.delete<void>(`${this.baseUrl}/${favoriteId}`);
-  }
-
-  // Check if document is favorite
-  async checkDocumentFavorite(documentId: number): Promise<FavoriteCheckResponse> {
-    return apiClient.get<FavoriteCheckResponse>(`${this.baseUrl}/documents/${documentId}/check`);
-  }
-
-  // Check if folder is favorite
-  async checkFolderFavorite(folderId: number): Promise<FavoriteCheckResponse> {
-    return apiClient.get<FavoriteCheckResponse>(`${this.baseUrl}/folders/${folderId}/check`);
-  }
-
-  // Get favorite count
-  async getFavoriteCount(): Promise<FavoriteCountResponse> {
-    return apiClient.get<FavoriteCountResponse>(`${this.baseUrl}/count`);
-  }
-
-  // Get document favorites
-  async getDocumentFavorites(
-    page: number = 0,
-    size: number = 20
-  ): Promise<PageResponse<Favorite>> {
-    const params = new URLSearchParams({
-      page: page.toString(),
-      size: size.toString(),
-    });
-
-    return apiClient.get<PageResponse<Favorite>>(`${this.baseUrl}/documents?${params}`);
-  }
-
-  // Get folder favorites
+  // Get my folder favorites
   async getFolderFavorites(
     page: number = 0,
-    size: number = 20
+    size: number = 20,
+    sortBy: string = 'createdAt',
+    sortDir: 'asc' | 'desc' = 'desc'
   ): Promise<PageResponse<Favorite>> {
     const params = new URLSearchParams({
       page: page.toString(),
       size: size.toString(),
+      sortBy,
+      sortDir,
     });
 
-    return apiClient.get<PageResponse<Favorite>>(`${this.baseUrl}/folders?${params}`);
+    return apiClient.get<PageResponse<Favorite>>(`${this.baseUrl}/my-folder-favorites?${params}`);
   }
 
-  // Search favorites
-  async searchFavorites(
-    query: string,
-    page: number = 0,
-    size: number = 20
-  ): Promise<PageResponse<Favorite>> {
-    const params = new URLSearchParams({
-      query,
-      page: page.toString(),
-      size: size.toString(),
-    });
+  // ========== UNIMPLEMENTED METHODS (No backend endpoints) ==========
+  // TODO: Implement these endpoints in the backend if needed
+  
+  // // Search favorites
+  // async searchFavorites(
+  //   query: string,
+  //   page: number = 0,
+  //   size: number = 20
+  // ): Promise<PageResponse<Favorite>> {
+  //   throw new Error('Not implemented: Search favorites endpoint does not exist in backend');
+  // }
 
-    return apiClient.get<PageResponse<Favorite>>(`${this.baseUrl}/search?${params}`);
-  }
+  // // Get recent favorites
+  // async getRecentFavorites(limit: number = 10): Promise<Favorite[]> {
+  //   throw new Error('Not implemented: Recent favorites endpoint does not exist in backend');
+  // }
 
-  // Get recent favorites
-  async getRecentFavorites(limit: number = 10): Promise<Favorite[]> {
-    return apiClient.get<Favorite[]>(`${this.baseUrl}/recent`, {
-      params: { limit },
-    });
-  }
+  // // Get favorite statistics
+  // async getFavoriteStatistics(): Promise<{
+  //   totalFavorites: number;
+  //   documentFavorites: number;
+  //   folderFavorites: number;
+  //   favoritesByUser: Record<string, number>;
+  // }> {
+  //   throw new Error('Not implemented: Favorite statistics endpoint does not exist in backend');
+  // }
 
-  // Get favorite statistics
-  async getFavoriteStatistics(): Promise<{
-    totalFavorites: number;
-    documentFavorites: number;
-    folderFavorites: number;
-    favoritesByUser: Record<string, number>;
-  }> {
-    return apiClient.get(`${this.baseUrl}/statistics`);
-  }
+  // // Bulk operations
+  // async bulkRemoveFavorites(favoriteIds: number[]): Promise<void> {
+  //   throw new Error('Not implemented: Bulk remove favorites endpoint does not exist in backend');
+  // }
 
-  // Bulk operations
-  async bulkRemoveFavorites(favoriteIds: number[]): Promise<void> {
-    return apiClient.delete<void>(`${this.baseUrl}/bulk`, {
-      data: { favoriteIds },
-    });
-  }
+  // // Clear all favorites
+  // async clearAllFavorites(): Promise<void> {
+  //   throw new Error('Not implemented: Clear all favorites endpoint does not exist in backend');
+  // }
 
-  // Clear all favorites
-  async clearAllFavorites(): Promise<void> {
-    return apiClient.delete<void>(`${this.baseUrl}/clear`);
-  }
+  // // Export favorites
+  // async exportFavorites(): Promise<Blob> {
+  //   throw new Error('Not implemented: Export favorites endpoint does not exist in backend');
+  // }
 
-  // Export favorites
-  async exportFavorites(): Promise<Blob> {
-    return apiClient.downloadFile(`${this.baseUrl}/export`);
-  }
-
-  // Import favorites
-  async importFavorites(file: File): Promise<{
-    imported: number;
-    failed: number;
-    errors: string[];
-  }> {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    return apiClient.uploadFile(`${this.baseUrl}/import`, formData);
-  }
+  // // Import favorites
+  // async importFavorites(file: File): Promise<{
+  //   imported: number;
+  //   failed: number;
+  //   errors: string[];
+  // }> {
+  //   throw new Error('Not implemented: Import favorites endpoint does not exist in backend');
+  // }
 }
 
 export const favoriteService = new FavoriteService();

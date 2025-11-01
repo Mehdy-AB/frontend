@@ -3,27 +3,30 @@
 import { useState, useEffect } from 'react';
 import { 
   X, 
-  Search, 
   FileText, 
-  Calendar, 
-  User, 
-  Filter,
   Eye,
   Download,
   Unlink,
   Settings,
   CheckCircle,
-  Loader2,
-  ChevronDown,
   AlertCircle,
-  Link as LinkIcon
+  Link as LinkIcon,
+  FolderOpen,
+  Mail,
+  Calendar,
+  Trash2,
+  Loader2
 } from 'lucide-react';
 import { Button } from '../ui/button';
-import { Input } from '../ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { DocumentService } from '../../api/services/documentService';
+import { linkRuleService } from '../../api/services/linkRuleService';
+import { notificationApiClient } from '../../api/notificationClient';
 import { RelatedDocumentResponseDto } from '../../types/api';
 import { formatFileSize, formatDate, getLinkTypeColor } from '../../utils/documentUtils';
+import { useServerSideSearch } from '../main/useServerSideSearch';
+import ServerSearchInput from '../main/ServerSearchInput';
+import SearchPagination from '../search/SearchPagination';
+import UserAvatar from '../main/UserAvatar';
 
 interface ViewRelatedDocumentsModalProps {
   isOpen: boolean;
@@ -46,25 +49,6 @@ const LINK_TYPES = [
   { value: 'alternative', label: 'Alternative Version' }
 ];
 
-const MIME_TYPES = [
-  { value: 'all', label: 'All File Types' },
-  { value: 'application/pdf', label: 'PDF' },
-  { value: 'application/msword', label: 'Word (DOC)' },
-  { value: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', label: 'Word (DOCX)' },
-  { value: 'application/vnd.ms-excel', label: 'Excel (XLS)' },
-  { value: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', label: 'Excel (XLSX)' },
-  { value: 'application/vnd.ms-powerpoint', label: 'PowerPoint (PPT)' },
-  { value: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', label: 'PowerPoint (PPTX)' },
-  { value: 'image/jpeg', label: 'JPEG Image' },
-  { value: 'image/png', label: 'PNG Image' },
-  { value: 'image/gif', label: 'GIF Image' },
-  { value: 'image/svg+xml', label: 'SVG Image' },
-  { value: 'text/plain', label: 'Text File' },
-  { value: 'text/csv', label: 'CSV File' },
-  { value: 'application/zip', label: 'ZIP Archive' },
-  { value: 'application/x-rar-compressed', label: 'RAR Archive' }
-];
-
 export default function ViewRelatedDocumentsModal({ 
   isOpen, 
   onClose, 
@@ -73,75 +57,69 @@ export default function ViewRelatedDocumentsModal({
   sourceDocumentName,
   canEdit
 }: ViewRelatedDocumentsModalProps) {
-  const [relatedDocuments, setRelatedDocuments] = useState<RelatedDocumentResponseDto[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [currentPage, setCurrentPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
-  const [totalElements, setTotalElements] = useState(0);
   const pageSize = 15;
   
   // Filters
-  const [searchQuery, setSearchQuery] = useState('');
   const [linkTypeFilter, setLinkTypeFilter] = useState('all');
   const [isManualFilter, setIsManualFilter] = useState<boolean | undefined>(undefined);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
-  const [mimeType, setMimeType] = useState('all');
   
   const [error, setError] = useState<string | null>(null);
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [linkToDelete, setLinkToDelete] = useState<{ linkId: number; documentName: string; isManual: boolean } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
+  // Use server-side search for related documents
+  const {
+    displayData: relatedDocuments,
+    searchQuery,
+    setSearchQuery,
+    page,
+    setPage,
+    totalPages,
+    totalElements,
+    loading: isLoading,
+    tableLoading,
+    fetchData: fetchRelatedDocuments,
+    removeItem: removeDocumentFromList
+  } = useServerSideSearch<RelatedDocumentResponseDto>({
+    fetchFunction: async (currentPage, searchTerm) => {
+      // Format dates to ISO format if provided
+      const formattedFromDate = fromDate ? new Date(fromDate).toISOString() : undefined;
+      const formattedToDate = toDate ? new Date(toDate + 'T23:59:59').toISOString() : undefined;
+      
+      const response = await linkRuleService.getRelatedDocuments(
+        sourceDocumentId,
+        {
+          page: currentPage,
+          size: pageSize,
+          search: searchTerm || undefined,
+          linkType: linkTypeFilter !== 'all' ? linkTypeFilter : undefined,
+          isManual: isManualFilter,
+          fromDate: formattedFromDate,
+          toDate: formattedToDate
+        }
+      );
+      return response;
+    },
+    searchFields: (doc) => [
+      doc.documentName || '',
+      doc.documentTitle || '',
+      doc.documentDescription || '',
+      doc.ownedBy?.firstName || '',
+      doc.ownedBy?.lastName || ''
+    ],
+    debounceMs: 300,
+    fetchOnMount: false
+  });
+
+  // Load related documents when modal opens or filters change
   useEffect(() => {
     if (isOpen) {
-      loadRelatedDocuments(0);
+      fetchRelatedDocuments(false);
     }
-  }, [isOpen]);
-
-  const loadRelatedDocuments = async (page: number, append: boolean = false) => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      
-      const params: any = {
-        page,
-        size: pageSize
-      };
-      
-      if (searchQuery) params.search = searchQuery;
-      if (linkTypeFilter && linkTypeFilter !== 'all') params.linkType = linkTypeFilter;
-      if (isManualFilter !== undefined) params.isManual = isManualFilter;
-      if (fromDate) params.fromDate = fromDate;
-      if (toDate) params.toDate = toDate;
-      if (mimeType && mimeType !== 'all') params.mimeType = mimeType;
-      
-      const response = await DocumentService.getRelatedDocuments(sourceDocumentId, params);
-      
-      if (append) {
-        setRelatedDocuments(prev => [...prev, ...response.content]);
-      } else {
-        setRelatedDocuments(response.content);
-      }
-      
-      setCurrentPage(response.number);
-      setTotalPages(response.totalPages);
-      setTotalElements(response.totalElements);
-    } catch (error) {
-      console.error('Error loading related documents:', error);
-      setError('Failed to load related documents');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleSearch = () => {
-    setCurrentPage(0);
-    loadRelatedDocuments(0);
-  };
-
-  const handleLoadMore = () => {
-    if (currentPage < totalPages - 1) {
-      loadRelatedDocuments(currentPage + 1, true);
-    }
-  };
+  }, [isOpen, linkTypeFilter, isManualFilter, fromDate, toDate]);
 
   const handleClearFilters = () => {
     setSearchQuery('');
@@ -149,21 +127,43 @@ export default function ViewRelatedDocumentsModal({
     setIsManualFilter(undefined);
     setFromDate('');
     setToDate('');
-    setMimeType('all');
-    loadRelatedDocuments(0);
   };
 
-  const handleUnlink = async (linkId: number) => {
-    if (!confirm('Are you sure you want to unlink this document?')) return;
+  const handleDeleteLinkClick = (linkId: number, documentName: string, isManual: boolean) => {
+    setLinkToDelete({ linkId, documentName, isManual });
+    setShowDeleteConfirmation(true);
+  };
+
+  const confirmDeleteLink = async () => {
+    if (!linkToDelete) return;
     
     try {
-      await DocumentService.deleteDocumentLink(linkId);
-      loadRelatedDocuments(0);
+      setIsDeleting(true);
+      await linkRuleService.deleteLink(linkToDelete.linkId);
+      
+      // Remove from list optimistically
+      removeDocumentFromList(linkToDelete.linkId, (doc) => doc.linkId || 0);
+      
+      // Notify parent
       onLinkDeleted?.();
+      
+      // Close confirmation modal
+      setShowDeleteConfirmation(false);
+      setLinkToDelete(null);
+      
+      // Refresh to sync with server
+      fetchRelatedDocuments(false);
     } catch (error) {
       console.error('Error unlinking document:', error);
       setError('Failed to unlink document');
+    } finally {
+      setIsDeleting(false);
     }
+  };
+
+  const cancelDeleteLink = () => {
+    setShowDeleteConfirmation(false);
+    setLinkToDelete(null);
   };
 
   const handleViewDocument = (docId: number) => {
@@ -172,8 +172,8 @@ export default function ViewRelatedDocumentsModal({
 
   const handleDownloadDocument = async (docId: number) => {
     try {
-      const downloadUrl = await DocumentService.downloadDocument(docId);
-      await DocumentService.fileDownloaded(docId);
+      const downloadUrl = await notificationApiClient.downloadDocument(docId);
+      await notificationApiClient.fileDownloaded(docId);
       window.open(downloadUrl, '_blank');
     } catch (error) {
       console.error('Error downloading document:', error);
@@ -187,8 +187,6 @@ export default function ViewRelatedDocumentsModal({
     setIsManualFilter(undefined);
     setFromDate('');
     setToDate('');
-    setMimeType('all');
-    setRelatedDocuments([]);
     setError(null);
     onClose();
   };
@@ -196,8 +194,8 @@ export default function ViewRelatedDocumentsModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-7xl mx-4 max-h-[95vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-7xl max-h-[95vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b bg-gradient-to-r from-blue-50 to-indigo-50">
           <div className="flex items-center gap-3">
@@ -221,26 +219,21 @@ export default function ViewRelatedDocumentsModal({
 
         {/* Filters Bar */}
         <div className="p-4 border-b bg-gray-50">
-          <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+          {/* Main Filters Row */}
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-3">
             {/* Search */}
             <div className="md:col-span-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <Input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                  placeholder="Search documents..."
-                  className="pl-10 h-9"
-                />
-              </div>
+              <ServerSearchInput
+                value={searchQuery}
+                onChange={setSearchQuery}
+                placeholder="Search documents by name, title, or description..."
+              />
             </div>
 
             {/* Link Type */}
             <div>
               <Select value={linkTypeFilter} onValueChange={setLinkTypeFilter}>
-                <SelectTrigger className="h-9">
+                <SelectTrigger className="h-10">
                   <SelectValue placeholder="Link Type" />
                 </SelectTrigger>
                 <SelectContent>
@@ -259,7 +252,7 @@ export default function ViewRelatedDocumentsModal({
                 value={isManualFilter === undefined ? 'all' : isManualFilter ? 'manual' : 'auto'} 
                 onValueChange={(v) => setIsManualFilter(v === 'all' ? undefined : v === 'manual')}
               >
-                <SelectTrigger className="h-9">
+                <SelectTrigger className="h-10">
                   <SelectValue placeholder="Source" />
                 </SelectTrigger>
                 <SelectContent>
@@ -270,52 +263,33 @@ export default function ViewRelatedDocumentsModal({
               </Select>
             </div>
 
-            {/* MIME Type */}
+            {/* Clear Filters */}
             <div>
-              <Select value={mimeType} onValueChange={setMimeType}>
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="File Type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {MIME_TYPES.map((type) => (
-                    <SelectItem key={type.value} value={type.value}>
-                      {type.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Actions */}
-            <div className="flex gap-2">
-              <Button onClick={handleSearch} size="sm" className="flex-1">
-                <Search className="h-3 w-3 mr-1" />
-                Search
-              </Button>
-              <Button onClick={handleClearFilters} size="sm" variant="outline">
-                <X className="h-3 w-3" />
+              <Button onClick={handleClearFilters} variant="outline" className="w-full h-10">
+                <X className="h-4 w-4 mr-2" />
+                Clear
               </Button>
             </div>
           </div>
 
-          {/* Date Range (Collapsible) */}
-          <div className="grid grid-cols-2 gap-3 mt-3">
+          {/* Date Range Filters */}
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">From Date</label>
-              <Input
+              <input
                 type="date"
                 value={fromDate}
                 onChange={(e) => setFromDate(e.target.value)}
-                className="h-9"
+                className="w-full h-9 px-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">To Date</label>
-              <Input
+              <input
                 type="date"
                 value={toDate}
                 onChange={(e) => setToDate(e.target.value)}
-                className="h-9"
+                className="w-full h-9 px-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -331,10 +305,10 @@ export default function ViewRelatedDocumentsModal({
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
-          {isLoading && currentPage === 0 ? (
+          {tableLoading && relatedDocuments.length === 0 ? (
             <div className="flex items-center justify-center py-20">
               <div className="text-center">
-                <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-600" />
+                <div className="h-8 w-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
                 <p className="text-sm text-gray-500">Loading related documents...</p>
               </div>
             </div>
@@ -364,11 +338,11 @@ export default function ViewRelatedDocumentsModal({
                             </h4>
                             
                             {/* Badges */}
-                            <div className="flex items-center gap-2 flex-wrap">
+                            <div className="flex items-center gap-2 flex-wrap mb-2">
                               <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${getLinkTypeColor(doc.linkType)}`}>
                                 {doc.linkType}
                               </span>
-                              {doc.isManual ? (
+                              {doc.manual ? (
                                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
                                   <Settings className="h-3 w-3" />
                                   Manual
@@ -376,7 +350,12 @@ export default function ViewRelatedDocumentsModal({
                               ) : (
                                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800">
                                   <CheckCircle className="h-3 w-3" />
-                                  {doc.ruleName || 'Auto'}
+                                  Auto {doc.ruleName && `- ${doc.ruleName}`}
+                                </span>
+                              )}
+                              {doc.filingCategoryName && (
+                                <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                                  📁 {doc.filingCategoryName}
                                 </span>
                               )}
                             </div>
@@ -387,7 +366,7 @@ export default function ViewRelatedDocumentsModal({
                             {doc.userPermissions?.canView && (
                               <button
                                 onClick={() => handleViewDocument(doc.documentId)}
-                                className="p-2 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"
+                                className="p-2 rounded hover:bg-blue-100 text-gray-600 hover:text-blue-700 transition-colors"
                                 title="View Document"
                               >
                                 <Eye className="h-4 w-4" />
@@ -396,73 +375,76 @@ export default function ViewRelatedDocumentsModal({
                             {doc.userPermissions?.canView && (
                               <button
                                 onClick={() => handleDownloadDocument(doc.documentId)}
-                                className="p-2 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"
+                                className="p-2 rounded hover:bg-green-100 text-gray-600 hover:text-green-700 transition-colors"
                                 title="Download Document"
                               >
                                 <Download className="h-4 w-4" />
                               </button>
                             )}
-                            {canEdit && doc.isManual && (
+                            {canEdit && doc.linkId && (
                               <button
-                                onClick={() => handleUnlink(doc.documentId)}
-                                className="p-2 rounded hover:bg-red-100 text-gray-400 hover:text-red-600"
-                                title="Unlink Document"
+                                onClick={() => handleDeleteLinkClick(doc.linkId!, doc.documentName, doc.isManual)}
+                                className="p-2 rounded hover:bg-red-100 text-gray-600 hover:text-red-700 transition-colors"
+                                title={doc.isManual ? "Remove Manual Link" : "Remove Auto Link"}
                               >
-                                <Unlink className="h-4 w-4" />
+                                <Trash2 className="h-4 w-4" />
                               </button>
                             )}
                           </div>
                         </div>
                         
-                        {/* Metadata */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs text-gray-500 mt-3">
-                          <div className="flex items-center gap-1">
-                            <User className="h-3 w-3" />
-                            <span>{doc.ownedBy.firstName} {doc.ownedBy.lastName}</span>
+                        {/* Owner & Email */}
+                        <div className="flex items-center gap-3 mb-2">
+                          <div className="flex items-center gap-2">
+                            <UserAvatar user={doc.ownedBy} size="sm" />
+                            <div>
+                              <div className="text-sm font-medium text-gray-700">
+                                {doc.ownedBy.firstName} {doc.ownedBy.lastName}
+                              </div>
+                              {doc.ownedBy.email && (
+                                <div className="flex items-center gap-1 text-xs text-gray-500">
+                                  <Mail className="h-3 w-3" />
+                                  <span>{doc.ownedBy.email}</span>
+                                </div>
+                              )}
+                            </div>
                           </div>
+                        </div>
+                        
+                        {/* Metadata Row */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-gray-600 mt-3 pt-3 border-t border-gray-100">
+                          {/* Folder Path */}
+                          {doc.path && (
+                            <div className="flex items-center gap-1">
+                              <FolderOpen className="h-3 w-3 text-gray-400" />
+                              <span className="truncate" title={doc.path}>{doc.path}</span>
+                            </div>
+                          )}
+                          
+                          {/* File Size */}
                           <div className="flex items-center gap-1">
-                            <FileText className="h-3 w-3" />
+                            <FileText className="h-3 w-3 text-gray-400" />
                             <span>{formatFileSize(doc.sizeBytes)}</span>
                           </div>
+                          
+                          {/* Created Date */}
                           <div className="flex items-center gap-1">
-                            <span className="bg-gray-100 px-2 py-0.5 rounded">{doc.mimeType}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Calendar className="h-3 w-3" />
-                            <span>Linked {formatDate(doc.linkedAt)}</span>
+                            <Calendar className="h-3 w-3 text-gray-400" />
+                            <span>{formatDate(doc.documentCreatedAt)}</span>
                           </div>
                         </div>
                         
                         {/* Description if available */}
-                        {doc.description && (
-                          <p className="text-sm text-gray-600 mt-2 italic">"{doc.description}"</p>
+                        {doc.documentDescription && (
+                          <p className="text-sm text-gray-600 mt-3 p-2 bg-gray-50 rounded italic border-l-2 border-blue-300">
+                            {doc.documentDescription}
+                          </p>
                         )}
                       </div>
                     </div>
                   </div>
                 </div>
               ))}
-              
-              {/* Load More Button */}
-              {currentPage < totalPages - 1 && (
-                <button
-                  onClick={handleLoadMore}
-                  disabled={isLoading}
-                  className="w-full py-3 text-sm font-medium text-blue-600 hover:text-blue-800 border-2 border-blue-200 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Loading...
-                    </>
-                  ) : (
-                    <>
-                      <ChevronDown className="h-4 w-4" />
-                      Load More ({relatedDocuments.length} of {totalElements})
-                    </>
-                  )}
-                </button>
-              )}
             </div>
           ) : (
             <div className="text-center py-20">
@@ -471,13 +453,26 @@ export default function ViewRelatedDocumentsModal({
               </div>
               <h3 className="text-lg font-medium text-gray-900 mb-2">No related documents found</h3>
               <p className="text-sm text-gray-500">
-                {searchQuery || (linkTypeFilter && linkTypeFilter !== 'all') || isManualFilter !== undefined || fromDate || toDate || (mimeType && mimeType !== 'all')
+                {searchQuery || linkTypeFilter !== 'all' || isManualFilter !== undefined || fromDate || toDate
                   ? 'Try adjusting your filters or search criteria.'
                   : 'This document has no related documents yet.'}
               </p>
             </div>
           )}
         </div>
+
+        {/* Pagination */}
+        {!isLoading && relatedDocuments.length > 0 && (
+          <div className="px-6 pb-4">
+            <SearchPagination
+              totalPages={totalPages}
+              currentPage={page}
+              totalElements={totalElements}
+              itemsPerPage={pageSize}
+              onPageChange={setPage}
+            />
+          </div>
+        )}
 
         {/* Footer */}
         <div className="flex items-center justify-between p-4 border-t bg-gray-50">
@@ -489,7 +484,66 @@ export default function ViewRelatedDocumentsModal({
           </Button>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirmation && linkToDelete && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                  <Trash2 className="h-5 w-5 text-red-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Remove Document Link
+                </h3>
+              </div>
+              
+              <p className="text-gray-600 mb-2">
+                Are you sure you want to remove the link to{' '}
+                <span className="font-medium text-gray-900">"{linkToDelete.documentName}"</span>?
+              </p>
+              
+              {!linkToDelete.isManual && (
+                <div className="flex items-start gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800 mb-4">
+                  <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="font-medium">This is an automatic link</p>
+                    <p className="text-xs mt-1">It was created by a link rule and may be recreated automatically.</p>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={cancelDeleteLink}
+                  disabled={isDeleting}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDeleteLink}
+                  disabled={isDeleting}
+                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+                >
+                  {isDeleting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Removing...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-4 w-4" />
+                      Remove Link
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-

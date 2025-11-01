@@ -11,7 +11,7 @@ import EditFolderModal from '@/components/modals/EditFolderModal';
 import EditDocumentModal from '@/components/modals/EditDocumentModal';
 import AdvancedSearchModal from '@/components/modals/AdvancedSearchModal';
 import { DocumentResponseDto, FolderRepoResDto, FolderResDto, SortFields, AuditLog } from '@/types/api';
-import AuditLogService from '@/api/services/auditLogService';
+import { auditLogService } from '@/api/services/auditLogService';
 import { favoriteService } from '@/api/services/favoriteService';
 import FolderActionModal from '@/components/modals/FolderActionModal';
 import ConfirmationModal from '@/components/modals/ConfirmationModal';
@@ -25,7 +25,6 @@ import {
   FolderCommentsSection,
   FolderToolbar,
   UnifiedTableView,
-  UnifiedGridView,
   FolderDetailsSkeleton
 } from '@/components/folder';
 
@@ -48,7 +47,6 @@ export default function FolderDetailsPage() {
   const [tableLoading, setTableLoading] = useState(false); // For table-only loading
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list'); // Default to list view
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>('name');
   const [sortDesc, setSortDesc] = useState(false);
@@ -58,6 +56,7 @@ export default function FolderDetailsPage() {
   const [showEditFolderModal, setShowEditFolderModal] = useState(false);
   const [showEditDocumentModal, setShowEditDocumentModal] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState<DocumentResponseDto | null>(null);
+  const [selectedFolder, setSelectedFolder] = useState<FolderResDto | null>(null);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [showFolderActionModal, setShowFolderActionModal] = useState(false);
   const [folderAction, setFolderAction] = useState<'rename' | 'move' | null>(null);
@@ -65,7 +64,6 @@ export default function FolderDetailsPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteItem, setDeleteItem] = useState<TableItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [breadcrumbPath, setBreadcrumbPath] = useState<string[]>([]);
   const [showAdvancedSearchModal, setShowAdvancedSearchModal] = useState(false);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [isLoadingAuditLogs, setIsLoadingAuditLogs] = useState<boolean>(false);
@@ -110,10 +108,15 @@ export default function FolderDetailsPage() {
       return allItems;
     }
     
-    return allItems.filter(item => 
-      item.name.toLowerCase().includes(query.toLowerCase()) ||
-      (item.type === 'folder' ? item.description.toLowerCase().includes(query.toLowerCase()) : false)
-    );
+    const lowerQuery = query.toLowerCase();
+    return allItems.filter(item => {
+      const matchesName = item.name.toLowerCase().includes(lowerQuery);
+      // Check folder description (using type assertion since description exists at runtime but not in type def)
+      const matchesDescription = item.type === 'folder' && (item as any).description 
+        ? (item as any).description.toLowerCase().includes(lowerQuery) 
+        : false;
+      return matchesName || matchesDescription;
+    });
   };
 
   // Map sort option to API sort field
@@ -221,32 +224,11 @@ export default function FolderDetailsPage() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Parse folder path to create breadcrumbs
-  useEffect(() => {
-    if (data?.folder?.path) {
-      const pathSegments = data.folder.path.split('/').filter(segment => segment.trim() !== '');
-      
-      // Replace user ID with username if it's the first segment
-      const processedSegments = pathSegments.map((segment, index) => {
-        // If it's the first segment and looks like a user ID, replace with username
-        if (index === 0 && data.folder.ownedBy ) {
-          // For now, just use the username from the folder data
-          return data.folder.ownedBy.username;
-        }
-        return segment;
-      });
-      setBreadcrumbPath(processedSegments);
-    }
-  }, [data]);
-
   // Fetch audit logs for the folder
   const fetchAuditLogs = async (folderId: number) => {
     try {
       setIsLoadingAuditLogs(true);
-      const response = await AuditLogService.getAuditLogsByEntity('FOLDER', folderId.toString(), {
-        page: 0,
-        size: 20
-      });
+      const response = await auditLogService.getAuditLogsByEntity('FOLDER', folderId, 0, 20);
       setAuditLogs(response.content);
     } catch (error) {
       console.error('Error fetching audit logs:', error);
@@ -259,7 +241,7 @@ export default function FolderDetailsPage() {
   const checkFolderFavoriteStatus = async (folderId: number) => {
     try {
       setIsLoadingFavorite(true);
-      const response = await favoriteService.isFolderFavorite(folderId);
+      const response = await favoriteService.checkFolderFavorite(folderId);
       setIsFolderFavorite(response.isFavorite);
     } catch (error) {
       console.error('Error checking folder favorite status:', error);
@@ -289,31 +271,14 @@ export default function FolderDetailsPage() {
   };
 
   // Navigate to folder by path
-  const navigateToPath = async (pathIndex: number) => {
-    if (!data?.folder?.path) return;
-    
-    const pathSegments = data.folder.path.split('/').filter(segment => segment.trim() !== '');
-    
-    // For the first segment (user), we need to use the original path with user ID
-    // For other segments, we can use the processed path
-    let targetPath: string;
-    if (pathIndex === 0) {
-      // Navigate to root folder (user's main folder)
-      targetPath = pathSegments[0];
-    } else {
-      // Navigate to subfolder
-      targetPath = pathSegments.slice(0, pathIndex + 1).join('/');
-    }
+  const navigateToPath = async (cumulativePath: string) => {
+    if (!cumulativePath) return;
     
     try {
-      const response = await notificationApiClient.getFolderByPath(targetPath, {
-        page: 0,
-        size: 20,
-        showFolder: true
-      });
+      const response = await notificationApiClient.getFolderIdByPath(cumulativePath);
       
       // Navigate to the folder by ID
-      router.push(`/folders/${response.folder.id}`);
+      router.push(`/folders/${response.id}`);
     } catch (error) {
       console.error('Error navigating to path:', error);
     }
@@ -341,6 +306,7 @@ export default function FolderDetailsPage() {
   };
 
   const handleEditFolderPermissions = (folder: FolderResDto) => {
+    setSelectedFolder(folder);
     setShowEditFolderModal(true);
   };
 
@@ -506,13 +472,13 @@ export default function FolderDetailsPage() {
   };
 
   const formatDate = (dateString: string): string => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    const date = new Date(dateString);
+    const day = date.getDate();
+    const month = date.toLocaleDateString('en-US', { month: 'short' }).toLowerCase();
+    const year = date.getFullYear();
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    return `${day} ${month} ${year}, ${hours}:${minutes}`;
   };
 
   if (loading) {
@@ -541,9 +507,11 @@ export default function FolderDetailsPage() {
       {/* Breadcrumb Navigation */}
       <div className="bg-white border-b border-gray-200 px-6 py-3">
       <BreadcrumbNavigation 
-        breadcrumbPath={breadcrumbPath}
-        onNavigateToPath={navigateToPath}
+        folderPath={folder.path}
+        folderOwnerId={folder.ownedBy.id}
+        folderOwnerDisplayName={folder.ownedBy.displayName}
         currentFolderName={folder.name}
+        onNavigateToPath={navigateToPath}
       />
           </div>
           
@@ -554,7 +522,7 @@ export default function FolderDetailsPage() {
         isFolderFavorite={isFolderFavorite}
         isLoadingFavorite={isLoadingFavorite}
         onToggleFavorite={toggleFolderFavorite}
-        onEditPermissions={() => setShowEditFolderModal(true)}
+        onEditPermissions={() => handleEditFolderPermissions(folder)}
         onUpload={handleUpload}
         onCreateFolder={handleCreateFolder}
         formatFileSize={formatFileSize}
@@ -569,8 +537,6 @@ export default function FolderDetailsPage() {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onSearchSubmit={() => fetchFolderData(true)}
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
         sortBy={sortBy}
         onSortByChange={setSortBy}
         sortDesc={sortDesc}
@@ -581,40 +547,22 @@ export default function FolderDetailsPage() {
       <div className="flex">
         {/* File List */}
         <div className="flex-1 bg-white">
-          {/* Unified Table/Grid View */}
-      {viewMode === 'list' ? (
-        <UnifiedTableView 
-          items={tableItems} 
-          formatFileSize={formatFileSize} 
-          formatDate={formatDate}
-          currentFolderId={folder.id}
-          onEditPermissions={handleEditDocumentPermissions}
-          onEditFolderPermissions={handleEditFolderPermissions}
-          onMove={handleMove}
-          onRename={handleRename}
-          onDelete={handleDelete}
-          onShowComments={handleShowComments}
-          openDropdownId={openDropdownId}
-          setOpenDropdownId={setOpenDropdownId}
-          showLoadingRows={tableLoading}
-        />
-      ) : (
-        <UnifiedGridView 
-          items={tableItems} 
-          formatFileSize={formatFileSize} 
-          formatDate={formatDate}
-          currentFolderId={folder.id}
-          onEditPermissions={handleEditDocumentPermissions}
-          onEditFolderPermissions={handleEditFolderPermissions}
-          onMove={handleMove}
-          onRename={handleRename}
-          onDelete={handleDelete}
-          onShowComments={handleShowComments}
-          openDropdownId={openDropdownId}
-          setOpenDropdownId={setOpenDropdownId}
-          showLoadingRows={tableLoading}
-        />
-      )}
+          {/* Unified Table View */}
+      <UnifiedTableView 
+        items={tableItems} 
+        formatFileSize={formatFileSize} 
+        formatDate={formatDate}
+        currentFolderId={folder.id}
+        onEditPermissions={handleEditDocumentPermissions}
+        onEditFolderPermissions={handleEditFolderPermissions}
+        onMove={handleMove}
+        onRename={handleRename}
+        onDelete={handleDelete}
+        onShowComments={handleShowComments}
+        openDropdownId={openDropdownId}
+        setOpenDropdownId={setOpenDropdownId}
+        showLoadingRows={tableLoading}
+      />
 
       {/* Loading indicator */}
       {tableLoading && (
@@ -712,11 +660,14 @@ export default function FolderDetailsPage() {
         />
       )}
 
-      {showEditFolderModal && folder && (
+      {showEditFolderModal && selectedFolder && (
         <EditFolderModal
           isOpen={showEditFolderModal}
-          onClose={() => setShowEditFolderModal(false)}
-          folder={folder}
+          onClose={() => {
+            setShowEditFolderModal(false);
+            setSelectedFolder(null);
+          }}
+          folder={selectedFolder}
           onSuccess={handleRefresh}
         />
       )}

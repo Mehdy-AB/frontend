@@ -13,6 +13,7 @@ interface SearchSelectProps<T> {
   debounceMs?: number;
   displayField: keyof T; // which field to show as label (e.g. 'name')
   descriptionField?: keyof T; // optional description field
+  valueLabel?: string; // optional prefilled label for selected item
 }
 
 export function SearchSelect<T extends { id: string | number }>({
@@ -23,6 +24,7 @@ export function SearchSelect<T extends { id: string | number }>({
   debounceMs = 400,
   displayField,
   descriptionField,
+  valueLabel,
 }: SearchSelectProps<T>) {
   const [query, setQuery] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
@@ -48,6 +50,13 @@ export function SearchSelect<T extends { id: string | number }>({
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
+
+  // Sync external value label into the input (for preselection display)
+  useEffect(() => {
+    if (valueLabel !== undefined) {
+      setQuery(valueLabel || '');
+    }
+  }, [valueLabel]);
 
   // Debounce for remote fetch
   useEffect(() => {

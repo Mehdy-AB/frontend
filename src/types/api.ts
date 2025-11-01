@@ -142,6 +142,8 @@ export interface UserDto {
   groups: string[];
 }
 
+export type UserStatus = 'ACTIVE' | 'INACTIVE';
+
 export interface CreateUserRequest {
   username: string;
   email: string;
@@ -231,6 +233,7 @@ export interface DocumentFilingCategoryResponseDto {
   name: string;
   description?: string;
   metadata: DocumentMetadataResponseDto[];
+  metadataDefinitions?: CategoryMetadataDefinitionDto[]; // Schema for metadata fields
 }
 
 export interface DocumentResponseDto {
@@ -286,8 +289,10 @@ export interface DocumentPermissionReq {
 
 export interface DocumentPermissionResDto {
   canView: boolean;
+  canUpload: boolean;
   canEdit: boolean;
   canDelete: boolean;
+  canShare: boolean;
   canManagePermissions: boolean;
 }
 
@@ -328,6 +333,7 @@ export interface TagResponseDto {
   createdAt: string;
   updatedAt: string;
   documentCount: number;
+  type?: string;
 }
 
 export interface AddTagToDocumentRequestDto {
@@ -376,6 +382,7 @@ export interface LinkRuleResponseDto {
   updatedAt: string;
   linksCreated: number;
   lastExecutedAt?: string;
+  activeLinksCount?: number;
 }
 
 export interface LinkRuleConditionResponseDto {
@@ -458,9 +465,17 @@ export interface FolderWithOwnerDto extends FolderResDto {
 
 export interface FolderPermissionResDto {
   canView: boolean;
+  canUpload: boolean;
   canEdit: boolean;
   canDelete: boolean;
+  canShare: boolean;
   canManagePermissions: boolean;
+  canCreateSubFolders: boolean;
+  canEditDoc: boolean;
+  canDeleteDoc: boolean;
+  canShareDoc: boolean;
+  canManagePermissionsDoc: boolean;
+  inherits: boolean;
 }
 
 export interface CreateFolderDto {
@@ -515,6 +530,7 @@ export interface FolderRepoResDto {
 export interface FilingCategoryRequestDto {
   name: string;
   description?: string;
+  metadataDefinitions?: CategoryMetadataDefinitionDto[];
 }
 
 export interface FilingCategoryResponseDto {
@@ -528,7 +544,9 @@ export interface FilingCategoryResponseDto {
 export interface MetaDataListReq {
   name: string;
   description?: string;
-  metadataFields: MetadataFieldDto[];
+  metadataFields?: MetadataFieldDto[];
+  option?: string[];
+  mandatory?: boolean;
 }
 
 export interface MetaDataListRes {
@@ -538,6 +556,8 @@ export interface MetaDataListRes {
   metadataFields: MetadataFieldDto[];
   createdAt: string;
   updatedAt: string;
+  option?: string[];
+  mandatory?: boolean;
 }
 
 export interface MetadataFieldDto {
@@ -719,16 +739,15 @@ export const SearchScope = {
 export type SearchScope = typeof SearchScope[keyof typeof SearchScope];
 
 export interface CategoryMetadataDefinitionDto {
-  id: number;
-  name: string;
+  id?: number;
+  name?: string;
   description?: string;
-  metadataFields: MetadataFieldDefinitionDto[];
+  metadataFields?: MetadataFieldDefinitionDto[];
   key?: string; // Alias for name
   dataType?: string; // Data type of the metadata
   mandatory?: boolean; // Whether the field is required
-  list?: {
-    option?: string[]; // List options
-  } | boolean; // Whether the field is a list type
+  listId?: number; // Optional reference to a list definition
+  list?: any; // List metadata configuration (flexible to support UI creation)
 }
 
 export interface MetadataFieldDefinitionDto {
@@ -783,11 +802,15 @@ export interface Comment {
   entityType: string;
   entityId: number;
   text: string;
-  createdBy: UserDto;
+  user: UserDto;  // Backend returns entity with 'user', not DTO
+  createdBy?: UserDto; // Alias for compatibility
   createdAt: string;
-  updatedAt: string;
   parentId?: number;
+  parentCommentId?: number; // Alias for parentId for compatibility
   replies?: Comment[];
+  isEdited?: boolean;
+  hasReply?: boolean;
+  username?: string; // Legacy field
 }
 
 export interface CommentCreateReq {
@@ -883,9 +906,9 @@ export interface AuditLogStatistics {
   actionsByEntity: Record<string, number>;
 }
 
-// ==================== CLASS A TYPES ====================
+// ==================== UNCLASSIFIED DOCUMENT TYPES ====================
 
-export interface ClassAUploadRequestDto {
+export interface UnclassifiedDocumentUploadRequestDto {
   folderId: number;
   createdBy: string;
   title: string;
@@ -893,25 +916,30 @@ export interface ClassAUploadRequestDto {
   categoryId: number;
 }
 
-export interface ClassAResponseDto {
+export interface UnclassifiedDocumentResponseDto {
   id: number;
-  title: string;
+  name: string;
+  title?: string;
   fileName: string;
   folderId: number;
+  folderPath?: string;
   createdBy: UserDto;
+  ownedBy: UserDto;
   createdAt: string;
   updatedAt: string;
   categoryId: number;
   categoryName: string;
+  sizeBytes: number;
+  mimeType: string;
 }
 
-export interface ClassADetailResponseDto extends ClassAResponseDto {
+export interface UnclassifiedDocumentDetailResponseDto extends UnclassifiedDocumentResponseDto {
   description?: string;
-  metadata: DocumentMetadataResponseDto[];
-  filingCategory: DocumentFilingCategoryResponseDto;
+  metadata?: DocumentMetadataResponseDto[];
+  filingCategory?: DocumentFilingCategoryResponseDto;
 }
 
-export interface ClassASearchRequestDto {
+export interface UnclassifiedDocumentSearchRequestDto {
   query?: string;
   userId?: string;
   categoryId?: number;
@@ -921,13 +949,22 @@ export interface ClassASearchRequestDto {
   exactDate?: string;
   page?: number;
   size?: number;
+  sortBy?: string;
+  sortDirection?: 'asc' | 'desc';
 }
 
-export interface ClassAStatisticsResponseDto {
+export interface UnclassifiedDocumentStatisticsResponseDto {
   totalDocuments: number;
   documentsByCategory: Record<string, number>;
   documentsByUser: Record<string, number>;
   documentsByMonth: Record<string, number>;
+}
+
+export interface ClassifyUnclassifiedDocumentRequestDto {
+  title: string;
+  lang: ExtractorLanguage;
+  filingCategory?: FilingCategoryDocDto;
+  tags?: string;
 }
 
 // ==================== BULK UPLOAD TYPES ====================
@@ -995,6 +1032,7 @@ export interface RuleStatistics {
   ruleName: string;
   totalExecutions: number;
   totalLinksCreated: number;
+  linksCreated?: number;
   averageExecutionTime: number;
   lastExecutedAt?: string;
   successRate: number;
@@ -1021,6 +1059,9 @@ export interface LinkRuleCacheStatistics {
   cacheHitRate: number;
   averageCacheSize: number;
   cacheEvictions: number;
+  totalCachedLinks?: number;
+  activeRules?: number;
+  lastRevalidation?: string;
 }
 
 // ==================== MOVING TYPES ====================
@@ -1036,6 +1077,52 @@ export interface AllowedFoldersToMove {
   path: string;
   canMove: boolean;
   reason?: string;
+}
+
+// ==================== CLASS A TYPES ====================
+
+export interface ClassAUploadRequestDto {
+  file?: File;
+  folderId: number;
+  title: string;
+  lang: ExtractorLanguage;
+  fileName?: string;
+  tagsIds?: number[];
+  filingCategory?: FilingCategoryDocDto;
+  description?: string;
+}
+
+export interface ClassAResponseDto {
+  id: number;
+  name: string;
+  title?: string;
+  description?: string;
+  folderId: number;
+  sizeBytes: number;
+  mimeType: string;
+  createdBy: UserDto;
+  createdAt: string;
+  categoryId: number;
+  categoryName: string;
+}
+
+export interface ClassADetailResponseDto extends ClassAResponseDto {
+  metadataDefinitions?: any[];
+}
+
+export interface ClassASearchRequestDto {
+  query?: string;
+  page?: number;
+  size?: number;
+  sortBy?: string;
+  sortDirection?: 'asc' | 'desc';
+}
+
+export interface ClassAStatisticsResponseDto {
+  totalDocuments: number;
+  documentsByCategory: Record<string, number>;
+  documentsByUser: Record<string, number>;
+  documentsByMonth: Record<string, number>;
 }
 
 // ==================== SHARING TYPES ====================
@@ -1067,29 +1154,13 @@ export interface TypeShareAccessDocumentRes {
 
 export interface TypeShareAccessWithTypeReq {
   granteeId: string;
-  granteeType: GranteeType;
-  canView: boolean;
-  canEdit: boolean;
-  canDelete: boolean;
-  canManagePermissions: boolean;
-  inherits: boolean;
+  permission: FolderPermissionReq;
+  type: GranteeType;
 }
 
 export interface TypeShareAccessRes {
-  id: number;
-  folderId: number;
-  granteeId: string;
-  granteeType: GranteeType;
-  granteeName: string;
-  canView: boolean;
-  canEdit: boolean;
-  canDelete: boolean;
-  canManagePermissions: boolean;
-  inherits: boolean;
-  grantedBy: UserDto;
-  grantedAt: string;
-  revokedAt?: string;
-  revokedBy?: UserDto;
+  grantee: UserDto | GroupDto | RoleDto;
+  permission: FolderPermissionReq;
 }
 
 // ==================== UPDATE DOCUMENT TYPES ====================

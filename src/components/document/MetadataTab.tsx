@@ -4,8 +4,9 @@
 import { useState, useEffect } from 'react';
 import { Tag, FileText, Plus, X, Edit3, Save, ChevronDown, FolderOpen, Calendar, Hash, ToggleLeft, List, MoreHorizontal, User } from 'lucide-react';
 import { DocumentViewDto } from '../../types/documentView';
-import { DocumentService } from '../../api/services/documentService';
-import { FilingCategoryService } from '../../api/services/filingCategoryService';
+import { documentService } from '../../api/services/documentService';
+import { filingCategoryService } from '../../api/services/filingCategoryService';
+import { tagService } from '../../api/services/tagService';
 import { notificationApiClient } from '../../api/notificationClient';
 import { FilingCategoryResponseDto, FilingCategoryDocDto, MetaDataDto, MetadataType, UpdateDocumentMetadataRequestDto, DocumentFilingCategoryResponseDto, TagResponseDto, CreateTagRequestDto, AddTagToDocumentRequestDto } from '../../types/api';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
@@ -72,7 +73,7 @@ export default function MetadataTab({
   const loadDocumentTags = async () => {
     try {
       setIsLoadingTags(true);
-      const documentTags = await DocumentService.getTagsByDocumentId(document.documentId);
+      const documentTags = await documentService.getTagsByDocumentId(document.documentId);
       setTags(documentTags);
     } catch (error) {
       console.error('Error loading document tags:', error);
@@ -83,7 +84,7 @@ export default function MetadataTab({
 
   const loadAvailableTags = async () => {
     try {
-      const tags = await DocumentService.getAvailableTags();
+      const tags = await documentService.getAvailableTags();
       setAvailableTags(tags);
     } catch (error) {
       console.error('Error loading available tags:', error);
@@ -139,7 +140,7 @@ export default function MetadataTab({
     const loadModels = async () => {
       try {
         setIsLoadingModels(true);
-        const response = await FilingCategoryService.getAllFilingCategories({ size: 100 });
+        const response = await filingCategoryService.getAllFilingCategories({ size: 100 });
         const models = response.content || [];
         setAvailableModels(models);
       } catch (error) {
@@ -256,7 +257,7 @@ export default function MetadataTab({
       case MetadataType.LIST:
         const listData = metadataDef.list;
         const hasOptions = listData?.option && listData.option.length > 0;
-        const allowCustomValue = mandatory; // When mandatory=true, user can enter custom values
+        const allowCustomValue = listData?.mandatory ?? false; // When list.mandatory=true, user can enter custom values
         const isCustomValueMode = customValueFields.has(meta.id);
         
         return (
@@ -388,7 +389,7 @@ export default function MetadataTab({
     const model = availableModels.find(m => m.id === modelId);
     if (model) {
       setSelectedModel(model);
-      const metadata = model.metadataDefinitions.map(def => ({
+      const metadata = (model.metadataDefinitions || []).map(def => ({
         id: def.id || 0,
         value: ''
       }));
@@ -396,7 +397,7 @@ export default function MetadataTab({
       
       // Refetch categories to get updated metadata definitions
       try {
-        const response = await FilingCategoryService.getAllFilingCategories({ size: 100 });
+        const response = await filingCategoryService.getAllFilingCategories({ size: 100 });
         const updatedModels = response.content || [];
         setAvailableModels(updatedModels);
         
@@ -427,15 +428,15 @@ export default function MetadataTab({
       
       // Validate mandatory fields
       const metadataDefinitions = getMetadataDefinitionsForEditing();
-      if (metadataDefinitions.length > 0) {
-        const mandatoryFields = metadataDefinitions.filter(def => def.mandatory);
-        const missingFields = mandatoryFields.filter(def => {
+      if (metadataDefinitions && metadataDefinitions.length > 0) {
+        const mandatoryFields = metadataDefinitions.filter((def: any) => def.mandatory);
+        const missingFields = mandatoryFields.filter((def: any) => {
           const meta = editingMetadata.find(m => m.id === def.id);
           return !meta || !meta.value.trim();
         });
         
         if (missingFields.length > 0) {
-          setError(`Please fill in all mandatory fields: ${missingFields.map(f => f.key).join(', ')}`);
+          setError(`Please fill in all mandatory fields: ${missingFields.map((f: any) => f.key).join(', ')}`);
           return;
         }
       }
@@ -449,34 +450,44 @@ export default function MetadataTab({
         filingCategory: filingCategory
       };
 
-      await DocumentService.updateDocumentMetadata(
+      await documentService.updateDocumentMetadata(
         document.documentId, 
         request
       );
 
-      // Update local state with the new model and metadata
-      if (onUpdateDocument && selectedModel) {
-        const updatedDocument = {
-          ...document,
-          filingCategory: {
-            id: selectedModelId,
-            name: selectedModel.name,
-            description: selectedModel.description,
-            metadata: editingMetadata.map(meta => {
-              let metadataName = '';
-              if (selectedModel && 'metadataDefinitions' in selectedModel) {
-                const metadataDef = selectedModel.metadataDefinitions.find((def: any) => def.id === meta.id);
-                metadataName = metadataDef?.key || '';
-              }
-              return {
-                metadataId: meta.id,
-                metadataName: metadataName,
-                value: meta.value
-              };
-            })
-          }
-        };
-        onUpdateDocument(updatedDocument as DocumentViewDto);
+      // Refetch document to get full filing category details with metadataDefinitions
+      try {
+        const updatedDoc = await documentService.getDocumentById(document.documentId);
+        if (onUpdateDocument) {
+          onUpdateDocument(updatedDoc as DocumentViewDto);
+        }
+      } catch (error) {
+        console.error('Error refetching document:', error);
+        // Fallback: Update local state with the new model and metadata
+        if (onUpdateDocument && selectedModel) {
+          const updatedDocument = {
+            ...document,
+            filingCategory: {
+              id: selectedModelId,
+              name: selectedModel.name,
+              description: selectedModel.description,
+              metadataDefinitions: selectedModel.metadataDefinitions,
+              metadata: editingMetadata.map(meta => {
+                let metadataName = '';
+                if (selectedModel && 'metadataDefinitions' in selectedModel && selectedModel.metadataDefinitions) {
+                  const metadataDef = selectedModel.metadataDefinitions.find((def: any) => def.id === meta.id);
+                  metadataName = metadataDef?.key || '';
+                }
+                return {
+                  metadataId: meta.id,
+                  metadataName: metadataName,
+                  value: meta.value
+                };
+              })
+            }
+          };
+          onUpdateDocument(updatedDocument as DocumentViewDto);
+        }
       }
 
       setSuccess('Model and metadata updated successfully');
@@ -502,15 +513,15 @@ export default function MetadataTab({
       
       // Validate mandatory fields
       const metadataDefinitions = getMetadataDefinitionsForEditing();
-      if (metadataDefinitions.length > 0) {
-        const mandatoryFields = metadataDefinitions.filter(def => def.mandatory);
-        const missingFields = mandatoryFields.filter(def => {
+      if (metadataDefinitions && metadataDefinitions.length > 0) {
+        const mandatoryFields = metadataDefinitions.filter((def: any) => def.mandatory);
+        const missingFields = mandatoryFields.filter((def: any) => {
           const meta = editingMetadata.find(m => m.id === def.id);
           return !meta || !meta.value.trim();
         });
         
         if (missingFields.length > 0) {
-          setError(`Please fill in all mandatory fields: ${missingFields.map(f => f.key).join(', ')}`);
+          setError(`Please fill in all mandatory fields: ${missingFields.map((f: any) => f.key).join(', ')}`);
           return;
         }
       }
@@ -524,28 +535,37 @@ export default function MetadataTab({
         filingCategory: filingCategory
       };
 
-      await DocumentService.updateDocumentMetadata(
+      await documentService.updateDocumentMetadata(
         document.documentId, 
         request
       );
 
-      // Update local state with the updated metadata
-      if (onUpdateDocument && document.filingCategory) {
-        const updatedDocument = {
-          ...document,
-          filingCategory: {
-            ...document.filingCategory,
-            metadata: editingMetadata.map(meta => {
-              const existingMeta = document.filingCategory?.metadata.find(m => m.metadataId === meta.id);
-              return {
-                metadataId: meta.id,
-                metadataName: existingMeta?.metadataName || '',
-                value: meta.value
-              };
-            })
-          }
-        };
-        onUpdateDocument(updatedDocument as DocumentViewDto);
+      // Refetch document to get updated filing category details
+      try {
+        const updatedDoc = await documentService.getDocumentById(document.documentId);
+        if (onUpdateDocument) {
+          onUpdateDocument(updatedDoc as DocumentViewDto);
+        }
+      } catch (error) {
+        console.error('Error refetching document:', error);
+        // Fallback: Update local state with the updated metadata
+        if (onUpdateDocument && document.filingCategory) {
+          const updatedDocument = {
+            ...document,
+            filingCategory: {
+              ...document.filingCategory,
+              metadata: editingMetadata.map(meta => {
+                const existingMeta = document.filingCategory?.metadata.find(m => m.metadataId === meta.id);
+                return {
+                  metadataId: meta.id,
+                  metadataName: existingMeta?.metadataName || '',
+                  value: meta.value
+                };
+              })
+            }
+          };
+          onUpdateDocument(updatedDocument as DocumentViewDto);
+        }
       }
 
       setSuccess('Metadata updated successfully');
@@ -570,7 +590,7 @@ export default function MetadataTab({
       }
 
       // Add tag to document
-      await DocumentService.addTagToDocument(document.documentId, { tagId: tag.id });
+      await tagService.addTagToDocument(document.documentId, { tagId: tag.id });
       
       // Update local state
       setTags(prev => [...prev, tag]);
@@ -586,7 +606,7 @@ export default function MetadataTab({
 
   const handleTagRemove = async (tagId: number) => {
     try {
-      await DocumentService.removeTagFromDocument(document.documentId, tagId);
+      await tagService.removeTagFromDocument(document.documentId, tagId);
       
       // Update local state
       setTags(prev => prev.filter(tag => tag.id !== tagId));
@@ -608,10 +628,10 @@ export default function MetadataTab({
         color: tagData.color
       };
       
-      const createdTag = await DocumentService.createTag(newTag);
+      const createdTag = await tagService.createTag(newTag);
       
       // Add the new tag to the document
-      await DocumentService.addTagToDocument(document.documentId, { tagId: createdTag.id });
+      await tagService.addTagToDocument(document.documentId, { tagId: createdTag.id });
       
       // Update local state
       setTags(prev => [...prev, createdTag]);
@@ -850,20 +870,7 @@ export default function MetadataTab({
               {document.filingCategory ? document.filingCategory.name : 'No model'}
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            {document.userPermissions?.canEdit && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsEditingModel(!isEditingModel);
-                }}
-                className="p-1 text-gray-500 hover:text-blue-600"
-              >
-                <Edit3 className="h-4 w-4" />
-              </button>
-            )}
-            <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${openSections.has('model') ? 'rotate-180' : ''}`} />
-          </div>
+          <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${openSections.has('model') ? 'rotate-180' : ''}`} />
         </div>
 
         {openSections.has('model') && (
@@ -898,7 +905,7 @@ export default function MetadataTab({
                     <SearchSelect
                       items={availableModels}
                       fetchFunction={async (query: string) => {
-                        const response = await FilingCategoryService.getAllFilingCategories({ 
+                        const response = await filingCategoryService.getAllFilingCategories({ 
                           size: 100,
                           name: query 
                         });
@@ -921,7 +928,7 @@ export default function MetadataTab({
                     <div className="space-y-3">
                       {editingMetadata.map((meta) => {
                         const metadataDefinitions = getMetadataDefinitionsForEditing();
-                        const metadataDef = metadataDefinitions.find(def => def.id === meta.id);
+                        const metadataDef = metadataDefinitions?.find((def: any) => def.id === meta.id);
                         if (!metadataDef) {
                           console.warn(`Metadata definition not found for id: ${meta.id}`);
                           return null;
@@ -964,10 +971,23 @@ export default function MetadataTab({
                 {document.filingCategory ? (
                   <>
                     <div className="p-3 bg-blue-50 rounded border border-blue-200">
-                      <div className="font-medium text-blue-900">{document.filingCategory.name}</div>
-                      {document.filingCategory.description && (
-                        <div className="text-sm text-blue-700 mt-1">{document.filingCategory.description}</div>
-                      )}
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="font-medium text-blue-900">{document.filingCategory.name}</div>
+                          {document.filingCategory.description && (
+                            <div className="text-sm text-blue-700 mt-1">{document.filingCategory.description}</div>
+                          )}
+                        </div>
+                        {document.userPermissions?.canEdit && (
+                          <button
+                            onClick={() => setIsEditingModel(true)}
+                            className="text-xs text-blue-600 hover:text-blue-800 underline flex items-center gap-1"
+                          >
+                            <Edit3 className="h-3 w-3" />
+                            Change Model
+                          </button>
+                        )}
+                      </div>
                     </div>
                     
                     {document.filingCategory.metadata && document.filingCategory.metadata.length > 0 && (
@@ -988,7 +1008,7 @@ export default function MetadataTab({
                           <div className="space-y-3">
                             {editingMetadata.map((meta) => {
                               const metadataDefinitions = getMetadataDefinitionsForEditing();
-                              const metadataDef = metadataDefinitions.find(def => def.id === meta.id);
+                              const metadataDef = metadataDefinitions?.find((def: any) => def.id === meta.id);
                               if (!metadataDef) {
                                 console.warn(`Metadata definition not found for id: ${meta.id}`);
                                 return null;
@@ -1028,7 +1048,7 @@ export default function MetadataTab({
                             {document.filingCategory.metadata.map((meta: any) => {
                               // Use document metadata definitions if available, otherwise fallback to model definitions
                               const metadataDefinitions = getMetadataDefinitionsForEditing();
-                              const metadataDef = metadataDefinitions.find(
+                              const metadataDef = metadataDefinitions?.find(
                                 (def: any) => def.id === meta.metadataId
                               );
                               const dataType = metadataDef?.dataType || MetadataType.STRING;
@@ -1063,8 +1083,17 @@ export default function MetadataTab({
                     )}
                   </>
                 ) : (
-                  <div className="text-sm text-gray-500">
-                    No model assigned
+                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded border border-gray-200">
+                    <div className="text-sm text-gray-500">No model assigned</div>
+                    {document.userPermissions?.canEdit && (
+                      <button
+                        onClick={() => setIsEditingModel(true)}
+                        className="text-xs text-blue-600 hover:text-blue-800 underline flex items-center gap-1"
+                      >
+                        <Plus className="h-3 w-3" />
+                        Assign Model
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -1097,7 +1126,7 @@ export default function MetadataTab({
                 <SearchSelect
                   items={availableTags}
                   fetchFunction={async (query: string) => {
-                    const response = await DocumentService.searchTags(query, 0, 20);
+                    const response = await tagService.searchTags(query, 0, 20);
                     return response.content || [];
                   }}
                   onSelect={handleTagSelect}

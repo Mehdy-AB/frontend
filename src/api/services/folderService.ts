@@ -10,6 +10,8 @@ import {
   GranteeType,
   TypeShareAccessWithTypeReq,
   TypeShareAccessRes,
+  AllowedFoldersToMove,
+  MovingType,
 } from '../../types/api';
 
 export class FolderService {
@@ -57,17 +59,56 @@ export class FolderService {
     folderId: number,
     page: number = 0,
     size: number = 20,
+    name?: string,
+    showFolder: boolean = true,
     sortBy?: SortFields,
     sortDirection: 'asc' | 'desc' = 'asc'
   ): Promise<FolderRepoResDto> {
     const params = new URLSearchParams({
       page: page.toString(),
       size: size.toString(),
-      sortBy: sortBy || SortFields.NAME,
-      sortDirection,
+      sort: sortBy || SortFields.NAME,
+      desc: (sortDirection === 'desc').toString(),
+      showFolder: showFolder.toString(),
     });
 
-    return apiClient.get<FolderRepoResDto>(`${this.baseUrl}/${folderId}/contents?${params}`);
+    if (name) {
+      params.append('name', name);
+    }
+
+    return apiClient.get<FolderRepoResDto>(`${this.baseUrl}/${folderId}?${params}`);
+  }
+
+  // Get folder by path
+  async getFolderByPath(
+    path: string,
+    page: number = 0,
+    size: number = 20,
+    name?: string,
+    showFolder: boolean = true,
+    sortBy?: SortFields,
+    sortDirection: 'asc' | 'desc' = 'asc'
+  ): Promise<FolderRepoResDto> {
+    const params = new URLSearchParams({
+      path,
+      page: page.toString(),
+      size: size.toString(),
+      sort: sortBy || SortFields.NAME,
+      desc: (sortDirection === 'desc').toString(),
+      showFolder: showFolder.toString(),
+    });
+
+    if (name) {
+      params.append('name', name);
+    }
+
+    return apiClient.get<FolderRepoResDto>(`${this.baseUrl}/path?${params}`);
+  }
+
+  // Get folder ID by path (lightweight, fast)
+  async getFolderIdByPath(path: string): Promise<{ id: number }> {
+    const params = new URLSearchParams({ path });
+    return apiClient.get<{ id: number }>(`${this.baseUrl}/path/id?${params}`);
   }
 
   // Get folder permissions
@@ -75,25 +116,7 @@ export class FolderService {
     return apiClient.get<FolderPermissionResDto>(`${this.baseUrl}/${folderId}/permissions`);
   }
 
-  // Share folder with user/group/role
-  async shareFolderWithType(
-    folderId: number,
-    shareData: TypeShareAccessWithTypeReq
-  ): Promise<TypeShareAccessRes> {
-    return apiClient.post<TypeShareAccessRes>(`${this.baseUrl}/${folderId}/share`, shareData);
-  }
-
-  // Revoke folder access
-  async revokeFolderAccess(folderId: number, granteeId: string): Promise<void> {
-    return apiClient.delete<void>(`${this.baseUrl}/${folderId}/share/${granteeId}`);
-  }
-
-  // Get folder sharing list
-  async getFolderSharingList(folderId: number): Promise<TypeShareAccessRes[]> {
-    return apiClient.get<TypeShareAccessRes[]>(`${this.baseUrl}/${folderId}/sharing`);
-  }
-
-  // Get folders by parent
+  // Get folders by parent (deprecated - use getFolderContents instead)
   async getFoldersByParent(
     parentId: number,
     page: number = 0,
@@ -168,7 +191,7 @@ export class FolderService {
     return apiClient.get<PageResponse<FolderResDto>>(`${this.baseUrl}/owner/${ownerId}?${params}`);
   }
 
-  // Search folders
+  // Search folders (using name parameter in getMyRepository)
   async searchFolders(
     query: string,
     page: number = 0,
@@ -176,22 +199,41 @@ export class FolderService {
     sortBy?: SortFields,
     sortDirection: 'asc' | 'desc' = 'asc'
   ): Promise<PageResponse<FolderResDto>> {
+    return this.getMyRepository(page, size, query, sortBy, sortDirection);
+  }
+
+  // Get shared folders
+  async getSharedFolders(
+    page: number = 0,
+    size: number = 20,
+    name?: string,
+    showFolder: boolean = true,
+    sortBy?: SortFields,
+    sortDirection: 'asc' | 'desc' = 'asc'
+  ): Promise<FolderRepoResDto> {
     const params = new URLSearchParams({
-      query,
       page: page.toString(),
       size: size.toString(),
-      sortBy: sortBy || SortFields.NAME,
-      sortDirection,
+      sort: sortBy || SortFields.NAME,
+      desc: (sortDirection === 'desc').toString(),
+      showFolder: showFolder.toString(),
     });
 
-    return apiClient.get<PageResponse<FolderResDto>>(`${this.baseUrl}/search?${params}`);
+    if (name) {
+      params.append('name', name);
+    }
+
+    return apiClient.get<FolderRepoResDto>(`${this.baseUrl}/shared?${params}`);
+  }
+
+  // Rename folder
+  async renameFolder(folderId: number, newName: string): Promise<void> {
+    return apiClient.put<void>(`${this.baseUrl}/rename/${folderId}?name=${encodeURIComponent(newName)}`);
   }
 
   // Move folder
-  async moveFolder(folderId: number, newParentId?: number): Promise<FolderResDto> {
-    return apiClient.patch<FolderResDto>(`${this.baseUrl}/${folderId}/move`, {
-      parentId: newParentId,
-    });
+  async moveFolder(folderId: number, newParentId: number): Promise<void> {
+    return apiClient.put<void>(`${this.baseUrl}/move/${folderId}/${newParentId}`);
   }
 
   // Get folder hierarchy
@@ -224,16 +266,139 @@ export class FolderService {
   }
 
   // Get allowed folders for moving
-  async getAllowedFoldersToMove(entityType: 'DOCUMENT' | 'FOLDER', entityId: number): Promise<{
-    id: number;
-    name: string;
-    path: string;
-    canMove: boolean;
-    reason?: string;
-  }[]> {
-    return apiClient.get(`${this.baseUrl}/allowed-to-move`, {
-      params: { entityType, entityId },
+  async getAllowedFoldersToMove(
+    entityId: number,
+    entityType: MovingType,
+    page: number = 0,
+    size: number = 20,
+    name?: string
+  ): Promise<PageResponse<AllowedFoldersToMove>> {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      size: size.toString(),
+      type: entityType,
     });
+
+    if (name) {
+      params.append('name', name);
+    }
+
+    return apiClient.get<PageResponse<AllowedFoldersToMove>>(`${this.baseUrl}/to-move/${entityId}?${params}`);
+  }
+
+  // Get folder sharing list (permissions)
+  async getFolderSharingList(
+    folderId: number,
+    page: number = 0,
+    size: number = 20,
+    search?: string
+  ): Promise<PageResponse<TypeShareAccessRes>> {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      size: size.toString(),
+    });
+
+    // Add search parameter if provided
+    if (search) {
+      params.append('search', search);
+    }
+
+    return apiClient.get<PageResponse<TypeShareAccessRes>>(`${this.baseUrl}/${folderId}/share?${params}`);
+  }
+
+  // Share folder with type (create or update permission)
+  // Create new folder permission (POST)
+  async createFolderPermission(
+    folderId: number,
+    shareData: TypeShareAccessWithTypeReq
+  ): Promise<TypeShareAccessRes> {
+    return apiClient.post<TypeShareAccessRes>(`${this.baseUrl}/${folderId}/share`, shareData);
+  }
+
+  // Update existing folder permission (PUT)
+  async updateFolderPermission(
+    folderId: number,
+    shareData: TypeShareAccessWithTypeReq
+  ): Promise<TypeShareAccessRes> {
+    return apiClient.put<TypeShareAccessRes>(`${this.baseUrl}/${folderId}/share`, shareData);
+  }
+
+  // Legacy method - uses PUT
+  async shareFolderWithType(
+    folderId: number,
+    shareData: TypeShareAccessWithTypeReq
+  ): Promise<TypeShareAccessRes> {
+    return this.updateFolderPermission(folderId, shareData);
+  }
+
+  // Revoke folder access
+  async revokeFolderAccess(
+    folderId: number,
+    granteeId: string,
+    inherits: boolean = false
+  ): Promise<void> {
+    const params = new URLSearchParams({
+      inherits: inherits.toString(),
+    });
+
+    return apiClient.delete<void>(`${this.baseUrl}/${folderId}/share/${granteeId}?${params}`);
+  }
+
+  // Get available users for folder (excluding those with existing permissions)
+  async getAvailableUsersForFolder(
+    folderId: number,
+    page: number = 0,
+    size: number = 20,
+    search?: string
+  ): Promise<PageResponse<any>> {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      size: size.toString(),
+    });
+
+    if (search) {
+      params.append('search', search);
+    }
+
+    return apiClient.get<PageResponse<any>>(`${this.baseUrl}/${folderId}/available-users?${params}`);
+  }
+
+  // Get available roles for folder (excluding those with existing permissions)
+  async getAvailableRolesForFolder(
+    folderId: number,
+    page: number = 0,
+    size: number = 20,
+    search?: string
+  ): Promise<PageResponse<any>> {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      size: size.toString(),
+    });
+
+    if (search) {
+      params.append('search', search);
+    }
+
+    return apiClient.get<PageResponse<any>>(`${this.baseUrl}/${folderId}/available-roles?${params}`);
+  }
+
+  // Get available groups for folder (excluding those with existing permissions)
+  async getAvailableGroupsForFolder(
+    folderId: number,
+    page: number = 0,
+    size: number = 20,
+    search?: string
+  ): Promise<PageResponse<any>> {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      size: size.toString(),
+    });
+
+    if (search) {
+      params.append('search', search);
+    }
+
+    return apiClient.get<PageResponse<any>>(`${this.baseUrl}/${folderId}/available-groups?${params}`);
   }
 }
 

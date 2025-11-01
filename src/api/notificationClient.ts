@@ -1,6 +1,6 @@
 import { apiClient } from './client'
 import { AxiosResponse, AxiosError } from 'axios'
-import { MovingType, AllowedFoldersToMove, PageResponse, UpdateDocumentMetadataRequestDto, CreateTagRequestDto, UpdateTagRequestDto, AddTagToDocumentRequestDto, TagResponseDto, DocumentTagResponseDto, LinkRuleRequestDto, LinkRuleResponseDto, DocumentLinkRequestDto, DocumentLinkResponseDto, RelatedDocumentResponseDto, RuleExecutionRequest, RuleExecutionResponse, RuleStatistics, BulkRuleExecutionRequest, BulkRuleExecutionResponse, LinkRuleCacheStatistics, SearchRequestDto, AdvancedSearchRequestDto, AdvancedSearchResponseDto, UnifiedSearchRequestDto, FilingCategoryDocDto } from '../types/api'
+import { MovingType, AllowedFoldersToMove, PageResponse, UpdateDocumentMetadataRequestDto, CreateTagRequestDto, UpdateTagRequestDto, AddTagToDocumentRequestDto, TagResponseDto, DocumentTagResponseDto, LinkRuleRequestDto, LinkRuleResponseDto, DocumentLinkRequestDto, DocumentLinkResponseDto, RelatedDocumentResponseDto, RuleExecutionRequest, RuleExecutionResponse, RuleStatistics, BulkRuleExecutionRequest, BulkRuleExecutionResponse, LinkRuleCacheStatistics, SearchRequestDto, AdvancedSearchRequestDto, AdvancedSearchResponseDto, UnifiedSearchRequestDto, FilingCategoryDocDto, TypeShareAccessWithTypeReq } from '../types/api'
 import { userManagementService } from './services/userManagementService'
 import { roleManagementService } from './services/roleManagementService'
 import { groupManagementService } from './services/groupManagementService'
@@ -14,6 +14,7 @@ import { recycleBinService } from './services/recycleBinService'
 import { auditLogService } from './services/auditLogService'
 import { filingCategoryService } from './services/filingCategoryService'
 import { searchService } from './services/searchService'
+import { unclassifiedDocumentService } from './services/unclassifiedDocumentService'
 
 // Notification interface for API calls
 interface ApiNotificationOptions {
@@ -382,9 +383,9 @@ class NotificationApiClient {
   // ==================== DOCUMENT ENDPOINTS ====================
 
   async uploadDocument(file: File, folderId: number, title: string, lang: any, filingCategoryDto: FilingCategoryDocDto | null, fileName?: string, tags?: number[], options?: ApiNotificationOptions) {
-    // TODO: Implement uploadDocument properly
+    const tagsJson = tags ? JSON.stringify(tags) : undefined;
     return this.withNotification(
-      async () => { throw new Error("uploadDocument needs proper implementation") },
+      () => documentService.uploadDocument(file, folderId, title, lang, fileName, tagsJson, filingCategoryDto || undefined),
       { 
         successMessage: `File "${file.name}" uploaded successfully`, 
         errorMessage: `Failed to upload "${file.name}"`, 
@@ -394,12 +395,13 @@ class NotificationApiClient {
     )
   }
 
-  async uploadMultipleDocuments(files: File[], folderId: number, title: string, lang: any, categoryId?: number, fileName?: string, tags?: number[], filingCategoryDto?: FilingCategoryDocDto | null, options?: ApiNotificationOptions) {
+  // Note: Multiple upload is now handled by unclassified documents
+  async uploadUnclassifiedDocument(file: File, folderId: number, categoryId: number, createdBy: string, title?: string, fileName?: string, options?: ApiNotificationOptions) {
     return this.withNotification(
-      async () => { throw new Error("uploadMultipleDocuments not implemented - implement in documentService") },
+      () => unclassifiedDocumentService.uploadUnclassifiedDocument(file, folderId, categoryId, createdBy, title, fileName),
       { 
-        successMessage: `${files.length} files uploaded successfully`, 
-        errorMessage: `Failed to upload ${files.length} files`, 
+        successMessage: `File "${file.name}" uploaded to unclassified successfully`, 
+        errorMessage: `Failed to upload "${file.name}" to unclassified`, 
         ...options 
       },
       'upload'
@@ -408,7 +410,7 @@ class NotificationApiClient {
 
   async renameDocument(id: number, name: string, options?: ApiNotificationOptions) {
     return this.withNotification(
-      async () => { throw new Error("renameDocument not implemented - implement in documentService") },
+      () => documentService.renameDocument(id, name),
       { successMessage: 'Document renamed successfully', errorMessage: 'Failed to rename document', ...options },
       'rename'
     )
@@ -416,7 +418,7 @@ class NotificationApiClient {
 
   async editDocumentTitle(id: number, data: any, options?: ApiNotificationOptions) {
     return this.withNotification(
-      async () => { throw new Error("editDocumentTitle not implemented - implement in documentService") },
+      () => documentService.editDocumentTitle(id, data),
       { successMessage: 'Document title updated successfully', errorMessage: 'Failed to update document title', ...options },
       'update'
     )
@@ -424,7 +426,7 @@ class NotificationApiClient {
 
   async editDocumentDescription(id: number, description: string, options?: ApiNotificationOptions) {
     return this.withNotification(
-      async () => { throw new Error("editDocumentDescription not implemented - implement in documentService") },
+      () => documentService.updateDocumentDescription(id, { description }),
       { successMessage: 'Document description updated successfully', errorMessage: 'Failed to update document description', ...options },
       'update'
     )
@@ -542,9 +544,9 @@ class NotificationApiClient {
 
   // Get related documents with search and filters
 
-  async uploadDocumentVersion(file: File, documentId: number, lang: any, options?: ApiNotificationOptions) {
+  async uploadDocumentVersion(file: File, documentId: number, lang: any, filingCategory?: any, options?: ApiNotificationOptions) {
     return this.withNotification(
-      async () => { throw new Error("uploadDocumentVersion not implemented - use documentService.uploadNewVersion") },
+      () => documentService.uploadNewVersion(file, documentId, lang, filingCategory),
       { 
         successMessage: `Document version uploaded successfully`, 
         errorMessage: `Failed to upload document version`, 
@@ -556,25 +558,23 @@ class NotificationApiClient {
 
   async moveDocument(id: number, to: number, options?: ApiNotificationOptions) {
     return this.withNotification(
-      async () => { throw new Error("moveDocument not implemented - use documentService.bulkMoveDocuments") },
+      () => documentService.moveDocument(id, to),
       { successMessage: 'Document moved successfully', errorMessage: 'Failed to move document', ...options },
       'move'
     )
   }
 
-  async downloadDocument(id: number, params?: any, options?: ApiNotificationOptions) {
+  async downloadDocument(id: number, versionId?: number, options?: ApiNotificationOptions) {
     return this.withNotification(
-      () => documentService.downloadDocument(id, params),
-      { successMessage: 'Download started', errorMessage: 'Failed to download document', ...options },
-      'download'
+      () => documentService.getDownloadUrl(id, versionId),
+      { silent: true, ...options }
     )
   }
 
-  async fileDownloaded(id: number, params?: any, options?: ApiNotificationOptions) {
+  async fileDownloaded(id: number, versionId?: number, options?: ApiNotificationOptions) {
     return this.withNotification(
-      async () => apiClient.post(`/api/v1/documents/${id}/downloaded`, params),
-      { successMessage: 'Download logged successfully', errorMessage: 'Failed to log download', ...options },
-      'download'
+      () => documentService.markFileAsDownloaded(id, versionId),
+      { silent: true, ...options }
     )
   }
 
@@ -605,14 +605,37 @@ class NotificationApiClient {
 
   async getFolder(id: number, params?: any, options?: ApiNotificationOptions) {
     return this.withNotification(
-      () => folderService.getFolderById(id),
+      () => folderService.getFolderContents(
+        id,
+        params?.page || 0,
+        params?.size || 20,
+        params?.name,
+        params?.showFolder !== undefined ? params.showFolder : true,
+        params?.sort,
+        params?.desc ? 'desc' : 'asc'
+      ),
       { silent: true, ...options }
     )
   }
 
   async getFolderByPath(path: string, params?: any, options?: ApiNotificationOptions) {
     return this.withNotification(
-      async () => { throw new Error("getFolderByPath not implemented - use folderService") },
+      () => folderService.getFolderByPath(
+        path,
+        params?.page || 0,
+        params?.size || 20,
+        params?.name,
+        params?.showFolder !== undefined ? params.showFolder : true,
+        params?.sort,
+        params?.desc ? 'desc' : 'asc'
+      ),
+      { silent: true, ...options }
+    )
+  }
+
+  async getFolderIdByPath(path: string, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => folderService.getFolderIdByPath(path),
       { silent: true, ...options }
     )
   }
@@ -623,8 +646,8 @@ class NotificationApiClient {
         params?.page || 0,
         params?.size || 20,
         params?.name,
-        params?.sortBy,
-        params?.sortDirection
+        params?.sort,
+        params?.desc ? 'desc' : 'asc'
       ),
       { silent: true, ...options }
     )
@@ -632,14 +655,21 @@ class NotificationApiClient {
 
   async getSharedFolders(params?: any, options?: ApiNotificationOptions) {
     return this.withNotification(
-      async () => { throw new Error("getSharedFolders not implemented - use folderService") },
+      () => folderService.getSharedFolders(
+        params?.page || 0,
+        params?.size || 20,
+        params?.name,
+        params?.showFolder !== undefined ? params.showFolder : true,
+        params?.sort,
+        params?.desc ? 'desc' : 'asc'
+      ),
       { silent: true, ...options }
     )
   }
 
   async renameFolder(id: number, name: string, options?: ApiNotificationOptions) {
     return this.withNotification(
-      async () => { throw new Error("renameFolder not implemented - use folderService.updateFolder with proper DTO") },
+      () => folderService.renameFolder(id, name),
       { successMessage: 'Folder renamed successfully', errorMessage: 'Failed to rename folder', ...options },
       'rename'
     )
@@ -647,7 +677,7 @@ class NotificationApiClient {
 
   async moveFolder(id: number, to: number, options?: ApiNotificationOptions) {
     return this.withNotification(
-      async () => { throw new Error("moveFolder not implemented - use folderService") },
+      () => folderService.moveFolder(id, to),
       { successMessage: 'Folder moved successfully', errorMessage: 'Failed to move folder', ...options },
       'move'
     )
@@ -675,6 +705,42 @@ class NotificationApiClient {
       () => folderService.deleteFolder(id),
       { successMessage: 'Folder deleted successfully', errorMessage: 'Failed to delete folder', ...options },
       'delete'
+    )
+  }
+
+  async getAvailableUsersForFolder(folderId: number, params?: any, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => folderService.getAvailableUsersForFolder(
+        folderId,
+        params?.page || 0,
+        params?.size || 20,
+        params?.search
+      ),
+      { silent: true, ...options }
+    )
+  }
+
+  async getAvailableRolesForFolder(folderId: number, params?: any, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => folderService.getAvailableRolesForFolder(
+        folderId,
+        params?.page || 0,
+        params?.size || 20,
+        params?.search
+      ),
+      { silent: true, ...options }
+    )
+  }
+
+  async getAvailableGroupsForFolder(folderId: number, params?: any, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => folderService.getAvailableGroupsForFolder(
+        folderId,
+        params?.page || 0,
+        params?.size || 20,
+        params?.search
+      ),
+      { silent: true, ...options }
     )
   }
 
@@ -799,17 +865,36 @@ class NotificationApiClient {
     )
   }
 
-  async deleteDocumentShared(folderId: number, granteeId: string, options?: ApiNotificationOptions) {
+  async deleteDocumentShared(documentId: number, granteeId: string, options?: ApiNotificationOptions) {
     return this.withNotification(
-      async () => { throw new Error("deleteDocumentShared not implemented - use documentService.revokeDocumentAccess") },
+      () => documentService.revokeDocumentAccess(documentId, granteeId),
       { successMessage: 'Document sharing removed successfully', errorMessage: 'Failed to remove document sharing', ...options },
       'remove'
     )
   }
 
+  // Create new folder permission (POST)
+  async createFolderPermission(folderId: number, data: TypeShareAccessWithTypeReq, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => folderService.createFolderPermission(folderId, data),
+      { successMessage: 'Permission added successfully', errorMessage: 'Failed to add permission', ...options },
+      'create'
+    )
+  }
+
+  // Update existing folder permission (PUT)
+  async updateFolderPermission(folderId: number, data: TypeShareAccessWithTypeReq, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => folderService.updateFolderPermission(folderId, data),
+      { successMessage: 'Permission updated successfully', errorMessage: 'Failed to update permission', ...options },
+      'update'
+    )
+  }
+
+  // Legacy method - uses PUT for backward compatibility
   async createOrUpdateFolderShared(folderId: number, data: any, options?: ApiNotificationOptions) {
     return this.withNotification(
-      async () => { throw new Error("createOrUpdateFolderShared not implemented - use folderService") },
+      () => folderService.shareFolderWithType(folderId, data),
       { successMessage: 'Folder sharing updated successfully', errorMessage: 'Failed to update folder sharing', ...options },
       'update'
     )
@@ -817,7 +902,7 @@ class NotificationApiClient {
 
   async deleteFolderShared(folderId: number, granteeId: string, inherits: boolean, options?: ApiNotificationOptions) {
     return this.withNotification(
-      async () => { throw new Error("deleteFolderShared not implemented - use folderService") },
+      () => folderService.revokeFolderAccess(folderId, granteeId, inherits),
       { successMessage: 'Folder sharing removed successfully', errorMessage: 'Failed to remove folder sharing', ...options },
       'remove'
     )
@@ -848,15 +933,58 @@ class NotificationApiClient {
 
   async getFolderShared(id: number, params?: any, options?: ApiNotificationOptions) {
     return this.withNotification(
-      async () => { throw new Error("getFolderShared not implemented - use folderService") },
+      () => folderService.getFolderSharingList(
+        id,
+        params?.page || 0,
+        params?.size || 20,
+        params?.search
+      ),
       { silent: true, ...options }
     )
   }
 
   async getDocumentShared(id: number, params?: any, options?: ApiNotificationOptions) {
     return this.withNotification(
-      async () => documentService.getDocumentSharingList(id),
+      () => documentService.getDocumentSharingList(
+        id,
+        params?.page || 0,
+        params?.size || 20,
+        params?.search
+      ),
       { silent: true, ...options }
+    )
+  }
+
+  async createDocumentPermission(documentId: number, data: any, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => documentService.createDocumentPermission(documentId, data),
+      { 
+        successMessage: 'Permission added successfully',
+        errorMessage: 'Failed to add permission',
+        ...options 
+      }
+    )
+  }
+
+  async updateDocumentPermission(documentId: number, data: any, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => documentService.updateDocumentPermission(documentId, data),
+      { 
+        successMessage: 'Permission updated successfully',
+        errorMessage: 'Failed to update permission',
+        ...options 
+      }
+    )
+  }
+
+  async deleteDocumentPermission(documentId: number, granteeId: string, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => documentService.revokeDocumentAccess(documentId, granteeId),
+      { 
+        successMessage: 'Permission removed successfully',
+        errorMessage: 'Failed to remove permission',
+        ...options 
+      }
     )
   }
 

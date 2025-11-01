@@ -46,7 +46,10 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { DocumentService } from '@/api/services/documentService';
+import { linkRuleService } from '@/api/services/linkRuleService';
+import { filingCategoryService } from '@/api/services/filingCategoryService';
+import ServerSearchInput from '@/components/main/ServerSearchInput';
+import { SearchSelect } from '@/components/main/SearchSelect';
 import { 
   LinkRuleResponseDto, 
   LinkRuleRequestDto, 
@@ -59,7 +62,7 @@ import { useNotifications } from '../../../../hooks/useNotifications';
 
 export default function LinkRulesManagementPage() {
   const { t } = useLanguage();
-  const { showNotification } = useNotifications();
+  const { showNotification, showSuccess } = useNotifications();
   
   // Main data state
   const [linkRules, setLinkRules] = useState<LinkRuleResponseDto[]>([]);
@@ -96,6 +99,16 @@ export default function LinkRulesManagementPage() {
   const [activeTab, setActiveTab] = useState<'rules' | 'statistics' | 'cache'>('rules');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingRule, setEditingRule] = useState<LinkRuleResponseDto | null>(null);
+  const [viewingRule, setViewingRule] = useState<LinkRuleResponseDto | null>(null);
+  const openEditRule = async (ruleId: number) => {
+    try {
+      const full = await linkRuleService.getLinkRuleById(ruleId);
+      setEditingRule(full);
+    } catch (e) {
+      console.error('Failed to load rule details', e);
+    }
+  };
+  const [importing, setImporting] = useState(false);
 
   // Smart search with local filtering first, then API call
   const performSmartSearch = useCallback((query: string) => {
@@ -144,7 +157,13 @@ export default function LinkRulesManagementPage() {
         name: searchQuery || localSearchQuery || undefined
       };
 
-      const response = await DocumentService.getAllLinkRulesPaginated(params);
+      const response = await linkRuleService.getLinkRules(
+        params.page,
+        params.size,
+        'name',
+        'asc',
+        { enabled: params.enabled, linkType: params.linkType, name: params.name }
+      );
       
       if (response && Array.isArray(response.content)) {
         setLinkRules(response.content);
@@ -169,8 +188,8 @@ export default function LinkRulesManagementPage() {
     try {
       setLoading(true);
       setError(null);
-      const rulesData = await DocumentService.getAllLinkRules();
-      setLinkRules(Array.isArray(rulesData) ? rulesData : []);
+      const page = await linkRuleService.getLinkRules(0, 100);
+      setLinkRules(page.content || []);
     } catch (err: any) {
       console.error('Error fetching link rules:', err);
       setError(err.message || 'Failed to load link rules');
@@ -211,7 +230,7 @@ export default function LinkRulesManagementPage() {
   // Load rule statistics
   const loadRuleStatistics = async () => {
     try {
-      const stats = await DocumentService.getAllRuleStatistics();
+      const stats = await linkRuleService.getAllLinkRuleStatistics();
       setRuleStatistics(stats);
     } catch (error) {
       console.error('Error loading rule statistics:', error);
@@ -222,7 +241,7 @@ export default function LinkRulesManagementPage() {
   // Load cache statistics
   const loadCacheStatistics = async () => {
     try {
-      const stats = await DocumentService.getLinkRuleCacheStatistics();
+      const stats = await linkRuleService.getCacheStatistics();
       setCacheStatistics(stats);
     } catch (error) {
       console.error('Error loading cache statistics:', error);
@@ -233,7 +252,7 @@ export default function LinkRulesManagementPage() {
   // Enhanced CRUD operations
   const handleCreateRule = async (ruleData: LinkRuleRequestDto) => {
     try {
-      const newRule = await DocumentService.createLinkRule(ruleData);
+      const newRule = await linkRuleService.createLinkRule(ruleData);
       showNotification('success', 'Success', 'Link rule created successfully');
       await fetchLinkRulesWithFilters(); // Refresh the list
       setShowCreateModal(false);
@@ -246,7 +265,7 @@ export default function LinkRulesManagementPage() {
 
   const handleUpdateRule = async (ruleId: number, ruleData: LinkRuleRequestDto) => {
     try {
-      const updatedRule = await DocumentService.updateLinkRule(ruleId, ruleData);
+      const updatedRule = await linkRuleService.updateLinkRule(ruleId, ruleData);
       showNotification('success', 'Success', 'Link rule updated successfully');
       await fetchLinkRulesWithFilters(); // Refresh the list
       setEditingRule(null);
@@ -261,7 +280,7 @@ export default function LinkRulesManagementPage() {
     if (!confirm('Are you sure you want to delete this link rule?')) return;
     
     try {
-        await DocumentService.deleteLinkRule(ruleId);
+        await linkRuleService.deleteLinkRule(ruleId);
       showNotification('success', 'Success', 'Link rule deleted successfully');
       await fetchLinkRulesWithFilters(); // Refresh the list
     } catch (error) {
@@ -273,10 +292,10 @@ export default function LinkRulesManagementPage() {
   const handleToggleRule = async (ruleId: number, enabled: boolean) => {
     try {
         if (enabled) {
-          await DocumentService.enableLinkRule(ruleId);
+          await linkRuleService.toggleLinkRuleStatus(ruleId, true);
         showNotification('success', 'Success', 'Link rule enabled successfully');
       } else {
-        await DocumentService.disableLinkRule(ruleId);
+        await linkRuleService.toggleLinkRuleStatus(ruleId, false);
         showNotification('success', 'Success', 'Link rule disabled successfully');
       }
       await fetchLinkRulesWithFilters(); // Refresh the list
@@ -290,7 +309,7 @@ export default function LinkRulesManagementPage() {
   const handleExecuteRule = async (ruleId: number) => {
     try {
       setExecutingRules(prev => new Set(prev).add(ruleId));
-      await DocumentService.applyLinkRule(ruleId);
+      await linkRuleService.executeLinkRule({ ruleId });
       showNotification('success', 'Success', 'Rule execution started successfully');
       await fetchLinkRulesWithFilters(); // Refresh the list
     } catch (error) {
@@ -308,7 +327,11 @@ export default function LinkRulesManagementPage() {
   const handleReapplyAllRules = async () => {
     try {
       setBulkOperationLoading(true);
-      await DocumentService.reapplyAllLinkRules();
+      // Fallback: bulk execute all enabled rules
+      const enabled = await linkRuleService.getEnabledLinkRules();
+      if (enabled && enabled.length > 0) {
+        await linkRuleService.bulkExecuteLinkRules({ ruleIds: enabled.map(r => r.id) });
+      }
       showNotification('success', 'Success', 'All rules reapplication started successfully');
       await fetchLinkRulesWithFilters(); // Refresh the list
     } catch (error) {
@@ -325,7 +348,7 @@ export default function LinkRulesManagementPage() {
     
     try {
       setBulkOperationLoading(true);
-      await Promise.all(selectedRules.map(ruleId => DocumentService.enableLinkRule(ruleId)));
+      await linkRuleService.bulkToggleLinkRuleStatus(selectedRules, true);
       showNotification('success', 'Success', `${selectedRules.length} rules enabled successfully`);
       setSelectedRules([]);
       await fetchLinkRulesWithFilters(); // Refresh the list
@@ -342,7 +365,7 @@ export default function LinkRulesManagementPage() {
     
     try {
       setBulkOperationLoading(true);
-      await Promise.all(selectedRules.map(ruleId => DocumentService.disableLinkRule(ruleId)));
+      await linkRuleService.bulkToggleLinkRuleStatus(selectedRules, false);
       showNotification('success', 'Success', `${selectedRules.length} rules disabled successfully`);
       setSelectedRules([]);
       await fetchLinkRulesWithFilters(); // Refresh the list
@@ -361,7 +384,7 @@ export default function LinkRulesManagementPage() {
     
     try {
       setBulkOperationLoading(true);
-      await Promise.all(selectedRules.map(ruleId => DocumentService.deleteLinkRule(ruleId)));
+      await linkRuleService.bulkDeleteLinkRules(selectedRules);
       showNotification('success', 'Success', `${selectedRules.length} rules deleted successfully`);
       setSelectedRules([]);
       await fetchLinkRulesWithFilters(); // Refresh the list
@@ -376,7 +399,7 @@ export default function LinkRulesManagementPage() {
   // Cache management
   const handleClearDocumentCache = async (documentId: number) => {
     try {
-      await DocumentService.clearDocumentCache(documentId);
+      await linkRuleService.clearCache();
       showNotification('success', 'Success', 'Document cache cleared successfully');
       await loadCacheStatistics(); // Refresh cache stats
     } catch (error) {
@@ -387,7 +410,7 @@ export default function LinkRulesManagementPage() {
 
   const handleClearRuleCache = async (ruleId: number) => {
     try {
-      await DocumentService.clearRuleCache(ruleId);
+      await linkRuleService.clearCache();
       showNotification('success', 'Success', 'Rule cache cleared successfully');
       await loadCacheStatistics(); // Refresh cache stats
     } catch (error) {
@@ -398,7 +421,7 @@ export default function LinkRulesManagementPage() {
 
   const handleClearAllCache = async () => {
     try {
-      await DocumentService.clearAllRuleCache();
+      await linkRuleService.clearCache();
       showNotification('success', 'Success', 'All cache cleared successfully');
       await loadCacheStatistics(); // Refresh cache stats
     } catch (error) {
@@ -679,11 +702,11 @@ export default function LinkRulesManagementPage() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => setEditingRule(rule)}>
+                          <DropdownMenuItem onClick={() => openEditRule(rule.id)}>
                         <Edit className="mr-2 h-4 w-4" />
                         Edit
                       </DropdownMenuItem>
-                      <DropdownMenuItem>
+                       <DropdownMenuItem onClick={() => setViewingRule(rule)}>
                         <Eye className="mr-2 h-4 w-4" />
                         View Details
                       </DropdownMenuItem>
@@ -773,7 +796,7 @@ export default function LinkRulesManagementPage() {
                         </>
                       )}
                     </Button>
-                    <Button variant="outline" size="sm">
+                     <Button variant="outline" size="sm" onClick={() => openEditRule(rule.id)}>
                       <Settings className="h-4 w-4 mr-2" />
                       Configure
                     </Button>
@@ -874,6 +897,30 @@ export default function LinkRulesManagementPage() {
           />
         </TabsContent>
       </Tabs>
+
+      {/* Create/Edit Rule Modal */}
+      {(showCreateModal || editingRule) && (
+        <RuleModal
+          isOpen={Boolean(showCreateModal || editingRule)}
+          onClose={() => { setShowCreateModal(false); setEditingRule(null); }}
+          initial={editingRule}
+          onSubmit={async (payload) => {
+            if (editingRule) {
+              await handleUpdateRule(editingRule.id, payload);
+            } else {
+              await handleCreateRule(payload);
+            }
+          }}
+        />
+      )}
+
+       {/* View Rule Details Modal */}
+       {viewingRule && (
+         <RuleDetailsModal
+           rule={viewingRule}
+           onClose={() => setViewingRule(null)}
+         />
+       )}
     </div>
   );
 }
@@ -981,6 +1028,7 @@ function CacheManagementTab({
   onClearRuleCache: (ruleId: number) => void;
   onClearAllCache: () => void;
 }) {
+  const [importing, setImporting] = useState(false);
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -1029,7 +1077,7 @@ function CacheManagementTab({
             </CardHeader>
             <CardContent>
               <div className="text-sm font-medium">
-                {new Date(cacheStatistics.lastRevalidation).toLocaleDateString()}
+                {cacheStatistics.lastRevalidation ? new Date(cacheStatistics.lastRevalidation).toLocaleDateString() : '—'}
               </div>
               <p className="text-xs text-muted-foreground">Last update</p>
             </CardContent>
@@ -1053,11 +1101,48 @@ function CacheManagementTab({
               <Trash2 className="h-4 w-4" />
               Clear All Cache
             </Button>
-            <Button variant="outline" className="gap-2">
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={async () => {
+                  const data = await linkRuleService.exportLinkRules();
+                  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = 'link-rules-export.json';
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+              >
               <Download className="h-4 w-4" />
               Export Cache Data
             </Button>
-            <Button variant="outline" className="gap-2">
+              <Button
+                variant="outline"
+                className="gap-2"
+                disabled={importing}
+                onClick={async () => {
+                  try {
+                    setImporting(true);
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = 'application/json';
+                    input.onchange = async () => {
+                      if (!input.files || input.files.length === 0) return;
+                      const file = input.files[0];
+                      const text = await file.text();
+                      const rules = JSON.parse(text);
+                      await linkRuleService.importLinkRules(rules);
+                      console.log('Rules imported successfully');
+                      // refresh rules after import
+                    };
+                    input.click();
+                  } finally {
+                    setImporting(false);
+                  }
+                }}
+              >
               <Upload className="h-4 w-4" />
               Import Cache Data
             </Button>
@@ -1131,4 +1216,371 @@ function LinkRulesSkeleton() {
   );
 }
 
+// Simple Rule Create/Edit Modal
+function RuleModal({
+  isOpen,
+  onClose,
+  initial,
+  onSubmit,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  initial: LinkRuleResponseDto | null;
+  onSubmit: (payload: LinkRuleRequestDto) => Promise<void>;
+}) {
+  const [name, setName] = useState(initial?.name || '');
+  const [description, setDescription] = useState(initial?.description || '');
+  const [linkType, setLinkType] = useState(initial?.linkType || 'RELATED');
+  const [enabled, setEnabled] = useState(initial?.enabled ?? true);
+  const [bidirectional, setBidirectional] = useState(initial?.bidirectional ?? false);
+  const [conditionsLogic, setConditionsLogic] = useState<'AND' | 'OR'>(initial?.conditionsLogic || 'AND');
+  const [saving, setSaving] = useState(false);
+
+  // Filing categories + metadata
+  type CategoryOption = { id: number; name: string; description?: string };
+  type MetadataOption = { id: number; name: string };
+  type ConditionRow = {
+    id: string;
+    sourceMetadataId?: number;
+    targetMetadataId?: number;
+    operator: 'EQUAL' | 'NOT_EQUAL' | 'CONTAINS' | 'NOT_CONTAINS';
+    caseSensitive: boolean;
+    // options are derived from selected top-level categories
+  };
+
+  const [categoryOptions, setCategoryOptions] = useState<CategoryOption[]>([]);
+  const [sourceCategoryId, setSourceCategoryId] = useState<number | undefined>(undefined);
+  const [targetCategoryId, setTargetCategoryId] = useState<number | undefined>(undefined);
+  const [sourceMetadataOptions, setSourceMetadataOptions] = useState<MetadataOption[]>([]);
+  const [targetMetadataOptions, setTargetMetadataOptions] = useState<MetadataOption[]>([]);
+  const [sourceSearch, setSourceSearch] = useState('');
+  const [targetSearch, setTargetSearch] = useState('');
+  const [rows, setRows] = useState<ConditionRow[]>(() => {
+    if (initial?.conditions && initial.conditions.length > 0) {
+      return initial.conditions.map((c, idx) => ({
+        id: `row-${idx}`,
+        sourceMetadataId: (c as any).sourceMetadata?.metadataId ?? (c as any).sourceMetadataId,
+        targetMetadataId: (c as any).targetMetadata?.metadataId ?? (c as any).targetMetadataId,
+        operator: (c as any).operator || 'EQUAL',
+        caseSensitive: (c as any).caseSensitive ?? false,
+      }));
+    }
+    return [
+      {
+        id: 'row-0',
+        operator: 'EQUAL',
+        caseSensitive: false,
+      },
+    ];
+  });
+
+  // Load categories
+  useEffect(() => {
+    (async () => {
+      try {
+        const page = await filingCategoryService.getFilingCategories(0, 200);
+        setCategoryOptions((page.content || []).map((c) => ({ id: c.id, name: c.name })));
+        // If editing, initialize models and metadata options from backend response categories
+        if (initial?.sourceCategory) {
+          setSourceCategoryId(Number(initial.sourceCategory.id));
+          setSourceMetadataOptions((initial.sourceCategory.metadataDefinitions || []).map((d: any) => ({ id: d.id, name: d.key })));
+        }
+        if (initial?.targetCategory) {
+          setTargetCategoryId(Number(initial.targetCategory.id));
+          setTargetMetadataOptions((initial.targetCategory.metadataDefinitions || []).map((d: any) => ({ id: d.id, name: d.key })));
+        }
+      } catch {}
+    })();
+  }, []);
+
+  const loadMetadataForCategory = async (categoryId: number): Promise<MetadataOption[]> => {
+    // Only fetch when user changes to a different category than the one provided in initial
+    // Otherwise, RuleModal uses initial.sourceCategory/targetCategory to set options
+    const cat = await filingCategoryService.getFilingCategoryById(categoryId);
+    const defs = cat.metadataDefinitions || [];
+    return defs.map((d: any) => ({ id: d.id, name: d.name || d.key }));
+  };
+
+  const updateRow = (id: string, patch: Partial<ConditionRow>) => {
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  };
+
+  const initialSourceId = initial?.sourceCategory ? Number(initial.sourceCategory.id) : undefined;
+  const initialTargetId = initial?.targetCategory ? Number(initial.targetCategory.id) : undefined;
+
+  useEffect(() => {
+    (async () => {
+      if (!sourceCategoryId) return;
+      // Skip fetching if we already populated from initial for the same category
+      if (initialSourceId && sourceCategoryId === initialSourceId && sourceMetadataOptions.length > 0) return;
+      const opts = await loadMetadataForCategory(sourceCategoryId);
+      setSourceMetadataOptions(opts);
+      // clear existing source picks when category changes (only if user changed)
+      if (!initialSourceId || sourceCategoryId !== initialSourceId) {
+        setRows((prev) => prev.map((r) => ({ ...r, sourceMetadataId: undefined })));
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceCategoryId]);
+
+  useEffect(() => {
+    (async () => {
+      if (!targetCategoryId) return;
+      if (initialTargetId && targetCategoryId === initialTargetId && targetMetadataOptions.length > 0) return;
+      const opts = await loadMetadataForCategory(targetCategoryId);
+      setTargetMetadataOptions(opts);
+      if (!initialTargetId || targetCategoryId !== initialTargetId) {
+        setRows((prev) => prev.map((r) => ({ ...r, targetMetadataId: undefined })));
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetCategoryId]);
+
+  const addRow = () => {
+    setRows((prev) => [
+      ...prev,
+      { id: `row-${prev.length}`, operator: 'EQUAL', caseSensitive: false },
+    ]);
+  };
+
+  const removeRow = (id: string) => {
+    setRows((prev) => prev.filter((r) => r.id !== id));
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-white rounded-lg w-full max-w-2xl shadow-xl">
+        <div className="p-6 border-b">
+          <h3 className="text-lg font-semibold">{initial ? 'Edit Rule' : 'Create Rule'}</h3>
+        </div>
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">Name</label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Rule name" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Description</label>
+            <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional" />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Link Type</label>
+              <Select value={linkType} onValueChange={setLinkType}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="RELATED">Related</SelectItem>
+                  <SelectItem value="SUPERSEDES">Supersedes</SelectItem>
+                  <SelectItem value="REFERENCES">References</SelectItem>
+                  <SelectItem value="CONTAINS">Contains</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-6 mt-6">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+                Enabled
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={bidirectional} onChange={(e) => setBidirectional(e.target.checked)} />
+                Bidirectional
+              </label>
+            </div>
+          </div>
+
+          {/* Source & Target Model pickers using main SearchSelect */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-3 border rounded">
+              <label className="block text-sm font-medium mb-2">Source Model</label>
+              <SearchSelect
+                items={categoryOptions}
+                onSelect={(item: CategoryOption) => setSourceCategoryId(Number(item.id))}
+                placeholder="Search models..."
+                displayField={'name'}
+                descriptionField={'description'}
+                valueLabel={
+                  (sourceCategoryId && (categoryOptions.find(c => c.id === sourceCategoryId)?.name || '')) ||
+                  (initial?.sourceCategory ? String(initial.sourceCategory.name) : undefined)
+                }
+              />
+            </div>
+            <div className="p-3 border rounded">
+              <label className="block text-sm font-medium mb-2">Target Model</label>
+              <SearchSelect
+                items={categoryOptions}
+                onSelect={(item: CategoryOption) => setTargetCategoryId(Number(item.id))}
+                placeholder="Search models..."
+                displayField={'name'}
+                descriptionField={'description'}
+                valueLabel={
+                  (targetCategoryId && (categoryOptions.find(c => c.id === targetCategoryId)?.name || '')) ||
+                  (initial?.targetCategory ? String(initial.targetCategory.name) : undefined)
+                }
+              />
+            </div>
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium">Conditions</label>
+              <div className="flex items-center gap-3">
+                <label className="text-xs text-muted-foreground">Logic</label>
+                <Select value={conditionsLogic} onValueChange={(v) => setConditionsLogic(v as 'AND' | 'OR')}>
+                  <SelectTrigger className="h-8 w-28"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="AND">AND</SelectItem>
+                    <SelectItem value="OR">OR</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" size="sm" onClick={addRow} className="h-8">Add Condition</Button>
+              </div>
+            </div>
+            <div className="space-y-3">
+              {rows.map((row) => (
+                <div key={row.id} className="p-3 border rounded">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-2">
+                    <Select value={row.sourceMetadataId?.toString()} onValueChange={(v) => updateRow(row.id, { sourceMetadataId: Number(v) })} disabled={!sourceCategoryId}>
+                      <SelectTrigger><SelectValue placeholder="Source Metadata" /></SelectTrigger>
+                      <SelectContent>
+                        {sourceMetadataOptions.map((m) => (
+                          <SelectItem key={m.id} value={String(m.id)}>{m.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select value={row.targetMetadataId?.toString()} onValueChange={(v) => updateRow(row.id, { targetMetadataId: Number(v) })} disabled={!targetCategoryId}>
+                      <SelectTrigger><SelectValue placeholder="Target Metadata" /></SelectTrigger>
+                      <SelectContent>
+                        {targetMetadataOptions.map((m) => (
+                          <SelectItem key={m.id} value={String(m.id)}>{m.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Select value={row.operator} onValueChange={(v) => updateRow(row.id, { operator: v as any })}>
+                      <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="EQUAL">EQUAL</SelectItem>
+                        <SelectItem value="NOT_EQUAL">NOT_EQUAL</SelectItem>
+                        <SelectItem value="CONTAINS">CONTAINS</SelectItem>
+                        <SelectItem value="NOT_CONTAINS">NOT_CONTAINS</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={row.caseSensitive} onChange={(e) => updateRow(row.id, { caseSensitive: e.target.checked })} />
+                      Case Sensitive
+                    </label>
+                    <Button variant="ghost" size="sm" onClick={() => removeRow(row.id)} className="ml-auto text-red-600">Remove</Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="p-6 border-t flex justify-end gap-2 bg-gray-50">
+          <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button
+            onClick={async () => {
+              try {
+                setSaving(true);
+                const payload: LinkRuleRequestDto = {
+                  name,
+                  description,
+                  linkType,
+                  conditionsLogic,
+                  conditions: rows
+                    .filter((r) => r.sourceMetadataId && r.targetMetadataId)
+                    .map((r) => ({
+                      sourceMetadataId: r.sourceMetadataId!,
+                      targetMetadataId: r.targetMetadataId!,
+                      operator: r.operator,
+                      caseSensitive: r.caseSensitive,
+                    })),
+                  enabled,
+                  bidirectional,
+                } as any;
+                await onSubmit(payload);
+                onClose();
+              } finally {
+                setSaving(false);
+              }
+            }}
+            disabled={saving || !name.trim()}
+          >
+            {initial ? 'Save Changes' : 'Create Rule'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Read-only Rule Details Modal
+function RuleDetailsModal({
+  rule,
+  onClose,
+}: {
+  rule: LinkRuleResponseDto;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-white rounded-lg w-full max-w-2xl shadow-xl">
+        <div className="p-6 border-b flex items-center justify-between">
+          <h3 className="text-lg font-semibold">Rule Details</h3>
+          <Button variant="outline" size="sm" onClick={onClose}>Close</Button>
+        </div>
+        <div className="p-6 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <div className="text-sm text-muted-foreground">Name</div>
+              <div className="font-medium">{rule.name}</div>
+            </div>
+            <div>
+              <div className="text-sm text-muted-foreground">Link Type</div>
+              <div className="font-medium">{rule.linkType}</div>
+            </div>
+            <div>
+              <div className="text-sm text-muted-foreground">Status</div>
+              <div className="font-medium">{rule.enabled ? 'Active' : 'Inactive'}</div>
+            </div>
+            <div>
+              <div className="text-sm text-muted-foreground">Bidirectional</div>
+              <div className="font-medium">{rule.bidirectional ? 'Yes' : 'No'}</div>
+            </div>
+          </div>
+          <div>
+            <div className="text-sm text-muted-foreground mb-1">Description</div>
+            <div className="text-sm">{rule.description || '—'}</div>
+          </div>
+          <div>
+            <div className="text-sm text-muted-foreground mb-2">Conditions ({rule.conditions?.length || 0})</div>
+            <div className="space-y-2">
+              {(rule.conditions || []).map((c, idx) => (
+                <div key={idx} className="p-2 border rounded text-sm">
+                  <div className="flex flex-wrap gap-2 items-center">
+                    <span className="px-2 py-0.5 rounded bg-gray-100">source #{c.sourceMetadataId}</span>
+                    <span className="text-gray-500">{c.operator}</span>
+                    <span className="px-2 py-0.5 rounded bg-gray-100">target #{c.targetMetadataId}</span>
+                    {c.caseSensitive && (
+                      <span className="ml-2 text-xs text-gray-600">case sensitive</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Created by {rule.createdBy?.firstName} {rule.createdBy?.lastName} on {new Date(rule.createdAt).toLocaleString()}
+          </div>
+        </div>
+        <div className="p-4 border-t bg-gray-50 flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose}>Close</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
 

@@ -300,16 +300,16 @@ export default function ModelsPage() {
       const duplicateData: FilingCategoryRequestDto = {
         name: duplicateName.trim(),
         description: duplicatingCategory.description,
-        metadataDefinitions: duplicatingCategory.metadataDefinitions.map(def => ({
+        metadataDefinitions: (duplicatingCategory.metadataDefinitions?.map(def => ({
           key: def.key,
           dataType: def.dataType,
           mandatory: def.mandatory,
           listId: def.listId
-        }))
+        })) || [])
       };
 
       const newCategory = await notificationApiClient.createFilingCategory(duplicateData);
-      setCategories(prev => [...prev, newCategory]);
+      addCategory(newCategory);
       setShowDuplicateModal(false);
       setDuplicatingCategory(null);
       setDuplicateName('');
@@ -461,13 +461,11 @@ export default function ModelsPage() {
       }
 
       // Refresh data
-      const [categoriesResponse, listsResponse] = await Promise.all([
-        notificationApiClient.getAllFilingCategories({ size: 1000 }),
-        notificationApiClient.getAllMetadataLists({ size: 1000 })
+      await Promise.all([
+        fetchCategories(false),
+        fetchLists(false)
       ]);
       
-      setCategories(categoriesResponse.content);
-      setLists(listsResponse.content);
       setShowImportModal(false);
 
       addNotification({
@@ -487,11 +485,11 @@ export default function ModelsPage() {
 
   const handleExportCSV = async () => {
     try {
-      const categoriesToExport = categories.slice(0, exportQuantity);
+      const categoriesToExport = displayCategories.slice(0, exportQuantity);
       
       // Helper function to format metadata fields for export
-      const formatMetadataFields = (metadataDefinitions: CategoryMetadataDefinitionDto[]) => {
-        return metadataDefinitions.map(metadata => {
+      const formatMetadataFields = (metadataDefinitions: CategoryMetadataDefinitionDto[] | undefined) => {
+        return (metadataDefinitions ?? []).map(metadata => {
           let fieldStr = `${metadata.key}:${metadata.dataType}:${metadata.mandatory}`;
           if (metadata.dataType === MetadataType.LIST && metadata.list) {
             fieldStr += `:${metadata.list.name}:${metadata.list.mandatory}`;
@@ -503,7 +501,7 @@ export default function ModelsPage() {
       const csvContent = [
         'name,description,metadata_fields,created_by',
         ...categoriesToExport.map(cat => 
-          `"${cat.name}","${cat.description || ''}","${formatMetadataFields(cat.metadataDefinitions)}","${cat.createdBy.firstName} ${cat.createdBy.lastName}"`
+          `"${cat.name}","${cat.description || ''}","${formatMetadataFields(cat.metadataDefinitions)}","${cat.createdBy?.firstName ?? ''} ${cat.createdBy?.lastName ?? ''}"`
         )
       ].join('\n');
 
@@ -722,27 +720,53 @@ export default function ModelsPage() {
           getDataTypeIcon={getDataTypeIcon}
           onSave={async (categoryData: FilingCategoryRequestDto) => {
             try {
-              // Clean the data before sending - remove newOption fields
+              // First, validate all LIST type fields
+              const invalidListFields = (categoryData.metadataDefinitions ?? []).filter(metadata => 
+                metadata.dataType === MetadataType.LIST && !metadata.list && !metadata.listId
+              );
+
+              if (invalidListFields.length > 0) {
+                const fieldNames = invalidListFields.map(f => `"${f.key}"`).join(', ');
+                throw new Error(
+                  `The following LIST fields are missing list configuration: ${fieldNames}. ` +
+                  `Please select an existing list or create a new one for each LIST field.`
+                );
+              }
+
+              // Clean the data before sending
               const cleanedCategoryData = {
-                ...categoryData,
-                metadataDefinitions: categoryData.metadataDefinitions.map(metadata => {
-                  if (metadata.list) {
-                    return {
-                      ...metadata,
-                      list: {
+                name: categoryData.name,
+                description: categoryData.description,
+                metadataDefinitions: (categoryData.metadataDefinitions ?? []).map(metadata => {
+                  // Remove id field - backend doesn't need it
+                  const cleanedMetadata: any = {
+                    key: metadata.key,
+                    dataType: metadata.dataType,
+                    mandatory: metadata.mandatory
+                  };
+
+                  // Handle LIST type fields
+                  if (metadata.dataType === MetadataType.LIST) {
+                    if (metadata.list) {
+                      // Inline list creation - send list object without listId
+                      cleanedMetadata.list = {
                         name: metadata.list.name,
                         description: metadata.list.description,
                         mandatory: metadata.list.mandatory,
                         option: metadata.list.option
-                      }
-                    };
+                      };
+                    } else if (metadata.listId) {
+                      // Existing list - send only listId
+                      cleanedMetadata.listId = metadata.listId;
+                    }
+                    // Note: This should never happen due to validation above
                   }
-                  return metadata;
+
+                  return cleanedMetadata;
                 })
               };
 
-              // Send the cleaned category data with inline list creation to the backend
-              // The backend will handle creating new lists and linking them
+              // Send the cleaned category data to the backend
               if (editingCategory) {
                 handleUpdateCategory(editingCategory.id, cleanedCategoryData);
               } else {
@@ -750,6 +774,11 @@ export default function ModelsPage() {
               }
             } catch (error) {
               console.error('Error saving category with lists:', error);
+              addNotification({
+                type: 'error',
+                title: 'Validation Error',
+                message: error instanceof Error ? error.message : 'Failed to save category'
+              });
             }
           }}
         />
@@ -998,7 +1027,7 @@ export default function ModelsPage() {
                     <SelectItem value="250">250 categories</SelectItem>
                     <SelectItem value="500">500 categories</SelectItem>
                     <SelectItem value="1000">1000 categories</SelectItem>
-                    <SelectItem value={categories.length.toString()}>All categories ({categories.length})</SelectItem>
+                    <SelectItem value={categoriesTotalElements.toString()}>All categories ({categoriesTotalElements})</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-slate-500">
@@ -1111,7 +1140,7 @@ function CategoriesTab({ categories, lists, getDataTypeIcon, getDataTypeColor, o
                   <td className="p-6">
                     <div className="flex items-center gap-2">
                       <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
-                        {category.metadataDefinitions.length} fields
+                        {(category.metadataDefinitions?.length ?? 0)} fields
                       </span>
                     </div>
                   </td>
@@ -1166,7 +1195,7 @@ function CategoriesTab({ categories, lists, getDataTypeIcon, getDataTypeColor, o
                       <div className="ml-16">
                         <h4 className="font-semibold text-slate-900 mb-4 text-lg">Metadata Fields</h4>
                         <div className="grid gap-4">
-                          {category.metadataDefinitions.map((metadata: CategoryMetadataDefinitionDto) => (
+                          {(category.metadataDefinitions ?? []).map((metadata: CategoryMetadataDefinitionDto) => (
                             <MetadataDefinitionCard 
                               key={metadata.id} 
                               metadata={metadata}
@@ -1289,14 +1318,14 @@ function ListsTab({ lists, onEdit, onDelete, loading }: any) {
               </td>
               <td className="p-6">
                 <div className="flex flex-wrap gap-2">
-                  {list.option.slice(0, 3).map((option: string, index: number) => (
+                  {(list.option ?? []).slice(0, 3).map((option: string, index: number) => (
                     <span key={index} className="px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-xs font-medium">
                       {option}
                     </span>
                   ))}
-                  {list.option.length > 3 && (
+                  {(list.option?.length ?? 0) > 3 && (
                     <span className="px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-xs font-medium">
-                      +{list.option.length - 3} more
+                      +{(list.option?.length ?? 0) - 3} more
                     </span>
                   )}
                 </div>
@@ -1343,6 +1372,7 @@ function ListsTab({ lists, onEdit, onDelete, loading }: any) {
 
 // Category Modal Component
 function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: any) {
+  const { addNotification } = useNotification();
   const [formData, setFormData] = useState<FilingCategoryRequestDto>({
     name: category?.name || '',
     description: category?.description || '',
@@ -1359,58 +1389,167 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
   const [showNewMetadata, setShowNewMetadata] = useState(false);
   const [editingMetadataIndex, setEditingMetadataIndex] = useState<number | null>(null);
   const [editingMetadata, setEditingMetadata] = useState<ExtendedCategoryMetadataDefinitionDto | null>(null);
+  const [listSearchQuery, setListSearchQuery] = useState('');
+
+  // Helper: Check if list name already exists
+  const isListNameDuplicate = (listName: string, excludeListId?: number) => {
+    const trimmedName = listName.trim().toLowerCase();
+    // Check against existing lists
+    const existsInLists = lists.some((l: MetaDataListRes) => 
+      l.name.toLowerCase() === trimmedName && l.id !== excludeListId
+    );
+    // Check against inline lists being created in current form
+    const existsInInlineLists = (formData.metadataDefinitions?.some(md =>
+      md.list && md.list.name.toLowerCase() === trimmedName && md.listId !== excludeListId
+    ) ?? false);
+    return existsInLists || existsInInlineLists;
+  };
+
+  // Helper: Validate list before adding/updating metadata
+  const validateListMetadata = (metadata: ExtendedCategoryMetadataDefinitionDto): string | null => {
+    if (metadata.dataType !== MetadataType.LIST) return null;
+
+    if (!metadata.listId && !metadata.list) {
+      return 'Please select an existing list or create a new one';
+    }
+
+    if (metadata.list) {
+      if (!metadata.list.name.trim()) {
+        return 'List name is required';
+      }
+      if (isListNameDuplicate(metadata.list.name)) {
+        return `A list with the name "${metadata.list.name}" already exists`;
+      }
+      if (!metadata.list.option || metadata.list.option.length === 0) {
+        return 'At least one option is required for the list';
+      }
+    }
+
+    return null;
+  };
+
+  // Filtered lists based on search query
+  const filteredLists = useMemo(() => {
+    if (!listSearchQuery.trim()) return lists;
+    const query = listSearchQuery.toLowerCase();
+    return lists.filter((list: MetaDataListRes) => 
+      list.name.toLowerCase().includes(query) || 
+      (list.description && list.description.toLowerCase().includes(query))
+    );
+  }, [lists, listSearchQuery]);
 
   const addMetadataDefinition = () => {
-    if (newMetadata.key.trim()) {
-      setFormData(prev => ({
-        ...prev,
-        metadataDefinitions: [...prev.metadataDefinitions, { ...newMetadata }]
-      }));
-      setNewMetadata({
-        key: '',
-        dataType: MetadataType.STRING,
-        mandatory: false,
-        listId: undefined
+    if (!newMetadata.key?.trim()) {
+      addNotification({
+        type: 'error',
+        title: 'Validation Error',
+        message: 'Field key is required'
       });
-      setShowNewMetadata(false);
+      return;
     }
+
+    // Validate list metadata if applicable
+    const validationError = validateListMetadata(newMetadata);
+    if (validationError) {
+      addNotification({
+        type: 'error',
+        title: 'Validation Error',
+        message: validationError
+      });
+      return;
+    }
+
+    setFormData(prev => ({
+      ...prev,
+      metadataDefinitions: [...(prev.metadataDefinitions ?? []), { ...newMetadata }]
+    }));
+    setNewMetadata({
+      key: '',
+      dataType: MetadataType.STRING,
+      mandatory: false,
+      listId: undefined
+    });
+    setShowNewMetadata(false);
   };
 
   const removeMetadataDefinition = (index: number) => {
     setFormData(prev => ({
       ...prev,
-      metadataDefinitions: prev.metadataDefinitions.filter((_, i) => i !== index)
+      metadataDefinitions: (prev.metadataDefinitions ?? []).filter((_, i) => i !== index)
     }));
   };
 
   const startEditingMetadata = (index: number) => {
-    const metadata = formData.metadataDefinitions[index];
+    const metadata = (formData.metadataDefinitions ?? [])[index];
+    if (!metadata) return;
     setEditingMetadata({
       key: metadata.key,
       dataType: metadata.dataType,
       mandatory: metadata.mandatory,
-      listId: metadata.listId
+      listId: metadata.listId,
+      list: metadata.list
     });
     setEditingMetadataIndex(index);
   };
 
   const saveEditingMetadata = () => {
-    if (editingMetadata && editingMetadataIndex !== null && editingMetadata.key.trim()) {
-      setFormData(prev => ({
-        ...prev,
-        metadataDefinitions: prev.metadataDefinitions.map((metadata, index) => 
-          index === editingMetadataIndex ? editingMetadata : metadata
-        )
-      }));
-      setEditingMetadata(null);
-      setEditingMetadataIndex(null);
+    if (!editingMetadata || editingMetadataIndex === null) return;
+
+    if (!editingMetadata.key?.trim()) {
+      addNotification({
+        type: 'error',
+        title: 'Validation Error',
+        message: 'Field key is required'
+      });
+      return;
     }
+
+    // Validate list metadata if applicable
+    const validationError = validateListMetadata(editingMetadata);
+    if (validationError) {
+      addNotification({
+        type: 'error',
+        title: 'Validation Error',
+        message: validationError
+      });
+      return;
+    }
+
+    setFormData(prev => ({
+      ...prev,
+      metadataDefinitions: (prev.metadataDefinitions ?? []).map((metadata, index) => 
+        index === editingMetadataIndex ? editingMetadata : metadata
+      )
+    }));
+    setEditingMetadata(null);
+    setEditingMetadataIndex(null);
   };
 
   const cancelEditingMetadata = () => {
     setEditingMetadata(null);
     setEditingMetadataIndex(null);
+    setListSearchQuery('');
   };
+
+  // Clear search when modal closes or metadata type changes
+  useEffect(() => {
+    return () => {
+      setListSearchQuery('');
+    };
+  }, []);
+
+  // Clear search when switching away from LIST type
+  useEffect(() => {
+    if (newMetadata.dataType !== MetadataType.LIST) {
+      setListSearchQuery('');
+    }
+  }, [newMetadata.dataType]);
+
+  useEffect(() => {
+    if (editingMetadata?.dataType !== MetadataType.LIST) {
+      setListSearchQuery('');
+    }
+  }, [editingMetadata?.dataType]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -1575,34 +1714,69 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
                       <div className="space-y-4 pt-4 border-t">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label htmlFor="select-list">Select List</Label>
+                            <Label htmlFor="select-list">Select Existing List or Create New</Label>
+                            <Input
+                              placeholder="Search lists..."
+                              value={listSearchQuery}
+                              onChange={(e) => setListSearchQuery(e.target.value)}
+                              className="mb-2"
+                            />
                             <Select
                               value={newMetadata.listId?.toString() || ''}
-                              onValueChange={(value) => setNewMetadata(prev => ({ 
-                                ...prev, 
-                                listId: value ? parseInt(value) : undefined 
-                              }))}
+                              onValueChange={(value) => {
+                                setNewMetadata(prev => ({ 
+                                  ...prev, 
+                                  listId: value ? parseInt(value) : undefined,
+                                  list: undefined // Clear inline list when selecting existing
+                                }));
+                              }}
                             >
                               <SelectTrigger>
-                                <SelectValue placeholder="-- Create new list --" />
+                                <SelectValue placeholder="-- Select a list or create new --" />
                               </SelectTrigger>
-                              <SelectContent>
-                                {lists.map((list: MetaDataListRes) => (
-                                  <SelectItem key={list.id} value={list.id.toString()}>
-                                    {list.name} ({list.mandatory ? 'Fixed' : 'Open'})
-                                  </SelectItem>
-                                ))}
+                              <SelectContent className="max-h-[300px]">
+                                {filteredLists.length > 0 ? (
+                                  filteredLists.map((list: MetaDataListRes) => (
+                                    <SelectItem key={list.id} value={list.id.toString()}>
+                                      {list.name} ({list.mandatory ? 'Fixed' : 'Open'} - {(list.option?.length ?? 0)} options)
+                                    </SelectItem>
+                                  ))
+                                ) : (
+                                  <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+                                    {listSearchQuery ? 'No lists found matching your search' : 'No lists available'}
+                                  </div>
+                                )}
                               </SelectContent>
                             </Select>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setNewMetadata(prev => ({
+                                  ...prev,
+                                  listId: undefined,
+                                  list: prev.list || {
+                                    name: '',
+                                    description: '',
+                                    mandatory: false,
+                                    option: []
+                                  }
+                                }));
+                                setListSearchQuery('');
+                              }}
+                              className="text-xs text-blue-600 hover:text-blue-700"
+                            >
+                              {newMetadata.listId ? 'Create new list instead' : 'Creating new list'}
+                            </Button>
                           </div>
                           <div className="space-y-2">
                             <Label>List Behavior</Label>
                             <div className="text-sm text-muted-foreground p-2 bg-muted rounded">
                               {newMetadata.listId ? 
                                 lists.find((l: MetaDataListRes) => l.id === newMetadata.listId)?.mandatory ? 
-                                  'Users must choose from predefined options' : 
-                                  'Users can add custom values to the list' :
-                                'A new list will be created when saving this model'
+                                  '✓ Fixed list - Users must choose from predefined options' : 
+                                  '✓ Open list - Users can add custom values' :
+                                '✎ A new list will be created when saving this model'
                               }
                             </div>
                           </div>
@@ -1641,8 +1815,13 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
                                       }
                                     }))}
                                     placeholder="e.g., Document Status"
-                                    className="h-10"
+                                    className={`h-10 ${newMetadata.list?.name && isListNameDuplicate(newMetadata.list.name) ? 'border-red-500' : ''}`}
                                   />
+                                  {newMetadata.list?.name && isListNameDuplicate(newMetadata.list.name) && (
+                                    <p className="text-xs text-red-600">
+                                      ⚠️ A list with this name already exists
+                                    </p>
+                                  )}
                                 </div>
                                 <div className="space-y-2">
                                   <Label htmlFor="list-description" className="text-sm font-medium">Description</Label>
@@ -1720,7 +1899,7 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
                                     onKeyPress={(e) => {
                                       if (e.key === 'Enter' && newMetadata.list?.newOption?.trim()) {
                                         const newOption = newMetadata.list.newOption.trim();
-                                        if (!newMetadata.list.option.includes(newOption)) {
+                                        if (!(newMetadata.list.option ?? []).includes(newOption)) {
                                           setNewMetadata(prev => ({ 
                                             ...prev, 
                                             list: { 
@@ -1742,7 +1921,7 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
                                     onClick={() => {
                                       if (newMetadata.list?.newOption?.trim()) {
                                         const newOption = newMetadata.list.newOption.trim();
-                                        if (!newMetadata.list.option.includes(newOption)) {
+                                        if (!(newMetadata.list.option ?? []).includes(newOption)) {
                                           setNewMetadata(prev => ({ 
                                             ...prev, 
                                             list: { 
@@ -1814,7 +1993,7 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
 
               {/* Existing Metadata Definitions */}
               <div className="space-y-3">
-                {formData.metadataDefinitions.map((metadata, index) => (
+                {(formData.metadataDefinitions ?? []).map((metadata, index) => (
                   <div key={index} className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border">
                     {editingMetadataIndex === index ? (
                       <div className="flex-1 space-y-4">
@@ -1883,6 +2062,58 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
                             </div>
                           </div>
                         </div>
+
+                        {/* List Selection for LIST type when editing */}
+                        {editingMetadata?.dataType === MetadataType.LIST && (
+                          <div className="space-y-4 pt-4 border-t mt-4">
+                            <div className="space-y-2">
+                              <Label>List Configuration</Label>
+                              <Input
+                                placeholder="Search lists..."
+                                value={listSearchQuery}
+                                onChange={(e) => setListSearchQuery(e.target.value)}
+                                className="mb-2"
+                              />
+                              <Select
+                                value={editingMetadata.listId?.toString() || ''}
+                                onValueChange={(value) => {
+                                  setEditingMetadata(prev => prev ? ({ 
+                                    ...prev, 
+                                    listId: value ? parseInt(value) : undefined,
+                                    list: undefined // Clear inline list when selecting existing
+                                  }) : null);
+                                }}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="-- Select a list --" />
+                                </SelectTrigger>
+                                <SelectContent className="max-h-[300px]">
+                                  {filteredLists.length > 0 ? (
+                                    filteredLists.map((list: MetaDataListRes) => (
+                                      <SelectItem key={list.id} value={list.id.toString()}>
+                                        {list.name} ({list.mandatory ? 'Fixed' : 'Open'} - {(list.option?.length ?? 0)} options)
+                                      </SelectItem>
+                                    ))
+                                  ) : (
+                                    <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+                                      {listSearchQuery ? 'No lists found matching your search' : 'No lists available'}
+                                    </div>
+                                  )}
+                                </SelectContent>
+                              </Select>
+                              {editingMetadata.list && (
+                                <div className="text-xs text-amber-600 bg-amber-50 p-2 rounded border border-amber-200">
+                                  ⚠️ This field has an inline list. To modify it, select an existing list or save and edit the category again.
+                                </div>
+                              )}
+                              {editingMetadata.listId && (
+                                <div className="text-xs text-green-600 bg-green-50 p-2 rounded border border-green-200">
+                                  ✓ Using existing list: {lists.find((l: MetaDataListRes) => l.id === editingMetadata.listId)?.name}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <>
@@ -1893,7 +2124,7 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
                           <div>
                             <div className="font-medium">{metadata.key}</div>
                             <div className="text-sm text-muted-foreground capitalize">
-                              {metadata.dataType.toLowerCase()}
+                              {metadata.dataType?.toLowerCase()}
                               {metadata.mandatory && ' • Required'}
                               {metadata.listId && ` • List ID: ${metadata.listId}`}
                             </div>
@@ -1922,7 +2153,7 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
                   </div>
                 ))}
 
-                {formData.metadataDefinitions.length === 0 && (
+                {(formData.metadataDefinitions?.length ?? 0) === 0 && (
                   <div className="text-center py-12 text-muted-foreground">
                     <div className="flex flex-col items-center gap-2">
                       <Tag className="h-8 w-8" />
@@ -1939,7 +2170,7 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
         {/* Footer */}
         <div className="flex justify-between items-center p-6 border-t bg-muted/30">
           <div className="text-sm text-muted-foreground">
-            {formData.metadataDefinitions.length} metadata field{formData.metadataDefinitions.length !== 1 ? 's' : ''} defined
+            {(formData.metadataDefinitions?.length ?? 0)} metadata field{(formData.metadataDefinitions?.length ?? 0) !== 1 ? 's' : ''} defined
           </div>
           <div className="flex gap-3">
             <Button variant="outline" onClick={onClose}>
@@ -1968,10 +2199,10 @@ function ListModal({ list, onClose, onSave }: any) {
   const [newOption, setNewOption] = useState('');
 
   const addOption = () => {
-    if (newOption.trim() && !formData.option.includes(newOption.trim())) {
+    if (newOption.trim() && !(formData.option ?? []).includes(newOption.trim())) {
       setFormData(prev => ({
         ...prev,
-        option: [...prev.option, newOption.trim()]
+        option: [...(prev.option ?? []), newOption.trim()]
       }));
       setNewOption('');
     }
@@ -1980,12 +2211,12 @@ function ListModal({ list, onClose, onSave }: any) {
   const removeOption = (index: number) => {
     setFormData(prev => ({
       ...prev,
-      option: prev.option.filter((_, i) => i !== index)
+      option: (prev.option ?? []).filter((_, i) => i !== index)
     }));
   };
 
   const handleSave = () => {
-    if (formData.name.trim() && formData.option.length > 0) {
+    if (formData.name.trim() && (formData.option?.length ?? 0) > 0) {
       onSave(formData);
     }
   };
@@ -2087,7 +2318,7 @@ function ListModal({ list, onClose, onSave }: any) {
                     </p>
                   </div>
                   <span className="text-sm text-muted-foreground">
-                    {formData.option.length} option{formData.option.length !== 1 ? 's' : ''}
+                    {(formData.option?.length ?? 0)} option{(formData.option?.length ?? 0) !== 1 ? 's' : ''}
                   </span>
                 </div>
               </CardHeader>
@@ -2110,11 +2341,11 @@ function ListModal({ list, onClose, onSave }: any) {
                   </Button>
                 </div>
 
-                {formData.option.length > 0 ? (
+                {(formData.option?.length ?? 0) > 0 ? (
                   <div className="space-y-3">
                     <div className="text-sm font-medium text-muted-foreground">Current Options:</div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                      {formData.option.map((option, index) => (
+                      {(formData.option ?? []).map((option, index) => (
                         <div key={index} className="flex items-center justify-between p-3 bg-background border rounded-lg">
                           <span className="text-sm font-medium">{option}</span>
                           <Button
@@ -2146,7 +2377,7 @@ function ListModal({ list, onClose, onSave }: any) {
         {/* Footer */}
         <div className="flex justify-between items-center p-6 border-t bg-muted/30">
           <div className="text-sm text-muted-foreground">
-            {formData.option.length} option{formData.option.length !== 1 ? 's' : ''} defined
+            {(formData.option?.length ?? 0)} option{(formData.option?.length ?? 0) !== 1 ? 's' : ''} defined
           </div>
           <div className="flex gap-3">
             <Button variant="outline" onClick={onClose}>
@@ -2154,7 +2385,7 @@ function ListModal({ list, onClose, onSave }: any) {
             </Button>
             <Button 
               onClick={handleSave}
-              disabled={!formData.name.trim() || formData.option.length === 0}
+              disabled={!formData.name.trim() || (formData.option?.length ?? 0) === 0}
               className="flex items-center gap-2"
             >
               <Save className="h-4 w-4" />

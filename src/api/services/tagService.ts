@@ -33,6 +33,21 @@ export class TagService {
     return apiClient.get<TagResponseDto>(`${this.baseUrl}/${tagId}`);
   }
 
+  // Get all tags (no pagination)
+  async getAllTags(): Promise<TagResponseDto[]> {
+    return apiClient.get<TagResponseDto[]>(`${this.baseUrl}`);
+  }
+
+  // Get system tags
+  async getSystemTags(): Promise<TagResponseDto[]> {
+    return apiClient.get<TagResponseDto[]>(`${this.baseUrl}/system`);
+  }
+
+  // Get current user's tags
+  async getMyTags(): Promise<TagResponseDto[]> {
+    return apiClient.get<TagResponseDto[]>(`${this.baseUrl}/my-tags`);
+  }
+
   // Create new tag
   async createTag(tagData: CreateTagRequestDto): Promise<TagResponseDto> {
     return apiClient.post<TagResponseDto>(this.baseUrl, tagData);
@@ -55,12 +70,37 @@ export class TagService {
     size: number = 20
   ): Promise<PageResponse<TagResponseDto>> {
     const params = new URLSearchParams({
-      query,
+      q: query, // Backend expects 'q' parameter
       page: page.toString(),
       size: size.toString(),
     });
 
     return apiClient.get<PageResponse<TagResponseDto>>(`${this.baseUrl}/search?${params}`);
+  }
+
+  // Simple search (no pagination) matching backend /search returning List
+  async searchTagsSimple(query: string): Promise<TagResponseDto[]> {
+    const params = new URLSearchParams({ q: query });
+    return apiClient.get<TagResponseDto[]>(`${this.baseUrl}/search?${params}`);
+  }
+
+  // Paged fetch with filters/sort
+  async getTagsPaged(
+    page: number = 0,
+    size: number = 20,
+    sortBy: 'name' | 'createdAt' | 'updatedAt' = 'name',
+    sortDirection: 'asc' | 'desc' = 'asc',
+    filters?: { type?: 'SYSTEM' | 'USER'; q?: string }
+  ): Promise<PageResponse<TagResponseDto>> {
+    const params = new URLSearchParams({
+      page: String(page),
+      size: String(size),
+      sortBy,
+      sortDirection,
+    });
+    if (filters?.type) params.set('type', filters.type);
+    if (filters?.q) params.set('q', filters.q);
+    return apiClient.get<PageResponse<TagResponseDto>>(`${this.baseUrl}/page?${params.toString()}`);
   }
 
   // Get tags by creator
@@ -112,17 +152,27 @@ export class TagService {
 
   // Add tag to document
   async addTagToDocument(documentId: number, tagData: AddTagToDocumentRequestDto): Promise<DocumentTagResponseDto> {
-    return apiClient.post<DocumentTagResponseDto>(`${this.baseUrl}/documents/${documentId}`, tagData);
+    return apiClient.post<DocumentTagResponseDto>(`${this.baseUrl}/documents/${documentId}/tags`, tagData);
   }
 
   // Remove tag from document
   async removeTagFromDocument(documentId: number, tagId: number): Promise<void> {
-    return apiClient.delete<void>(`${this.baseUrl}/documents/${documentId}/${tagId}`);
+    return apiClient.delete<void>(`${this.baseUrl}/documents/${documentId}/tags/${tagId}`);
   }
 
   // Get document tags
-  async getDocumentTags(documentId: number): Promise<DocumentTagResponseDto[]> {
-    return apiClient.get<DocumentTagResponseDto[]>(`${this.baseUrl}/documents/${documentId}`);
+  async getDocumentTags(documentId: number): Promise<TagResponseDto[]> {
+    return apiClient.get<TagResponseDto[]>(`${this.baseUrl}/documents/${documentId}/tags`);
+  }
+  
+  // Get all available tags (no pagination)
+  async getAvailableTags(): Promise<TagResponseDto[]> {
+    return apiClient.get<TagResponseDto[]>(`${this.baseUrl}/my-tags`);
+  }
+  
+  // Get tags by document ID (alias for getDocumentTags)
+  async getTagsByDocumentId(documentId: number): Promise<TagResponseDto[]> {
+    return this.getDocumentTags(documentId);
   }
 
   // Get documents by tag

@@ -12,7 +12,7 @@ import {
 export class RecycleBinService {
   private baseUrl = '/api/v1/recycle-bin';
 
-  // Get recycle bin entries with pagination
+  // Get recycle bin entries with pagination (all entries)
   async getRecycleBinEntries(
     page: number = 0,
     size: number = 20,
@@ -29,6 +29,28 @@ export class RecycleBinService {
     return apiClient.get<PageResponse<RecycleBinEntry>>(`${this.baseUrl}?${params}`);
   }
 
+  // Get current user's recycle bin entries with pagination
+  async getMyRecycleBinEntries(opts?: {
+    page?: number;
+    size?: number;
+    sortBy?: string;
+    sortDir?: 'asc' | 'desc';
+  }): Promise<PageResponse<RecycleBinEntry>> {
+    const page = opts?.page ?? 0;
+    const size = opts?.size ?? 20;
+    const sortBy = opts?.sortBy ?? 'deletedAt';
+    const sortDir = opts?.sortDir ?? 'desc';
+
+    const params = new URLSearchParams({
+      page: page.toString(),
+      size: size.toString(),
+      sortBy,
+      sortDir,
+    });
+
+    return apiClient.get<PageResponse<RecycleBinEntry>>(`${this.baseUrl}/my-entries?${params}`);
+  }
+
   // Get recycle bin entry by ID
   async getRecycleBinEntryById(entryId: number): Promise<RecycleBinEntry> {
     return apiClient.get<RecycleBinEntry>(`${this.baseUrl}/${entryId}`);
@@ -39,16 +61,27 @@ export class RecycleBinService {
     return apiClient.post<RecycleBinEntry>(this.baseUrl, moveData);
   }
 
-  // Restore entity from recycle bin
+  // Restore entity from recycle bin (backend expects request params)
   async restoreFromRecycleBin(restoreData: RecycleBinRestoreReq): Promise<void> {
-    return apiClient.post<void>(`${this.baseUrl}/restore`, restoreData);
+    const params = new URLSearchParams({
+      entityType: restoreData.entityType,
+      entityId: String(restoreData.entityId),
+    });
+    return apiClient.post<void>(`${this.baseUrl}/restore?${params}`);
   }
 
-  // Permanently delete entity from recycle bin
-  async permanentDeleteFromRecycleBin(deleteData: RecycleBinPermanentDeleteReq): Promise<void> {
-    return apiClient.delete<void>(`${this.baseUrl}/permanent-delete`, {
-      data: deleteData,
+  // Permanently delete entity from recycle bin (backend expects request params)
+  async permanentlyDelete(deleteData: RecycleBinPermanentDeleteReq): Promise<void> {
+    const params = new URLSearchParams({
+      entityType: deleteData.entityType,
+      entityId: String(deleteData.entityId),
     });
+    return apiClient.delete<void>(`${this.baseUrl}/permanent?${params}`);
+  }
+
+  // Backward compatibility (older path naming)
+  async permanentDeleteFromRecycleBin(deleteData: RecycleBinPermanentDeleteReq): Promise<void> {
+    return this.permanentlyDelete(deleteData);
   }
 
   // Check if entity is in recycle bin
@@ -145,6 +178,11 @@ export class RecycleBinService {
     errors: string[];
   }> {
     return apiClient.delete(`${this.baseUrl}/clear`);
+  }
+
+  // Empty current user's recycle bin (aligns with backend /empty/my)
+  async emptyMyRecycleBin(): Promise<void> {
+    return apiClient.delete<void>(`${this.baseUrl}/empty/my`);
   }
 
   // Set retention period

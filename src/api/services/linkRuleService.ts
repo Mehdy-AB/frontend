@@ -15,14 +15,16 @@ import {
 } from '../../types/api';
 
 export class LinkRuleService {
-  private baseUrl = '/api/v1/link-rules';
+  // Backend uses "/api/link-rules" (no v1 prefix)
+  private baseUrl = '/api/link-rules';
 
-  // Get all link rules with pagination
+  // Get all link rules with pagination and optional filters
   async getLinkRules(
     page: number = 0,
     size: number = 20,
     sortBy: string = 'name',
-    sortDirection: 'asc' | 'desc' = 'asc'
+    sortDirection: 'asc' | 'desc' = 'asc',
+    filters?: { enabled?: boolean; linkType?: string; name?: string }
   ): Promise<PageResponse<LinkRuleResponseDto>> {
     const params = new URLSearchParams({
       page: page.toString(),
@@ -30,6 +32,10 @@ export class LinkRuleService {
       sortBy,
       sortDirection,
     });
+
+    if (filters?.enabled !== undefined) params.append('enabled', String(filters.enabled));
+    if (filters?.linkType) params.append('linkType', filters.linkType);
+    if (filters?.name) params.append('name', filters.name);
 
     return apiClient.get<PageResponse<LinkRuleResponseDto>>(`${this.baseUrl}?${params}`);
   }
@@ -55,23 +61,29 @@ export class LinkRuleService {
   }
 
   // Enable/disable link rule
-  async toggleLinkRuleStatus(ruleId: number, enabled: boolean): Promise<LinkRuleResponseDto> {
-    return apiClient.patch<LinkRuleResponseDto>(`${this.baseUrl}/${ruleId}/status`, { enabled });
+  async toggleLinkRuleStatus(ruleId: number, enabled: boolean): Promise<void> {
+    return apiClient.put<void>(`${this.baseUrl}/${ruleId}/toggle?enabled=${enabled}`);
   }
 
   // Execute link rule
-  async executeLinkRule(executionData: RuleExecutionRequest): Promise<RuleExecutionResponse> {
-    return apiClient.post<RuleExecutionResponse>(`${this.baseUrl}/execute`, executionData);
+  async executeLinkRule(executionData: RuleExecutionRequest): Promise<{ status: string }> {
+    const { ruleId } = executionData;
+    return apiClient.post<{ status: string }>(`${this.baseUrl}/${ruleId}/apply`);
   }
 
   // Bulk execute link rules
-  async bulkExecuteLinkRules(executionData: BulkRuleExecutionRequest): Promise<BulkRuleExecutionResponse> {
-    return apiClient.post<BulkRuleExecutionResponse>(`${this.baseUrl}/bulk-execute`, executionData);
+  async bulkExecuteLinkRules(executionData: BulkRuleExecutionRequest): Promise<void> {
+    const { ruleIds } = executionData;
+    await Promise.all(ruleIds.map((id) => this.executeLinkRule({ ruleId: id })));
   }
 
   // Get link rule statistics
   async getLinkRuleStatistics(ruleId: number): Promise<RuleStatistics> {
-    return apiClient.get<RuleStatistics>(`${this.baseUrl}/${ruleId}/statistics`);
+    // Not implemented in backend; caller should use getAllLinkRuleStatistics
+    const all = await this.getAllLinkRuleStatistics();
+    const found = all.find(s => s.ruleId === ruleId);
+    if (!found) throw new Error('Statistics not found for rule');
+    return found;
   }
 
   // Get all link rule statistics
@@ -106,21 +118,26 @@ export class LinkRuleService {
 
   // Get enabled link rules
   async getEnabledLinkRules(): Promise<LinkRuleResponseDto[]> {
-    return apiClient.get<LinkRuleResponseDto[]>(`${this.baseUrl}/enabled`);
+    const page = await this.getLinkRules(0, 1000, 'createdAt', 'desc', { enabled: true });
+    return page.content || [];
+  }
+
+  // Export / Import
+  async exportLinkRules(): Promise<LinkRuleResponseDto[]> {
+    return apiClient.get<LinkRuleResponseDto[]>(`${this.baseUrl}/export`);
+  }
+
+  async importLinkRules(rules: LinkRuleRequestDto[]): Promise<LinkRuleResponseDto[]> {
+    return apiClient.post<LinkRuleResponseDto[]>(`${this.baseUrl}/import`, rules);
   }
 
   // Bulk operations
   async bulkDeleteLinkRules(ruleIds: number[]): Promise<void> {
-    return apiClient.delete<void>(`${this.baseUrl}/bulk`, {
-      data: { ruleIds },
-    });
+    await Promise.all(ruleIds.map((id) => this.deleteLinkRule(id)));
   }
 
   async bulkToggleLinkRuleStatus(ruleIds: number[], enabled: boolean): Promise<void> {
-    return apiClient.patch<void>(`${this.baseUrl}/bulk/status`, {
-      ruleIds,
-      enabled,
-    });
+    await Promise.all(ruleIds.map((id) => this.toggleLinkRuleStatus(id, enabled)));
   }
 
   // ==================== DOCUMENT LINK OPERATIONS ====================
@@ -139,27 +156,27 @@ export class LinkRuleService {
       sortDirection,
     });
 
-    return apiClient.get<PageResponse<DocumentLinkResponseDto>>(`${this.baseUrl}/links?${params}`);
+    return apiClient.get<PageResponse<DocumentLinkResponseDto>>(`/api/v1/document-links?${params}`);
   }
 
   // Get document link by ID
   async getDocumentLinkById(linkId: number): Promise<DocumentLinkResponseDto> {
-    return apiClient.get<DocumentLinkResponseDto>(`${this.baseUrl}/links/${linkId}`);
+    return apiClient.get<DocumentLinkResponseDto>(`/api/v1/document-links/${linkId}`);
   }
 
   // Create manual document link
   async createDocumentLink(linkData: DocumentLinkRequestDto): Promise<DocumentLinkResponseDto> {
-    return apiClient.post<DocumentLinkResponseDto>(`${this.baseUrl}/links`, linkData);
+    return apiClient.post<DocumentLinkResponseDto>('/api/v1/document-links', linkData);
   }
 
   // Update document link
   async updateDocumentLink(linkId: number, linkData: Partial<DocumentLinkRequestDto>): Promise<DocumentLinkResponseDto> {
-    return apiClient.put<DocumentLinkResponseDto>(`${this.baseUrl}/links/${linkId}`, linkData);
+    return apiClient.put<DocumentLinkResponseDto>(`/api/v1/document-links/${linkId}`, linkData);
   }
 
   // Delete document link
   async deleteDocumentLink(linkId: number): Promise<void> {
-    return apiClient.delete<void>(`${this.baseUrl}/links/${linkId}`);
+    return apiClient.delete<void>(`/api/v1/document-links/${linkId}`);
   }
 
   // Get links for document
@@ -173,26 +190,34 @@ export class LinkRuleService {
       size: size.toString(),
     });
 
-    return apiClient.get<PageResponse<RelatedDocumentResponseDto>>(`${this.baseUrl}/links/document/${documentId}?${params}`);
+    return apiClient.get<PageResponse<RelatedDocumentResponseDto>>(`/api/v1/document-links/document/${documentId}/related?${params}`);
   }
 
-  // Get related documents
+  // Get related documents with full search and filtering
   async getRelatedDocuments(
     documentId: number,
-    linkType?: string,
-    page: number = 0,
-    size: number = 20
+    params?: {
+      search?: string;
+      linkType?: string;
+      isManual?: boolean;
+      fromDate?: string;
+      toDate?: string;
+      page?: number;
+      size?: number;
+    }
   ): Promise<PageResponse<RelatedDocumentResponseDto>> {
-    const params = new URLSearchParams({
-      page: page.toString(),
-      size: size.toString(),
+    const searchParams = new URLSearchParams({
+      page: (params?.page || 0).toString(),
+      size: (params?.size || 20).toString(),
     });
 
-    if (linkType) {
-      params.append('linkType', linkType);
-    }
+    if (params?.search) searchParams.append('search', params.search);
+    if (params?.linkType && params.linkType !== 'all') searchParams.append('linkType', params.linkType);
+    if (params?.isManual !== undefined) searchParams.append('isManual', params.isManual.toString());
+    if (params?.fromDate) searchParams.append('fromDate', params.fromDate);
+    if (params?.toDate) searchParams.append('toDate', params.toDate);
 
-    return apiClient.get<PageResponse<RelatedDocumentResponseDto>>(`${this.baseUrl}/links/related/${documentId}?${params}`);
+    return apiClient.get<PageResponse<RelatedDocumentResponseDto>>(`/api/v1/document-links/document/${documentId}/related?${searchParams}`);
   }
 
   // Get link statistics
@@ -203,12 +228,12 @@ export class LinkRuleService {
     manualLinks: number;
     automaticLinks: number;
   }> {
-    return apiClient.get(`${this.baseUrl}/links/statistics`);
+    return apiClient.get(`/api/v1/document-links/statistics`);
   }
 
   // Bulk operations for document links
   async bulkDeleteDocumentLinks(linkIds: number[]): Promise<void> {
-    return apiClient.delete<void>(`${this.baseUrl}/links/bulk`, {
+    return apiClient.delete<void>(`/api/v1/document-links/bulk`, {
       data: { linkIds },
     });
   }
@@ -225,7 +250,7 @@ export class LinkRuleService {
       size: size.toString(),
     });
 
-    return apiClient.get<PageResponse<DocumentLinkResponseDto>>(`${this.baseUrl}/links/search?${params}`);
+    return apiClient.get<PageResponse<DocumentLinkResponseDto>>(`/api/v1/document-links/search?${params}`);
   }
 }
 

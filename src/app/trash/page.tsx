@@ -3,64 +3,72 @@
 
 import { useState, useEffect } from 'react';
 import { 
-  Trash2, 
-  Clock, 
-  ArchiveRestore, 
-  Trash, 
-  Search, 
-  Filter,
+  Trash2,
+  ArchiveRestore,
+  Trash,
   File,
   Folder,
-  MoreVertical,
   Calendar,
-  User,
-  HardDrive,
-  AlertTriangle,
-  CheckCircle,
-  XCircle,
-  RotateCcw,
-  Eye,
-  Download
+  AlertTriangle
 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { recycleBinService } from '../../api/services/recycleBinService';
 import { RecycleBinEntry } from '../../types/api';
+import ServerSearchInput from '../../components/main/ServerSearchInput';
+import Pagination from '../../components/main/Pagination';
+import UserAvatar from '../../components/main/UserAvatar';
+import { useServerSideSearch } from '../../components/main/useServerSideSearch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 export default function TrashPage() {
   const { t } = useLanguage();
   const [items, setItems] = useState<RecycleBinEntry[]>([]);
   const [selectedItems, setSelectedItems] = useState<number[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isRestoring, setIsRestoring] = useState<number | null>(null);
   const [isDeleting, setIsDeleting] = useState<number | null>(null);
   const [filterType, setFilterType] = useState<'all' | 'document' | 'folder'>('all');
-  const [sortBy, setSortBy] = useState<'name' | 'deletedAt' | 'deletedBy'>('deletedAt');
+  const [sortBy, setSortBy] = useState<'name' | 'deletedAt' | 'createdAt'>('deletedAt');
   const [sortDesc, setSortDesc] = useState(true);
+  const [page, setPage] = useState(0);
+  const [size, setSize] = useState(20);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
+
+  const {
+    displayData,
+    searchQuery,
+    setSearchQuery,
+    loading,
+    tableLoading,
+    totalPages: hookTotalPages,
+    totalElements: hookTotalElements,
+    fetchData
+  } = useServerSideSearch<RecycleBinEntry>({
+    fetchFunction: async (pageIdx: number, _query?: string) => {
+      const resp = await recycleBinService.getMyRecycleBinEntries({
+        page: pageIdx,
+        size,
+        sortBy: sortBy === 'deletedAt' ? 'deletedAt' : sortBy === 'createdAt' ? 'id' : 'deletedAt',
+        sortDir: sortDesc ? 'desc' : 'asc'
+      } as any & { entityType?: string });
+      return resp;
+    },
+    searchFields: (item) => [item.entityName, item.entityType, String(item.entityId)],
+    debounceMs: 500,
+    initialPage: 0,
+    fetchOnMount: true
+  });
 
   useEffect(() => {
-    const fetchTrashItems = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const response = await recycleBinService.getMyRecycleBinEntries({
-          page: 0,
-          size: 100,
-          sortBy: sortBy === 'deletedAt' ? 'deletedAt' : sortBy === 'deletedBy' ? 'deletedBy' : 'entityName',
-          sortDir: sortDesc ? 'desc' : 'asc'
-        });
-        setItems(response.content);
-      } catch (error) {
-        console.error('Error fetching trash items:', error);
-        setError('Failed to load trash items');
-      } finally {
-        setLoading(false);
-      }
-    };
+    setTotalPages(hookTotalPages);
+    setTotalElements(hookTotalElements);
+    setItems(displayData);
+  }, [displayData, hookTotalElements, hookTotalPages]);
 
-    fetchTrashItems();
-  }, [sortBy, sortDesc]);
+  useEffect(() => {
+    fetchData(true);
+  }, [sortBy, sortDesc, size]);
 
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return '0 Bytes';
@@ -132,12 +140,23 @@ export default function TrashPage() {
     }
   };
 
-  // Filter and sort items
+  // Filter items (search + type)
   const filteredItems = items.filter(item => {
     const matchesSearch = item.entityName.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesType = filterType === 'all' || item.entityType.toLowerCase() === filterType;
     return matchesSearch && matchesType;
   });
+
+  // Client-side sort by name if selected (page scope)
+  const displayedItems = sortBy === 'name'
+    ? [...filteredItems].sort((a, b) => {
+        const an = a.entityName.toLowerCase();
+        const bn = b.entityName.toLowerCase();
+        if (an < bn) return sortDesc ? 1 : -1;
+        if (an > bn) return sortDesc ? -1 : 1;
+        return 0;
+      })
+    : filteredItems;
 
   if (loading) {
     return (
@@ -219,36 +238,34 @@ export default function TrashPage() {
       <div className="bg-surface rounded-lg border border-ui p-4">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div className="flex items-center gap-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-neutral-text-light h-4 w-4" />
-              <input
-                type="text"
-                placeholder="Search deleted items..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 pr-4 py-2 bg-neutral-background border border-ui rounded-lg text-sm text-neutral-text-dark placeholder-neutral-text-light focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent w-64"
-              />
-            </div>
+            <ServerSearchInput
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder="Search deleted items..."
+              className="w-64"
+            />
             
-            <select 
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value as 'all' | 'document' | 'folder')}
-              className="text-sm border border-ui rounded px-3 py-2 bg-neutral-background text-neutral-text-dark"
-            >
-              <option value="all">All Items</option>
-              <option value="document">Documents Only</option>
-              <option value="folder">Folders Only</option>
-            </select>
+            <Select value={filterType} onValueChange={(val) => setFilterType(val as any)}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Filter type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Items</SelectItem>
+                <SelectItem value="document">Documents Only</SelectItem>
+                <SelectItem value="folder">Folders Only</SelectItem>
+              </SelectContent>
+            </Select>
 
-            <select 
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as 'name' | 'deletedAt' | 'deletedBy')}
-              className="text-sm border border-ui rounded px-3 py-2 bg-neutral-background text-neutral-text-dark"
-            >
-              <option value="deletedAt">Sort by Date</option>
-              <option value="name">Sort by Name</option>
-              <option value="deletedBy">Sort by User</option>
-            </select>
+            <Select value={sortBy} onValueChange={(val) => setSortBy(val as any)}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Sort by" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="deletedAt">Sort by Date</SelectItem>
+                <SelectItem value="name">Sort by Name</SelectItem>
+                <SelectItem value="createdAt">Sort by Created</SelectItem>
+              </SelectContent>
+            </Select>
 
             <button
               onClick={() => setSortDesc(!sortDesc)}
@@ -260,7 +277,7 @@ export default function TrashPage() {
           </div>
 
           <div className="text-sm text-neutral-text-light">
-            {selectedItems.length > 0 ? `${selectedItems.length} selected` : `${filteredItems.length} items`}
+            {selectedItems.length > 0 ? `${selectedItems.length} selected` : `${totalElements} items`}
           </div>
         </div>
       </div>
@@ -279,7 +296,7 @@ export default function TrashPage() {
             </p>
           </div>
         ) : (
-          <table className="w-full">
+          <table className="w-full relative">
             <thead className="bg-neutral-background">
               <tr>
                 <th className="text-left p-4 w-8">
@@ -303,8 +320,17 @@ export default function TrashPage() {
                 <th className="text-left p-4 text-sm font-medium text-neutral-text-dark">Actions</th>
               </tr>
             </thead>
-            <tbody>
-              {filteredItems.map((item) => (
+            <tbody className="relative">
+              {tableLoading && (
+                <tr>
+                  <td colSpan={6}>
+                    <div className="absolute inset-0 bg-white/50 flex items-center justify-center">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                    </div>
+                  </td>
+                </tr>
+              )}
+              {displayedItems.map((item) => (
                 <TrashItemRow 
                   key={item.id}
                   item={item}
@@ -325,6 +351,14 @@ export default function TrashPage() {
           </table>
         )}
       </div>
+
+      <Pagination
+        currentPage={page}
+        totalPages={totalPages}
+        totalElements={totalElements}
+        pageSize={size}
+        onPageChange={(p) => { setPage(p); }}
+      />
     </div>
   );
 }
@@ -387,10 +421,8 @@ function TrashItemRow({
       </td>
       <td className="p-4">
         <div className="flex items-center gap-2">
-          <div className="h-6 w-6 bg-primary-light rounded-full flex items-center justify-center">
-            <User className="h-3 w-3 text-primary" />
-          </div>
-          <div className="text-sm text-neutral-text-dark">{item.deletedByUsername}</div>
+          <UserAvatar user={item.deletedBy} size="sm" />
+          <div className="text-sm text-neutral-text-dark">{item.deletedBy?.displayName || item.deletedBy?.username || 'Unknown'}</div>
         </div>
       </td>
       <td className="p-4">

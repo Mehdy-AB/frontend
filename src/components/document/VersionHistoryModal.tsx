@@ -95,10 +95,10 @@ export default function VersionHistoryModal({
   const handleDownloadVersion = async (versionId: number) => {
     try {
       const version = versions.find(v => v.id === versionId);
-      const downloadUrl = await notificationApiClient.downloadDocument(versionId, { version: versionId });
+      const downloadUrl = await notificationApiClient.downloadDocument(document.documentId, versionId);
       
       try {
-        await notificationApiClient.fileDownloaded(versionId, { version: versionId });
+        await notificationApiClient.fileDownloaded(document.documentId, versionId);
       } catch (logError) {
         console.warn('Failed to log download operation:', logError);
       }

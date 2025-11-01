@@ -7,6 +7,7 @@ export interface DocumentViewDto extends DocumentResponseDto {
   thumbnailUrl?: string;
   description?: string;
   filingCategory?: DocumentFilingCategoryResponseDto;
+  metadataDefinitions?: any[]; // Category metadata definitions if available
   modelConfigurations?: ModelConfiguration[];
   aiModels?: AIModel[];
   relatedDocuments?: RelatedDocument[];

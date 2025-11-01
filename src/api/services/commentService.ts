@@ -10,7 +10,7 @@ import {
 export class CommentService {
   private baseUrl = '/api/v1/comments';
 
-  // Get comments for entity with pagination
+  // Get comments for entity with pagination (legacy method)
   async getComments(
     entityType: string,
     entityId: number,
@@ -23,10 +23,31 @@ export class CommentService {
       page: page.toString(),
       size: size.toString(),
       sortBy,
-      sortDirection,
+      sortDir: sortDirection,
     });
 
-    return apiClient.get<PageResponse<Comment>>(`${this.baseUrl}/${entityType}/${entityId}?${params}`);
+    return apiClient.get<PageResponse<Comment>>(`${this.baseUrl}/entity/${entityType}/${entityId}?${params}`);
+  }
+
+  // Get comments for entity with pagination (with options object)
+  async getCommentsByEntity(
+    entityType: string,
+    entityId: number,
+    options?: {
+      page?: number;
+      size?: number;
+      sortBy?: string;
+      sortDir?: 'asc' | 'desc';
+    }
+  ): Promise<PageResponse<Comment>> {
+    const params = new URLSearchParams({
+      page: (options?.page ?? 0).toString(),
+      size: (options?.size ?? 20).toString(),
+      sortBy: options?.sortBy ?? 'createdAt',
+      sortDir: options?.sortDir ?? 'desc',
+    });
+
+    return apiClient.get<PageResponse<Comment>>(`${this.baseUrl}/entity/${entityType}/${entityId}?${params}`);
   }
 
   // Get comment by ID
@@ -34,14 +55,41 @@ export class CommentService {
     return apiClient.get<Comment>(`${this.baseUrl}/${commentId}`);
   }
 
-  // Create new comment
+  // Add new comment (backend expects form parameters)
+  async addComment(commentData: {
+    entityType: string;
+    entityId: number;
+    text: string;
+    parentId?: number;  // Changed from parentCommentId to match CommentCreateReq
+    parentCommentId?: number;  // Keep for backward compatibility
+  }): Promise<Comment> {
+    const params = new URLSearchParams({
+      entityType: commentData.entityType,
+      entityId: commentData.entityId.toString(),
+      text: commentData.text,
+    });
+    
+    // Check both parentId and parentCommentId for compatibility
+    const parentId = commentData.parentId || commentData.parentCommentId;
+    if (parentId) {
+      params.append('parentCommentId', parentId.toString());
+    }
+
+    return apiClient.post<Comment>(`${this.baseUrl}?${params.toString()}`, null);
+  }
+
+  // Create new comment (legacy method with body)
   async createComment(commentData: CommentCreateReq): Promise<Comment> {
     return apiClient.post<Comment>(this.baseUrl, commentData);
   }
 
-  // Update comment
-  async updateComment(commentId: number, commentData: CommentUpdateReq): Promise<Comment> {
-    return apiClient.put<Comment>(`${this.baseUrl}/${commentId}`, commentData);
+  // Update comment (backend expects form parameter)
+  async updateComment(commentId: number, textOrData: string | CommentUpdateReq): Promise<Comment> {
+    const text = typeof textOrData === 'string' ? textOrData : textOrData.text;
+    const params = new URLSearchParams({
+      text: text,
+    });
+    return apiClient.put<Comment>(`${this.baseUrl}/${commentId}?${params.toString()}`, null);
   }
 
   // Delete comment
@@ -65,7 +113,7 @@ export class CommentService {
 
   // Get comment count for entity
   async getCommentCount(entityType: string, entityId: number): Promise<CommentCountResponse> {
-    return apiClient.get<CommentCountResponse>(`${this.baseUrl}/${entityType}/${entityId}/count`);
+    return apiClient.get<CommentCountResponse>(`${this.baseUrl}/entity/${entityType}/${entityId}/count`);
   }
 
   // Get comments by user
@@ -133,7 +181,7 @@ export class CommentService {
 
   // Get pinned comments for entity
   async getPinnedComments(entityType: string, entityId: number): Promise<Comment[]> {
-    return apiClient.get<Comment[]>(`${this.baseUrl}/${entityType}/${entityId}/pinned`);
+    return apiClient.get<Comment[]>(`${this.baseUrl}/entity/${entityType}/${entityId}/pinned`);
   }
 }
 

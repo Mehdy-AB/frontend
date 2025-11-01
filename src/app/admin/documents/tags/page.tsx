@@ -34,8 +34,13 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Separator } from '@/components/ui/separator';
-import { DocumentService } from '@/api/services/documentService';
-import { TagResponseDto, CreateTagRequestDto, UpdateTagRequestDto } from '@/types/api';
+import ServerSearchInput from '@/components/main/ServerSearchInput';
+import Pagination from '@/components/main/Pagination';
+import UserAvatar from '@/components/main/UserAvatar';
+import { tagService } from '@/api/services/tagService';
+import { TagResponseDto, CreateTagRequestDto, UpdateTagRequestDto, PageResponse } from '@/types/api';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import { useLanguage } from '../../../../contexts/LanguageContext';
 
 export default function ModelsPage() {
@@ -46,43 +51,90 @@ export default function ModelsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'user' | 'system'>('all');
   const [selectedModels, setSelectedModels] = useState<number[]>([]);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [pageSize, setPageSize] = useState(12);
+  const [sortBy, setSortBy] = useState<'name' | 'createdAt' | 'updatedAt'>('name');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
+  const [editingModel, setEditingModel] = useState<TagResponseDto | null>(null);
+  const [deletingModel, setDeletingModel] = useState<TagResponseDto | null>(null);
+  const [initialized, setInitialized] = useState(false);
+  const [isFetching, setIsFetching] = useState(false);
 
-  // Fetch models (using tags API for now)
+  // Fetch models (tags)
   const fetchModels = async () => {
     try {
-      setLoading(true);
+      if (!initialized) setLoading(true);
+      setIsFetching(true);
       setError(null);
-      const response = await DocumentService.getAllTags({
-        page: 0,
-        size: 100,
-        query: searchQuery || undefined,
-        type: filterType === 'all' ? undefined : filterType.toUpperCase()
-      });
-      setModels(response);
+      const filters = {
+        type: filterType === 'all' ? undefined : (filterType.toUpperCase() as 'SYSTEM' | 'USER'),
+        q: searchQuery || undefined,
+      };
+      try {
+        const page: PageResponse<TagResponseDto> = await tagService.getTagsPaged(
+          currentPage,
+          pageSize,
+          sortBy,
+          sortDirection,
+          filters
+        );
+        setModels(page.content || []);
+        setTotalPages(page.totalPages || 0);
+        setTotalElements(page.totalElements || 0);
+      } catch (e: any) {
+        console.warn('Paged tags endpoint failed, falling back to simple list. Details:', e?.message || e);
+        // Fallback: fetch list and paginate client-side
+        let list: TagResponseDto[] = [];
+        if (filters.q) {
+          list = await tagService.searchTagsSimple(filters.q);
+        } else if (filters.type === 'SYSTEM') {
+          list = await tagService.getSystemTags();
+        } else if (filters.type === 'USER') {
+          list = await tagService.getMyTags();
+        } else {
+          list = await tagService.getAllTags();
+        }
+        // Basic sort fallback
+        const sorted = [...list].sort((a, b) => {
+          const dir = sortDirection === 'asc' ? 1 : -1;
+          if (sortBy === 'name') return a.name.localeCompare(b.name) * dir;
+          const av = (a as any)[sortBy];
+          const bv = (b as any)[sortBy];
+          return ((new Date(av).getTime()) - (new Date(bv).getTime())) * dir;
+        });
+        setTotalElements(sorted.length);
+        setTotalPages(Math.max(1, Math.ceil(sorted.length / pageSize)));
+        const start = currentPage * pageSize;
+        setModels(sorted.slice(start, start + pageSize));
+      }
     } catch (err: any) {
       console.error('Error fetching models:', err);
       setError(err.message || 'Failed to load models');
     } finally {
       setLoading(false);
+      setInitialized(true);
+      setIsFetching(false);
     }
   };
 
   useEffect(() => {
     fetchModels();
-  }, [searchQuery, filterType]);
+  }, [currentPage, pageSize, filterType, sortBy, sortDirection]);
 
-  // Debounce search query
+  // Debounce search query and reset page
   useEffect(() => {
     const timer = setTimeout(() => {
+      setCurrentPage(0);
       fetchModels();
     }, 300);
-    
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
   const handleCreateModel = async (modelData: CreateTagRequestDto) => {
     try {
-      await DocumentService.createTag(modelData);
+      await tagService.createTag(modelData);
       fetchModels(); // Refresh data
     } catch (error: any) {
       console.error('Error creating model:', error);
@@ -92,7 +144,7 @@ export default function ModelsPage() {
 
   const handleUpdateModel = async (modelId: number, modelData: UpdateTagRequestDto) => {
     try {
-      await DocumentService.updateTag(modelId, modelData);
+      await tagService.updateTag(modelId, modelData);
       fetchModels(); // Refresh data
     } catch (error: any) {
       console.error('Error updating model:', error);
@@ -104,7 +156,7 @@ export default function ModelsPage() {
     if (!confirm('Are you sure you want to delete this model?')) return;
 
     try {
-      await DocumentService.deleteTag(modelId);
+      await tagService.deleteTag(modelId);
       fetchModels(); // Refresh data
     } catch (error: any) {
       console.error('Error deleting model:', error);
@@ -136,9 +188,7 @@ export default function ModelsPage() {
     });
   };
 
-  if (loading) {
-    return <ModelsSkeleton />;
-  }
+  // Do not fully replace page during fetch; keep content and show a subtle indicator instead
 
   if (error) {
     return (
@@ -167,21 +217,23 @@ export default function ModelsPage() {
         </Button>
       </div>
 
+      {isFetching && (
+        <div className="h-1 w-full bg-muted overflow-hidden rounded">
+          <div className="h-full w-1/3 bg-primary animate-[progress_1.2s_ease-in-out_infinite]"></div>
+        </div>
+      )}
+
       {/* Search and Filters */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-3">
-          <div className="relative w-64">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-            <Input
-              type="text"
-              placeholder="Search models..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
-          </div>
+          <ServerSearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search tags by name or description..."
+            className="w-64"
+          />
           
-          <Select value={filterType} onValueChange={(value: 'all' | 'user' | 'system') => setFilterType(value)}>
+          <Select value={filterType} onValueChange={(value: 'all' | 'user' | 'system') => { setFilterType(value); setCurrentPage(0); }}>
             <SelectTrigger className="w-32">
               <SelectValue />
             </SelectTrigger>
@@ -189,6 +241,38 @@ export default function ModelsPage() {
               <SelectItem value="all">All Models</SelectItem>
               <SelectItem value="user">User Models</SelectItem>
               <SelectItem value="system">System Models</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={sortBy} onValueChange={(v: 'name' | 'createdAt' | 'updatedAt') => { setSortBy(v); setCurrentPage(0);} }>
+            <SelectTrigger className="w-36">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="name">Sort: Name</SelectItem>
+              <SelectItem value="createdAt">Sort: Created</SelectItem>
+              <SelectItem value="updatedAt">Sort: Updated</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={sortDirection} onValueChange={(v: 'asc' | 'desc') => { setSortDirection(v); setCurrentPage(0);} }>
+            <SelectTrigger className="w-28">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="asc">Asc</SelectItem>
+              <SelectItem value="desc">Desc</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={String(pageSize) as any} onValueChange={(v: any) => { setPageSize(parseInt(v, 10)); setCurrentPage(0);} }>
+            <SelectTrigger className="w-24">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="8">8 / page</SelectItem>
+              <SelectItem value="12">12 / page</SelectItem>
+              <SelectItem value="24">24 / page</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -214,40 +298,42 @@ export default function ModelsPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {models.map((model) => (
           <Card key={model.id} className="hover:shadow-md transition-shadow">
-            <CardContent className="p-6">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-primary/10 rounded-lg">
+            <CardContent className="p-5 space-y-4">
+              {/* Header */}
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="p-2.5 bg-primary/10 rounded-lg">
                     <Database className="h-5 w-5 text-primary" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-lg">{model.name}</h3>
-                    <p className="text-sm text-muted-foreground">{model.description}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-semibold text-base leading-tight">{model.name}</h3>
+                      <Badge variant={model.type === 'SYSTEM' ? 'default' : 'secondary'} className="text-[10px]">
+                        {model.type}
+                      </Badge>
+                    </div>
+                    {model.description && (
+                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                        {model.description}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm">
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
                       <MoreVertical className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem>
-                      <Eye className="mr-2 h-4 w-4" />
-                      View Details
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setEditingModel(model)}>
                       <Edit className="mr-2 h-4 w-4" />
                       Edit
                     </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      <Settings className="mr-2 h-4 w-4" />
-                      Settings
-                    </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem 
+                    <DropdownMenuItem
                       className="text-destructive"
-                      onClick={() => handleDeleteModel(model.id)}
+                      onClick={() => setDeletingModel(model)}
                     >
                       <Trash2 className="mr-2 h-4 w-4" />
                       Delete
@@ -255,37 +341,44 @@ export default function ModelsPage() {
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
-              
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Type:</span>
-                  <Badge variant={model.type === 'SYSTEM' ? 'default' : 'secondary'}>
-                    {model.type}
-                  </Badge>
+
+              {/* Color row */}
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Color</span>
+                <div className="flex items-center gap-2">
+                  <div
+                    className="w-5 h-5 rounded-md border"
+                    style={{ backgroundColor: model.color || '#3b82f6' }}
+                  />
+                  <span className="text-[11px]">{model.color || '#3b82f6'}</span>
                 </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Color:</span>
-                  <div className="flex items-center gap-2">
-                    <div 
-                      className="w-4 h-4 rounded-full border" 
-                      style={{ backgroundColor: model.color || '#3b82f6' }}
-                    />
-                    <span className="text-xs">{model.color || '#3b82f6'}</span>
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3 min-w-0">
+                  <UserAvatar user={model.createdBy} size="sm" />
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-xs font-medium truncate">{model.createdBy?.displayName || model.createdBy?.username}</span>
+                    <span className="text-[11px] text-muted-foreground truncate">{model.createdBy?.email}</span>
                   </div>
                 </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Created:</span>
-                  <span>{formatDate(model.createdAt)}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Documents:</span>
-                  <span>{model.documentCount || 0}</span>
-                </div>
+                <Badge variant="outline" className="text-[11px]">
+                  {model.documentCount || 0} docs
+                </Badge>
               </div>
             </CardContent>
           </Card>
         ))}
       </div>
+
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        totalElements={totalElements}
+        pageSize={pageSize}
+        onPageChange={setCurrentPage}
+      />
 
       {models.length === 0 && (
         <Card className="flex flex-col items-center justify-center py-12">
@@ -302,6 +395,87 @@ export default function ModelsPage() {
           </CardContent>
         </Card>
       )}
+      {/* Edit Modal */}
+      <Dialog open={!!editingModel} onOpenChange={(open) => !open && setEditingModel(null)}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Edit Tag</DialogTitle>
+          </DialogHeader>
+          {editingModel && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="tag-name">Name</Label>
+                <Input
+                  id="tag-name"
+                  value={editingModel.name}
+                  onChange={(e) => setEditingModel({ ...editingModel, name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="tag-desc">Description</Label>
+                <Input
+                  id="tag-desc"
+                  value={editingModel.description || ''}
+                  onChange={(e) => setEditingModel({ ...editingModel, description: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="tag-color">Color</Label>
+                <Input
+                  id="tag-color"
+                  value={editingModel.color || ''}
+                  onChange={(e) => setEditingModel({ ...editingModel, color: e.target.value })}
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setEditingModel(null)}>Cancel</Button>
+                <Button
+                  onClick={async () => {
+                    if (!editingModel) return;
+                    await tagService.updateTag(editingModel.id, {
+                      name: editingModel.name,
+                      description: editingModel.description,
+                      color: editingModel.color,
+                    });
+                    setEditingModel(null);
+                    fetchModels();
+                  }}
+                >
+                  Save
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirm Modal */}
+      <Dialog open={!!deletingModel} onOpenChange={(open) => !open && setDeletingModel(null)}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>Delete Tag</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Are you sure you want to delete tag "{deletingModel?.name}"? This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setDeletingModel(null)}>Cancel</Button>
+              <Button
+                variant="destructive"
+                onClick={async () => {
+                  if (!deletingModel) return;
+                  await tagService.deleteTag(deletingModel.id);
+                  setDeletingModel(null);
+                  fetchModels();
+                }}
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }// Loading Skeleton

@@ -18,7 +18,8 @@ import {
   Share2,
   Settings,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  Check
 } from 'lucide-react';
 import { notificationApiClient } from '@/api/notificationClient';
 import { 
@@ -31,7 +32,10 @@ import {
   TypeShareAccessWithTypeReq,
   GranteeType
 } from '@/types/api';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useServerSideSearch } from '@/components/main/useServerSideSearch';
+import ServerSearchInput from '@/components/main/ServerSearchInput';
+import SearchPagination from '@/components/search/SearchPagination';
+import UserAvatar from '@/components/main/UserAvatar';
 
 interface EditFolderModalProps {
   isOpen: boolean;
@@ -41,7 +45,7 @@ interface EditFolderModalProps {
 
 
 const PERMISSION_PRESETS = {
-  viewOnly: {
+  viewer: {
     canView: true,
     canUpload: false,
     canEdit: false,
@@ -53,9 +57,9 @@ const PERMISSION_PRESETS = {
     canDeleteDoc: false,
     canShareDoc: false,
     canManagePermissionsDoc: false,
-    inherits: false,
+    inherits: true
   },
-  upload: {
+  contributor: {
     canView: true,
     canUpload: true,
     canEdit: false,
@@ -67,9 +71,9 @@ const PERMISSION_PRESETS = {
     canDeleteDoc: false,
     canShareDoc: false,
     canManagePermissionsDoc: false,
-    inherits: false,
+    inherits: true
   },
-  edit: {
+  editor: {
     canView: true,
     canUpload: true,
     canEdit: true,
@@ -78,12 +82,12 @@ const PERMISSION_PRESETS = {
     canManagePermissions: false,
     canCreateSubFolders: true,
     canEditDoc: true,
-    canDeleteDoc: false,
+    canDeleteDoc: true,
     canShareDoc: false,
     canManagePermissionsDoc: false,
-    inherits: false,
+    inherits: true
   },
-  full: {
+  admin: {
     canView: true,
     canUpload: true,
     canEdit: true,
@@ -95,9 +99,29 @@ const PERMISSION_PRESETS = {
     canDeleteDoc: true,
     canShareDoc: true,
     canManagePermissionsDoc: true,
-    inherits: false,
+    inherits: true
   }
 };
+
+const PRESET_LABELS = {
+  viewer: { label: 'Viewer', color: 'bg-blue-600 text-white' },
+  contributor: { label: 'Contributor', color: 'bg-green-600 text-white' },
+  editor: { label: 'Editor', color: 'bg-orange-600 text-white' },
+  admin: { label: 'Admin', color: 'bg-red-600 text-white' },
+};
+
+// Type guards
+function isUser(grantee: UserDto | GroupDto | RoleDto | null | undefined): grantee is UserDto {
+  return grantee != null && 'username' in grantee;
+}
+
+function isGroup(grantee: UserDto | GroupDto | RoleDto | null | undefined): grantee is GroupDto {
+  return grantee != null && 'userCount' in grantee && !('username' in grantee);
+}
+
+function isRole(grantee: UserDto | GroupDto | RoleDto | null | undefined): grantee is RoleDto {
+  return grantee != null && !('username' in grantee) && !('userCount' in grantee);
+}
 
 export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderModalProps) {
   
@@ -108,231 +132,182 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
     setIsClient(true);
   }, []);
   
-  // All grants in one unified list
-  const [allGrants, setAllGrants] = useState<TypeShareAccessRes[]>([]);
+  const pageSize = 20;
+  
+  // Use server-side search for permissions
+  const {
+    displayData: allGrants,
+    searchQuery,
+    setSearchQuery,
+    page,
+    setPage,
+    totalPages,
+    totalElements,
+    loading: loadingPermissions,
+    tableLoading,
+    fetchData: fetchPermissions,
+    updateItem: updateGrantInList,
+    addItem: addGrantToList,
+    removeItem: removeGrantFromList
+  } = useServerSideSearch<TypeShareAccessRes>({
+    fetchFunction: async (currentPage, searchTerm) => {
+      const response = await notificationApiClient.getFolderShared(
+        folder.id, 
+        { 
+          page: currentPage, 
+          size: pageSize,
+          search: searchTerm 
+        },
+        { silent: true }
+      );
+      return response;
+    },
+    searchFields: (grant) => {
+      if (!grant.grantee) return [];
+      if (isUser(grant.grantee)) {
+        return [
+          grant.grantee.username || '',
+          grant.grantee.firstName || '',
+          grant.grantee.lastName || '',
+          grant.grantee.email || ''
+        ];
+      } else if (isGroup(grant.grantee)) {
+        return [grant.grantee.name || '', grant.grantee.description || ''];
+      } else if (isRole(grant.grantee)) {
+        return [grant.grantee.name || '', grant.grantee.description || ''];
+      }
+      return [];
+    },
+    debounceMs: 300,
+    fetchOnMount: false
+  });
   
   // Available entities for adding new grants
   const [users, setUsers] = useState<UserDto[]>([]);
   const [groups, setGroups] = useState<GroupDto[]>([]);
   const [roles, setRoles] = useState<RoleDto[]>([]);
   
-  // Search states
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filteredGrants, setFilteredGrants] = useState<TypeShareAccessRes[]>([]);
+  // Search dropdown states for adding entities
   const [availableEntities, setAvailableEntities] = useState<(UserDto | GroupDto | RoleDto)[]>([]);
-  
-  // Search dropdown states
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [searching, setSearching] = useState(false);
   const [selectedEntityType, setSelectedEntityType] = useState<'user' | 'group' | 'role' | null>(null);
-  
-  // Ref to maintain input focus
   const searchInputRef = useRef<HTMLInputElement>(null);
   
-  // Edit permission popup state
-  const [editingGrant, setEditingGrant] = useState<TypeShareAccessRes | null>(null);
-  const [tempPermission, setTempPermission] = useState<FolderPermissionReq | null>(null);
-  
-  // Loading and error states
+  // Other states
   const [loading, setLoading] = useState(false);
-  const [loadingPermissions, setLoadingPermissions] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  
-  // Collapsed panels state
   const [collapsedPermissions, setCollapsedPermissions] = useState<Record<string, boolean>>({});
   
-  // Pending changes tracking
-  const [pendingChanges, setPendingChanges] = useState<{
-    new: Map<string, TypeShareAccessWithTypeReq>;
-    updated: Map<string, TypeShareAccessWithTypeReq>;
-    deleted: Set<string>;
-  }>({
-    new: new Map(),
-    updated: new Map(),
-    deleted: new Set()
-  });
-  
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  // Permission modal state
+  const [showPermissionModal, setShowPermissionModal] = useState(false);
+  const [editingGrant, setEditingGrant] = useState<{ grantee: UserDto | GroupDto | RoleDto; permission: FolderPermissionReq; type: GranteeType; isNew: boolean } | null>(null);
+  const [tempPermission, setTempPermission] = useState<FolderPermissionReq>(PERMISSION_PRESETS.viewer);
   
 
-  // Load initial data
+  // Load permissions when modal opens
   useEffect(() => {
     if (isOpen) {
-      loadInitialData();
+      fetchPermissions(false);
     }
   }, [isOpen, folder.id]);
 
-  const loadInitialData = async () => {
+  // Load available users for folder (those without permissions)
+  const loadAvailableUsers = async (search?: string) => {
     try {
-      setLoadingPermissions(true);
-      
-      // Load available entities first
-      
-        loadUsers()
-        loadGroups()
-        loadRoles()
-
-      
-      // Load folder permissions
-      const permissionsResponse = await notificationApiClient.getFolderShared(folder.id, { size: 100 });
-      
-      // Set all grants directly
-      setAllGrants(permissionsResponse.content);
-      
+      const response = await notificationApiClient.getAvailableUsersForFolder(
+        folder.id, 
+        { page: 0, size: 100, search }, 
+        { silent: true }
+      );
+      setUsers(response.content || []);
     } catch (error) {
-      console.error('Error loading folder permissions:', error);
-    } finally {
-      setLoadingPermissions(false);
+      console.error('Error loading available users:', error);
     }
   };
 
-  const loadUsers = async () => {
+  // Load available groups for folder (those without permissions)
+  const loadAvailableGroups = async (search?: string) => {
     try {
-      const response = await notificationApiClient.getAllUsers({ page: 0, size: 100 }, { silent: true });
-      setUsers(response);
+      const response = await notificationApiClient.getAvailableGroupsForFolder(
+        folder.id, 
+        { page: 0, size: 100, search }, 
+        { silent: true }
+      );
+      setGroups(response.content || []);
     } catch (error) {
-      console.error('Error loading users:', error);
+      console.error('Error loading available groups:', error);
     }
   };
 
-  const loadGroups = async () => {
+  // Load available roles for folder (those without permissions)
+  const loadAvailableRoles = async (search?: string) => {
     try {
-      const response = await notificationApiClient.getAllGroups({ page: 0, size: 100 }, { silent: true });
-      setGroups(response);
+      const response = await notificationApiClient.getAvailableRolesForFolder(
+        folder.id, 
+        { page: 0, size: 100, search }, 
+        { silent: true }
+      );
+      setRoles(response.content || []);
     } catch (error) {
-      console.error('Error loading groups:', error);
+      console.error('Error loading available roles:', error);
     }
   };
 
-  const loadRoles = async () => {
-    try {
-      const response = await notificationApiClient.getAllRoles({ page: 0, size: 100 }, { silent: true });
-      setRoles(response);
-    } catch (error) {
-      console.error('Error loading roles:', error);
-    }
-  };
-
-
-  // Filter grants locally
+  // Set available entities based on selected type and filter out those in allGrants
   useEffect(() => {
-    if (!allGrants) return;
-    const filtered = allGrants.filter(grant => {
-      const grantee = grant.grantee;
-      const searchLower = searchQuery.toLowerCase();
-      
-      // Check if it's a user
-      if (grantee.username) {
-        return (
-          grantee.username?.toLowerCase().includes(searchLower) ||
-          grantee.firstName?.toLowerCase().includes(searchLower) ||
-          grantee.lastName?.toLowerCase().includes(searchLower) ||
-          grantee.email?.toLowerCase().includes(searchLower)
-        );
-      }
-      // Check if it's a group
-      else if (grantee.path) {
-        return (
-          grantee.name?.toLowerCase().includes(searchLower) ||
-          grantee.path?.toLowerCase().includes(searchLower)
-        );
-      }
-      // Check if it's a role
-      else if (grantee.description !== undefined) {
-        return (
-          grantee.name?.toLowerCase().includes(searchLower) ||
-          grantee.description?.toLowerCase().includes(searchLower)
-        );
-      }
-      return false;
-    });
-    setFilteredGrants(filtered);
-  }, [searchQuery, allGrants]);
-
-  // Filter available entities for adding
-  useEffect(() => {
-    if (!users || !groups || !roles || !selectedEntityType) return;
+    if (!selectedEntityType) return;
     
-    const searchLower = searchQuery.toLowerCase();
     let entities: (UserDto | GroupDto | RoleDto)[] = [];
     
-    // Filter by selected entity type
+    // Select entities based on type
     switch (selectedEntityType) {
       case 'user':
-        entities = users;
+        entities = users || [];
         break;
       case 'group':
-        entities = groups;
+        entities = groups || [];
         break;
       case 'role':
-        entities = roles;
+        entities = roles || [];
         break;
     }
     
-    const filtered = entities.filter(entity => {
-      // Check if already has permission
-      const hasPermission = allGrants.some(grant => grant.grantee.id === entity.id);
-      if (hasPermission) return false;
-      
-      // Check search match
-      if ('username' in entity) {
-        // User
-        return (
-          entity.username?.toLowerCase().includes(searchLower) ||
-          entity.firstName?.toLowerCase().includes(searchLower) ||
-          entity.lastName?.toLowerCase().includes(searchLower) ||
-          entity.email?.toLowerCase().includes(searchLower)
-        );
-      } else if ('path' in entity) {
-        // Group
-        return (
-          entity.name?.toLowerCase().includes(searchLower) ||
-          entity.path?.toLowerCase().includes(searchLower)
-        );
-      } else {
-        // Role
-        return (
-          entity.name?.toLowerCase().includes(searchLower) ||
-          entity.description?.toLowerCase().includes(searchLower)
-        );
-      }
-    });
+    // Ensure entities is always an array
+    if (!Array.isArray(entities)) {
+      entities = [];
+    }
+    
+    // Filter out entities that are already in allGrants (including pending additions)
+    const granteeIds = new Set(
+      allGrants
+        .filter(g => g.grantee != null) // Filter out null grantees
+        .map(g => g.grantee.id)
+    );
+    const filtered = entities.filter(entity => !granteeIds.has(entity.id));
     
     setAvailableEntities(filtered);
-  }, [searchQuery, users, groups, roles, allGrants, selectedEntityType]);
+  }, [users, groups, roles, selectedEntityType, allGrants]);
 
-  // Debounced API search for available entities
+  // Debounced API search for available entities using optimized endpoints
   useEffect(() => {
-    if (searchQuery.trim().length >= 2 && selectedEntityType) {
+    if (!selectedEntityType) return;
+    
       const performSearch = async () => {
         try {
           setSearching(true);
+        
+        const searchTerm = searchQuery.trim() || undefined;
           
           switch (selectedEntityType) {
             case 'user':
-              const usersResponse = await notificationApiClient.getAllUsers({ page: 0, size: 100, query: searchQuery }, { silent: true });
-              // Use functional update to prevent re-render that causes defocus
-              setUsers(prev => {
-                const existingIds = new Set(prev.map(user => user.id));
-                const newUsers = usersResponse.filter((user: UserDto) => !existingIds.has(user.id));
-                return [...prev, ...newUsers];
-              });
+            await loadAvailableUsers(searchTerm);
               break;
             case 'group':
-              const groupsResponse = await notificationApiClient.getAllGroups({ page: 0, size: 100, search: searchQuery }, { silent: true });
-              setGroups(prev => {
-                const existingIds = new Set(prev.map(group => group.id));
-                const newGroups = groupsResponse.filter((group: GroupDto) => !existingIds.has(group.id));
-                return [...prev, ...newGroups];
-              });
+            await loadAvailableGroups(searchTerm);
               break;
             case 'role':
-              const rolesResponse = await notificationApiClient.getAllRoles({ page: 0, size: 100, search: searchQuery }, { silent: true });
-              setRoles(prev => {
-                const existingIds = new Set(prev.map(role => role.id));
-                const newRoles = rolesResponse.filter((role: RoleDto) => !existingIds.has(role.id));
-                return [...prev, ...newRoles];
-              });
+            await loadAvailableRoles(searchTerm);
               break;
           }
         } catch (error) {
@@ -342,9 +317,8 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
         }
       };
       
-      const timeoutId = setTimeout(performSearch, 500);
+    const timeoutId = setTimeout(performSearch, 300);
       return () => clearTimeout(timeoutId);
-    }
   }, [searchQuery, selectedEntityType]);
 
   // Maintain focus after API calls
@@ -399,10 +373,12 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
   };
 
   // Entity type selection functions
-  const handleAddUser = () => {
+  const handleAddUser = async () => {
     setSelectedEntityType('user');
     setSearchQuery('');
     setShowSearchDropdown(true);
+    // Load initial users
+    await loadAvailableUsers();
     // Focus input after state update
     setTimeout(() => {
       if (searchInputRef.current) {
@@ -411,10 +387,12 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
     }, 0);
   };
 
-  const handleAddGroup = () => {
+  const handleAddGroup = async () => {
     setSelectedEntityType('group');
     setSearchQuery('');
     setShowSearchDropdown(true);
+    // Load initial groups
+    await loadAvailableGroups();
     // Focus input after state update
     setTimeout(() => {
       if (searchInputRef.current) {
@@ -423,10 +401,12 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
     }, 0);
   };
 
-  const handleAddRole = () => {
+  const handleAddRole = async () => {
     setSelectedEntityType('role');
     setSearchQuery('');
     setShowSearchDropdown(true);
+    // Load initial roles
+    await loadAvailableRoles();
     // Focus input after state update
     setTimeout(() => {
       if (searchInputRef.current) {
@@ -446,171 +426,103 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
     try {
       // Determine entity type
       let granteeType: GranteeType;
-      if ('username' in entity) {
+      if (isUser(entity)) {
         granteeType = GranteeType.USER;
-      } else if ('path' in entity) {
+      } else if (isGroup(entity)) {
         granteeType = GranteeType.GROUP;
       } else {
         granteeType = GranteeType.ROLE;
       }
 
-      const permissionData: TypeShareAccessWithTypeReq = {
-        granteeId: entity.id,
-        permission: PERMISSION_PRESETS.viewOnly,
-        type: granteeType
-      };
-
-      // Create a mock grant for UI display
-      const mockGrant: TypeShareAccessRes = {
+      // Open permission modal to set permissions
+      setEditingGrant({
         grantee: entity,
-        permission: PERMISSION_PRESETS.viewOnly
-      };
-
-      // Add to local state
-      setAllGrants(prev => [...prev, mockGrant]);
-      
-      // Track as pending new change
-      setPendingChanges(prev => ({
-        ...prev,
-        new: new Map(prev.new).set(entity.id, permissionData)
-      }));
-      
-      setHasUnsavedChanges(true);
-      handleCloseDropdown();
+        permission: PERMISSION_PRESETS.viewer,
+        type: granteeType,
+        isNew: true
+      });
+      setTempPermission(PERMISSION_PRESETS.viewer);
+      setShowPermissionModal(true);
     } catch (error) {
       console.error('Error adding permission:', error);
     }
   };
 
-  const removePermission = (granteeId: string, inherits: boolean) => {
+  const removePermission = async (granteeId: string, inherits: boolean) => {
     try {
-      // Update local state immediately for UI
-      setAllGrants(prev => prev.filter(grant => grant.grantee.id !== granteeId));
+      if (!confirm('Are you sure you want to remove this permission?')) {
+        return;
+      }
+
+      // Optimistic removal
+      removeGrantFromList(granteeId, (g) => g.grantee?.id);
       
-      // Check if this was a new grant (not yet saved)
-      setPendingChanges(prev => {
-        const newMap = new Map(prev.new);
-        const updatedMap = new Map(prev.updated);
-        const deletedSet = new Set(prev.deleted);
-        
-        if (newMap.has(granteeId)) {
-          // If it was a new grant, just remove it from pending new
-          newMap.delete(granteeId);
-        } else {
-          // If it was an existing grant, mark for deletion
-          deletedSet.add(granteeId);
-          updatedMap.delete(granteeId); // Remove from updated if it was there
-        }
-        
-        return {
-          new: newMap,
-          updated: updatedMap,
-          deleted: deletedSet
-        };
-      });
-      
-      setHasUnsavedChanges(true);
+      // Delete from backend
+      await notificationApiClient.deleteFolderShared(folder.id, granteeId, inherits);
     } catch (error) {
       console.error('Error removing permission:', error);
+      // Refresh to restore on error
+      fetchPermissions(false);
     }
   };
 
-  const updatePermission = (granteeId: string, permission: FolderPermissionReq, granteeType: GranteeType) => {
+  const updatePermission = (grant: TypeShareAccessRes) => {
     try {
-      const permissionData: TypeShareAccessWithTypeReq = {
-        granteeId,
-        permission,
-        type: granteeType
-      };
+      if (!grant.grantee) return;
 
-      // Update local state for UI
-      setAllGrants(prev => prev.map(grant => 
-        grant.grantee.id === granteeId 
-          ? { ...grant, permission } 
-          : grant
-      ));
-      
-      // Track the change
-      setPendingChanges(prev => {
-        const newMap = new Map(prev.new);
-        const updatedMap = new Map(prev.updated);
-        
-        // If this is a new grant, update it in the new map
-        if (newMap.has(granteeId)) {
-          newMap.set(granteeId, permissionData);
+      let granteeType: GranteeType;
+      if (isUser(grant.grantee)) {
+        granteeType = GranteeType.USER;
+      } else if (isGroup(grant.grantee)) {
+        granteeType = GranteeType.GROUP;
         } else {
-          // Otherwise, track it as an update
-          updatedMap.set(granteeId, permissionData);
-        }
-        
-        return {
-          ...prev,
-          new: newMap,
-          updated: updatedMap
-        };
+        granteeType = GranteeType.ROLE;
+      }
+
+      // Open permission modal to edit
+      setEditingGrant({
+        grantee: grant.grantee,
+        permission: grant.permission,
+        type: granteeType,
+        isNew: false
       });
-      
-      setHasUnsavedChanges(true);
+      setTempPermission(grant.permission);
+      setShowPermissionModal(true);
     } catch (error) {
       console.error('Error updating permission:', error);
     }
   };
 
-  // Save all pending changes to the server
-  const saveAllChanges = async () => {
+  const handleSavePermission = async () => {
+    if (!editingGrant) return;
+
+    const data: TypeShareAccessWithTypeReq = {
+      granteeId: editingGrant.grantee.id,
+      permission: tempPermission,
+      type: editingGrant.type
+    };
+
     try {
-      setIsSaving(true);
-      
-      // Save new grants
-      for (const [granteeId, permissionData] of pendingChanges.new) {
-        await notificationApiClient.createOrUpdateFolderShared(folder.id, permissionData);
+      if (editingGrant.isNew) {
+        // POST for new permission
+        const result = await notificationApiClient.createFolderPermission(folder.id, data);
+        addGrantToList(result);
+      } else {
+        // PUT for update
+        const result = await notificationApiClient.updateFolderPermission(folder.id, data);
+        updateGrantInList(editingGrant.grantee.id, () => result, (g) => g.grantee?.id);
       }
-      
-      // Save updated grants
-      for (const [granteeId, permissionData] of pendingChanges.updated) {
-        await notificationApiClient.createOrUpdateFolderShared(folder.id, permissionData);
-      }
-      
-      // Delete removed grants
-      for (const granteeId of pendingChanges.deleted) {
-        await notificationApiClient.deleteFolderShared(folder.id, granteeId, false);
-      }
-      
-      // Clear pending changes
-      setPendingChanges({
-        new: new Map(),
-        updated: new Map(),
-        deleted: new Set()
-      });
-      
-      setHasUnsavedChanges(false);
-      
-      // Reload permissions to sync with server
-      await loadInitialData();
-      
+
+      setShowPermissionModal(false);
+      setEditingGrant(null);
     } catch (error) {
-      console.error('Error saving permissions:', error);
-      alert('Failed to save some permissions. Please try again.');
-    } finally {
-      setIsSaving(false);
+      console.error('Error saving permission:', error);
     }
   };
 
+  // Simple close handler - no unsaved changes to worry about
   const handleClose = () => {
-    if (hasUnsavedChanges) {
-      if (confirm('You have unsaved changes. Are you sure you want to close without saving?')) {
-        // Reset pending changes
-        setPendingChanges({
-          new: new Map(),
-          updated: new Map(),
-          deleted: new Set()
-        });
-        setHasUnsavedChanges(false);
         onClose();
-      }
-    } else {
-      onClose();
-    }
   };
 
   // Add Entity Buttons Component - removed useCallback to prevent re-renders
@@ -681,12 +593,11 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
                   }}
                   className="w-full px-4 py-2 text-left text-sm text-neutral-text-dark hover:bg-neutral-background focus:bg-neutral-background focus:outline-none border-b border-ui last:border-b-0"
                 >
-                  <div className="flex items-center gap-2">
-                    {'username' in entity && <User className="h-4 w-4 text-neutral-text-light" />}
-                    {'path' in entity && <Users className="h-4 w-4 text-neutral-text-light" />}
-                    {'description' in entity && <Shield className="h-4 w-4 text-neutral-text-light" />}
-                    <div>
-                      {'username' in entity && (
+                  <div className="flex items-center gap-3">
+                    {/* User - Show Avatar */}
+                    {'username' in entity && (
+                      <>
+                        <UserAvatar user={entity as UserDto} size="sm" />
                         <div>
                           <div className="font-medium">
                             {`${entity.firstName || ''} ${entity.lastName || ''}`.trim() || entity.username}
@@ -695,20 +606,34 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
                             @{entity.username}{entity.email ? ` • ${entity.email}` : ''}
                           </div>
                         </div>
-                      )}
-                      {'path' in entity && (
+                      </>
+                    )}
+                    
+                    {/* Group - Show Icon */}
+                    {'userCount' in entity && (
+                      <>
+                        <div className="p-2 bg-green-100 rounded-lg shrink-0">
+                          <Users className="h-4 w-4 text-green-700" />
+                        </div>
                         <div>
                           <div className="font-medium">{entity.name}</div>
-                          <div className="text-xs text-neutral-text-light">{entity.path}</div>
+                          <div className="text-xs text-neutral-text-light">{entity.description || 'Group'}</div>
                         </div>
-                      )}
-                      {'description' in entity && (
+                      </>
+                    )}
+                    
+                    {/* Role - Show Icon */}
+                    {!('username' in entity) && !('userCount' in entity) && (
+                      <>
+                        <div className="p-2 bg-purple-100 rounded-lg shrink-0">
+                          <Shield className="h-4 w-4 text-purple-700" />
+                        </div>
                         <div>
                           <div className="font-medium">{entity.name}</div>
-                          <div className="text-xs text-neutral-text-light">{entity.description}</div>
+                          <div className="text-xs text-neutral-text-light">{entity.description || 'Role'}</div>
                         </div>
-                      )}
-                    </div>
+                      </>
+                    )}
                   </div>
                 </button>
               ))}
@@ -718,85 +643,6 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
       )}
     </div>
   );
-
-  const PermissionControls = ({ permission, granteeId, granteeType }: any) => {
-    const detectPreset = (perm: FolderPermissionReq) => {
-      if (JSON.stringify(perm) === JSON.stringify(PERMISSION_PRESETS.viewOnly)) return 'viewOnly';
-      if (JSON.stringify(perm) === JSON.stringify(PERMISSION_PRESETS.upload)) return 'upload';
-      if (JSON.stringify(perm) === JSON.stringify(PERMISSION_PRESETS.edit)) return 'edit';
-      if (JSON.stringify(perm) === JSON.stringify(PERMISSION_PRESETS.full)) return 'full';
-      return 'custom';
-    };
-
-    const handleEditClick = () => {
-      const grant = allGrants.find(g => g.grantee.id === granteeId);
-      if (grant) {
-        setEditingGrant(grant);
-        setTempPermission({ ...grant.permission });
-      }
-    };
-
-    return (
-      <div className="flex items-center justify-between">
-        <div className="text-sm text-neutral-text-light">
-          Current: {detectPreset(permission).replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
-        </div>
-        <button
-          onClick={handleEditClick}
-          className="flex items-center gap-2 px-3 py-1 bg-primary text-surface rounded text-sm hover:bg-primary-dark transition-colors"
-        >
-          <Edit className="h-3 w-3" />
-          Edit
-        </button>
-      </div>
-    );
-  };
-
-
-  const handleSavePermission = async () => {
-    if (!editingGrant || !tempPermission) return;
-    
-    try {
-      setLoading(true);
-      
-      // Determine grantee type
-      let granteeType: GranteeType;
-      if (editingGrant.grantee.username) {
-        granteeType = GranteeType.USER;
-      } else if (editingGrant.grantee.path) {
-        granteeType = GranteeType.GROUP;
-      } else {
-        granteeType = GranteeType.ROLE;
-      }
-
-      const permissionData: TypeShareAccessWithTypeReq = {
-        granteeId: editingGrant.grantee.id,
-        permission: tempPermission,
-        type: granteeType
-      };
-
-      // Send API request
-      const updatedGrant = await notificationApiClient.createOrUpdateFolderShared(folder.id, permissionData);
-      
-      // Update local state
-      setAllGrants(prev => prev.map(grant => 
-        grant.grantee.id === editingGrant.grantee.id ? updatedGrant : grant
-      ));
-      
-      // Close popup
-      setEditingGrant(null);
-      setTempPermission(null);
-    } catch (error) {
-      console.error('Error updating permission:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCancelEdit = () => {
-    setEditingGrant(null);
-    setTempPermission(null);
-  };
 
   if (!isOpen || !isClient) return null;
 
@@ -827,9 +673,17 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-medium text-neutral-text-dark">Folder Permissions</h3>
             <div className="text-sm text-neutral-text-light">
-              {allGrants.length} grant{allGrants.length !== 1 ? 's' : ''} with access
+              {totalElements} grant{totalElements !== 1 ? 's' : ''} with access
             </div>
           </div>
+          
+          <ServerSearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search by name, email, or role..."
+            className="mb-4"
+          />
+          
           <div className="space-y-3">
             <AddEntityButtons />
             <SearchableSelect />
@@ -845,7 +699,7 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
                 <span className="text-neutral-text-light">Loading permissions...</span>
               </div>
             </div>
-          ) : filteredGrants.length === 0 ? (
+          ) : allGrants.length === 0 ? (
             <div className="text-center py-12">
               <Users className="h-16 w-16 text-neutral-ui mx-auto mb-4" />
               <h3 className="text-lg font-medium text-neutral-text-dark mb-2">No Permissions Set</h3>
@@ -858,8 +712,12 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
             </div>
           ) : (
             <div className="space-y-3">
-              {filteredGrants.map((grant, index) => {
+              {allGrants.map((grant, index) => {
                 const grantee = grant.grantee;
+                
+                // Skip grants with null grantee (defensive programming)
+                if (!grantee) return null;
+                
                 const panelKey = `grant-${index}`;
                 const isCollapsed = collapsedPermissions[panelKey];
                 
@@ -869,18 +727,18 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
                 let displayName;
                 let displaySubtitle;
                 
-                if (grantee.username) {
+                if (isUser(grantee)) {
                   // User
                   granteeType = GranteeType.USER;
                   IconComponent = User;
                   displayName = `${grantee.firstName || ''} ${grantee.lastName || ''}`.trim() || grantee.username;
                   displaySubtitle = `@${grantee.username}${grantee.email ? ` • ${grantee.email}` : ''}`;
-                } else if (grantee.path) {
+                } else if (isGroup(grantee)) {
                   // Group
                   granteeType = GranteeType.GROUP;
                   IconComponent = Users;
                   displayName = grantee.name;
-                  displaySubtitle = grantee.path;
+                  displaySubtitle = grantee.description || 'Group';
                 } else {
                   // Role
                   granteeType = GranteeType.ROLE;
@@ -889,42 +747,64 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
                   displaySubtitle = grantee.description || 'Role';
                 }
                 
+                // Get active permissions for display
+                const activePerms = [];
+                if (grant.permission?.canView) activePerms.push('View');
+                if (grant.permission?.canUpload) activePerms.push('Upload');
+                if (grant.permission?.canEdit) activePerms.push('Edit');
+                if (grant.permission?.canDelete) activePerms.push('Delete');
+                if (grant.permission?.canShare) activePerms.push('Share');
+                if (grant.permission?.canManagePermissions) activePerms.push('Manage Permissions');
+                if (grant.permission?.canCreateSubFolders) activePerms.push('Create Subfolders');
+                if (grant.permission?.canEditDoc) activePerms.push('Edit Docs');
+                if (grant.permission?.canDeleteDoc) activePerms.push('Delete Docs');
+                if (grant.permission?.canShareDoc) activePerms.push('Share Docs');
+                if (grant.permission?.canManagePermissionsDoc) activePerms.push('Manage Doc Permissions');
+                
                 return (
                   <div key={grantee.id} className="border border-ui rounded-lg">
-                    <div 
-                      className="p-4 border-b border-ui flex justify-between items-center cursor-pointer hover:bg-neutral-background/50 transition-colors"
-                      onClick={() => togglePermissionPanel(panelKey)}
-                    >
+                    <div className="p-4 flex justify-between items-center">
                       <div className="flex items-center gap-3 flex-1">
-                        {isCollapsed ? (
-                          <ChevronRight className="h-4 w-4 text-neutral-text-light" />
+                        {isUser(grantee) ? (
+                          <UserAvatar user={grantee} size="sm" />
                         ) : (
-                          <ChevronDown className="h-4 w-4 text-neutral-text-light" />
-                        )}
                         <IconComponent className="h-5 w-5 text-neutral-text-light" />
+                        )}
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
                             <div className="font-medium text-neutral-text-dark">
                               {displayName}
                             </div>
-                            {pendingChanges.new.has(grantee.id) && (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-800 text-xs font-medium rounded-full border border-green-200">
-                                <div className="h-1.5 w-1.5 bg-green-600 rounded-full"></div>
-                                New
-                              </span>
-                            )}
-                            {pendingChanges.updated.has(grantee.id) && !pendingChanges.new.has(grantee.id) && (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-yellow-100 text-yellow-800 text-xs font-medium rounded-full border border-yellow-200">
-                                <div className="h-1.5 w-1.5 bg-yellow-600 rounded-full"></div>
-                                Modified
-                              </span>
-                            )}
                           </div>
-                          <div className="text-sm text-neutral-text-light">
+                          <div className="text-sm text-neutral-text-light mb-1">
                             {displaySubtitle}
                           </div>
+                          {/* Show permissions inline */}
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {activePerms.slice(0, 5).map((perm) => (
+                              <span key={perm} className="inline-flex px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-md border border-blue-200">
+                                {perm}
+                              </span>
+                            ))}
+                            {activePerms.length > 5 && (
+                              <span className="inline-flex px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-md">
+                                +{activePerms.length - 5} more
+                              </span>
+                            )}
+                          </div>
+                          </div>
                         </div>
-                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updatePermission(grant);
+                          }}
+                          className="p-2 hover:bg-blue-100 rounded-lg transition-colors"
+                          title="Edit Permissions"
+                        >
+                          <Edit className="h-4 w-4 text-neutral-text-light hover:text-blue-600" />
+                        </button>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -936,15 +816,7 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
-                    {!isCollapsed && (
-                      <div className="p-4">
-                        <PermissionControls
-                          permission={grant.permission}
-                          granteeId={grantee.id}
-                          granteeType={granteeType}
-                        />
                       </div>
-                    )}
                   </div>
                 );
               })}
@@ -952,200 +824,266 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
           )}
         </div>
 
-        {/* Footer */}
-        <div className="flex justify-between items-center p-6 border-t border-ui bg-neutral-background">
-          <div className="flex items-center gap-2">
-            {hasUnsavedChanges && (
-              <div className="flex items-center gap-2 text-sm text-yellow-600 bg-yellow-50 px-3 py-1.5 rounded-lg border border-yellow-200">
-                <div className="h-2 w-2 bg-yellow-600 rounded-full animate-pulse"></div>
-                <span className="font-medium">
-                  {pendingChanges.new.size + pendingChanges.updated.size + pendingChanges.deleted.size} unsaved change(s)
-                </span>
+        {/* Pagination */}
+        {!loadingPermissions && allGrants.length > 0 && (
+          <div className="px-6 pb-6">
+            <SearchPagination
+              totalPages={totalPages}
+              currentPage={page}
+              totalElements={totalElements}
+              itemsPerPage={pageSize}
+              onPageChange={setPage}
+            />
               </div>
             )}
-          </div>
-          <div className="flex gap-3">
+
+        {/* Footer */}
+        <div className="flex justify-end p-6 border-t border-ui">
             <button
               onClick={handleClose}
-              disabled={isSaving}
-              className="px-4 py-2 border border-ui rounded-lg text-neutral-text-dark hover:bg-surface transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={loading}
+            className="px-6 py-2 text-sm font-medium bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {hasUnsavedChanges ? 'Cancel' : 'Close'}
+            Close
             </button>
-            {hasUnsavedChanges && (
-              <button
-                onClick={saveAllChanges}
-                disabled={isSaving}
-                className="flex items-center gap-2 bg-primary text-surface px-4 py-2 rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isSaving ? (
-                  <>
-                    <div className="h-4 w-4 border-2 border-surface border-t-transparent rounded-full animate-spin"></div>
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4" />
-                    Save All Changes
-                  </>
-                )}
-              </button>
-            )}
-          </div>
         </div>
       </div>
 
-      {/* Edit Permission Popup */}
-      {editingGrant && tempPermission && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
-          <div className="bg-surface rounded-lg border border-ui w-full max-w-md">
-            {/* Header */}
-            <div className="flex justify-between items-center p-6 border-b border-ui">
-              <div>
+      {/* Permission Modal - Add/Edit Permissions */}
+      {showPermissionModal && editingGrant && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-auto">
+            <div className="p-6">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between mb-6">
                 <h3 className="text-lg font-semibold text-neutral-text-dark">
-                  Edit Permissions
+                  {editingGrant.isNew ? 'Set Permissions' : 'Edit Permissions'}
                 </h3>
-                <p className="text-sm text-neutral-text-light">
-                  {editingGrant.grantee.username ? 
-                    `${editingGrant.grantee.firstName || ''} ${editingGrant.grantee.lastName || ''}`.trim() || editingGrant.grantee.username :
-                    editingGrant.grantee.name
-                  }
-                </p>
-              </div>
               <button
-                onClick={handleCancelEdit}
-                className="p-2 rounded-lg hover:bg-neutral-background transition-colors"
+                  onClick={() => setShowPermissionModal(false)}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
               >
-                <X className="h-5 w-5 text-neutral-text-light" />
+                  <X className="h-5 w-5" />
               </button>
             </div>
 
-            {/* Content */}
-            <div className="p-6 space-y-4">
-              {/* Permission Presets */}
+              {/* Grantee Info */}
+              <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-lg mb-6">
+                {isUser(editingGrant.grantee) && (
+                  <UserAvatar user={editingGrant.grantee} size="md" />
+                )}
+                {isGroup(editingGrant.grantee) && (
+                  <div className="p-3 bg-green-100 rounded-lg">
+                    <Users className="h-6 w-6 text-green-700" />
+                  </div>
+                )}
+                {isRole(editingGrant.grantee) && (
+                  <div className="p-3 bg-purple-100 rounded-lg">
+                    <Shield className="h-6 w-6 text-purple-700" />
+                  </div>
+                )}
               <div>
-                <label className="block text-sm font-medium text-neutral-text-dark mb-2">
-                  Permission Preset
-                </label>
-                <Select 
-                  value={Object.keys(PERMISSION_PRESETS).find(preset => 
-                    JSON.stringify(PERMISSION_PRESETS[preset as keyof typeof PERMISSION_PRESETS]) === JSON.stringify(tempPermission)
-                  ) || 'custom'}
-                  onValueChange={(preset) => {
-                    if (preset !== 'custom') {
-                      setTempPermission(PERMISSION_PRESETS[preset as keyof typeof PERMISSION_PRESETS] as FolderPermissionReq);
+                  <div className="font-medium text-neutral-text-dark">
+                    {isUser(editingGrant.grantee) 
+                      ? `${editingGrant.grantee.firstName || ''} ${editingGrant.grantee.lastName || ''}`.trim() || editingGrant.grantee.username
+                      : editingGrant.grantee.name
                     }
-                  }}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="viewOnly">View Only</SelectItem>
-                    <SelectItem value="upload">Upload</SelectItem>
-                    <SelectItem value="edit">Edit</SelectItem>
-                    <SelectItem value="full">Full Access</SelectItem>
-                    <SelectItem value="custom">Custom</SelectItem>
-                  </SelectContent>
-                </Select>
+                  </div>
+                  <div className="text-sm text-neutral-text-light">
+                    {isUser(editingGrant.grantee) 
+                      ? editingGrant.grantee.email || editingGrant.grantee.username
+                      : isGroup(editingGrant.grantee)
+                      ? `${editingGrant.grantee.userCount || 0} members`
+                      : editingGrant.grantee.description || 'Role'
+                    }
+                  </div>
+                </div>
+              </div>
+              
+              {/* Permission Presets */}
+              <div className="mb-6">
+                <label className="text-sm font-medium mb-3 block text-neutral-text-dark">Quick Presets</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {Object.entries(PRESET_LABELS).map(([key, { label, color }]) => {
+                    const isActive = JSON.stringify(tempPermission) === JSON.stringify(PERMISSION_PRESETS[key as keyof typeof PERMISSION_PRESETS]);
+                    
+                    // Get icon based on preset
+                    const Icon = key === 'viewer' ? Eye : 
+                                key === 'contributor' ? Upload :
+                                key === 'editor' ? Edit :
+                                Shield;
+                    
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setTempPermission(PERMISSION_PRESETS[key as keyof typeof PERMISSION_PRESETS])}
+                        className={`flex items-center gap-2 px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
+                          isActive ? color : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                        {label}
+                        {isActive && <Check className="h-4 w-4 ml-auto" />}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* Individual Permissions */}
-              <div>
-                <label className="block text-sm font-medium text-neutral-text-dark mb-2">
-                  Individual Permissions
-                </label>
+              <div className="mb-6">
+                <label className="text-sm font-medium mb-3 block text-neutral-text-dark">Custom Permissions</label>
                 <div className="grid grid-cols-2 gap-3">
-                  <label className="flex items-center gap-2 text-sm">
+                  <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={tempPermission.canView}
-                      onChange={(e) => setTempPermission(prev => prev ? { ...prev, canView: e.target.checked } : null)}
-                      className="rounded border-ui"
+                      onChange={(e) => setTempPermission({...tempPermission, canView: e.target.checked})}
+                      className="rounded"
                     />
-                    <Eye className="h-4 w-4" />
-                    View
+                    <Eye className="h-4 w-4 text-gray-600" />
+                    <span className="text-sm">View</span>
                   </label>
-                  <label className="flex items-center gap-2 text-sm">
+                  
+                  <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={tempPermission.canUpload}
-                      onChange={(e) => setTempPermission(prev => prev ? { ...prev, canUpload: e.target.checked } : null)}
-                      className="rounded border-ui"
+                      onChange={(e) => setTempPermission({...tempPermission, canUpload: e.target.checked})}
+                      className="rounded"
                     />
-                    <Upload className="h-4 w-4" />
-                    Upload
+                    <Upload className="h-4 w-4 text-gray-600" />
+                    <span className="text-sm">Upload</span>
                   </label>
-                  <label className="flex items-center gap-2 text-sm">
+                  
+                  <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={tempPermission.canEdit}
-                      onChange={(e) => setTempPermission(prev => prev ? { ...prev, canEdit: e.target.checked } : null)}
-                      className="rounded border-ui"
+                      onChange={(e) => setTempPermission({...tempPermission, canEdit: e.target.checked})}
+                      className="rounded"
                     />
-                    <Edit className="h-4 w-4" />
-                    Edit
+                    <Edit className="h-4 w-4 text-gray-600" />
+                    <span className="text-sm">Edit Folder</span>
                   </label>
-                  <label className="flex items-center gap-2 text-sm">
+                  
+                  <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={tempPermission.canDelete}
-                      onChange={(e) => setTempPermission(prev => prev ? { ...prev, canDelete: e.target.checked } : null)}
-                      className="rounded border-ui"
+                      onChange={(e) => setTempPermission({...tempPermission, canDelete: e.target.checked})}
+                      className="rounded"
                     />
-                    <Trash2 className="h-4 w-4" />
-                    Delete
+                    <Trash2 className="h-4 w-4 text-gray-600" />
+                    <span className="text-sm">Delete Folder</span>
                   </label>
-                  <label className="flex items-center gap-2 text-sm">
+                  
+                  <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={tempPermission.canShare}
-                      onChange={(e) => setTempPermission(prev => prev ? { ...prev, canShare: e.target.checked } : null)}
-                      className="rounded border-ui"
+                      onChange={(e) => setTempPermission({...tempPermission, canShare: e.target.checked})}
+                      className="rounded"
                     />
-                    <Share2 className="h-4 w-4" />
-                    Share
+                    <Share2 className="h-4 w-4 text-gray-600" />
+                    <span className="text-sm">Share</span>
                   </label>
-                  <label className="flex items-center gap-2 text-sm">
+                  
+                  <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={tempPermission.canManagePermissions}
-                      onChange={(e) => setTempPermission(prev => prev ? { ...prev, canManagePermissions: e.target.checked } : null)}
-                      className="rounded border-ui"
+                      onChange={(e) => setTempPermission({...tempPermission, canManagePermissions: e.target.checked})}
+                      className="rounded"
                     />
-                    <Settings className="h-4 w-4" />
-                    Manage
+                    <Settings className="h-4 w-4 text-gray-600" />
+                    <span className="text-sm">Manage Permissions</span>
                   </label>
-                </div>
+                  
+                  <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={tempPermission.canCreateSubFolders}
+                      onChange={(e) => setTempPermission({...tempPermission, canCreateSubFolders: e.target.checked})}
+                      className="rounded"
+                    />
+                    <Folder className="h-4 w-4 text-gray-600" />
+                    <span className="text-sm">Create Subfolders</span>
+                  </label>
+                  
+                  <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={tempPermission.canEditDoc}
+                      onChange={(e) => setTempPermission({...tempPermission, canEditDoc: e.target.checked})}
+                      className="rounded"
+                    />
+                    <Edit className="h-4 w-4 text-gray-600" />
+                    <span className="text-sm">Edit Documents</span>
+                  </label>
+                  
+                  <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={tempPermission.canDeleteDoc}
+                      onChange={(e) => setTempPermission({...tempPermission, canDeleteDoc: e.target.checked})}
+                      className="rounded"
+                    />
+                    <Trash2 className="h-4 w-4 text-gray-600" />
+                    <span className="text-sm">Delete Documents</span>
+                  </label>
+                  
+                  <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={tempPermission.canShareDoc}
+                      onChange={(e) => setTempPermission({...tempPermission, canShareDoc: e.target.checked})}
+                      className="rounded"
+                    />
+                    <Share2 className="h-4 w-4 text-gray-600" />
+                    <span className="text-sm">Share Documents</span>
+                  </label>
+                  
+                  <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={tempPermission.canManagePermissionsDoc}
+                      onChange={(e) => setTempPermission({...tempPermission, canManagePermissionsDoc: e.target.checked})}
+                      className="rounded"
+                    />
+                    <Settings className="h-4 w-4 text-gray-600" />
+                    <span className="text-sm">Manage Doc Permissions</span>
+                  </label>
+                  
+                  <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={tempPermission.inherits}
+                      onChange={(e) => setTempPermission({...tempPermission, inherits: e.target.checked})}
+                      className="rounded"
+                    />
+                    <ChevronDown className="h-4 w-4 text-gray-600" />
+                    <span className="text-sm">Inherit to Subfolders</span>
+                  </label>
               </div>
             </div>
 
-            {/* Footer */}
-            <div className="flex justify-end items-center p-6 border-t border-ui bg-neutral-background gap-3">
+              {/* Modal Footer */}
+              <div className="flex justify-end gap-3">
               <button
-                onClick={handleCancelEdit}
-                disabled={loading}
-                className="px-4 py-2 border border-ui rounded-lg text-neutral-text-dark hover:bg-surface transition-colors disabled:opacity-50"
+                  onClick={() => setShowPermissionModal(false)}
+                  className="px-6 py-2 text-sm font-medium bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSavePermission}
-                disabled={loading}
-                className="flex items-center gap-2 bg-primary text-surface px-4 py-2 rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? (
-                  <>
-                    <div className="h-4 w-4 border-2 border-surface border-t-transparent rounded-full animate-spin"></div>
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4" />
-                    Save
-                  </>
-                )}
+                  className="px-6 py-2 text-sm font-medium bg-primary text-white hover:bg-primary/90 rounded-lg transition-colors"
+                >
+                  {editingGrant.isNew ? 'Add Permission' : 'Update Permission'}
               </button>
+              </div>
             </div>
           </div>
         </div>

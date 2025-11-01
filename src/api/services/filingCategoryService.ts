@@ -33,6 +33,15 @@ export class FilingCategoryService {
 
     return apiClient.get<PageResponse<FilingCategoryResponseDto>>(`${this.baseUrl}?${params}`);
   }
+  
+  // Alias method for getting all filing categories
+  async getAllFilingCategories(options?: { page?: number; size?: number; name?: string }): Promise<PageResponse<FilingCategoryResponseDto>> {
+    return this.getFilingCategories(
+      options?.page || 0, 
+      options?.size || 20, 
+      options?.name
+    );
+  }
 
   // Get filing category by ID
   async getFilingCategoryById(categoryId: number): Promise<FilingCategoryResponseDto> {

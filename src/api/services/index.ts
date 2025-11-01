@@ -14,7 +14,7 @@ export { commentService } from './commentService';
 export { favoriteService } from './favoriteService';
 export { recycleBinService } from './recycleBinService';
 export { auditLogService } from './auditLogService';
-export { classAService } from './classAService';
+export { unclassifiedDocumentService } from './unclassifiedDocumentService';
 
 // Re-export types for convenience
 export * from '../../types/api';

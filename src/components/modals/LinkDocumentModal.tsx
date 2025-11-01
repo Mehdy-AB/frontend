@@ -1,13 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { X, Link, Search, FileText, User, Loader2, AlertCircle } from 'lucide-react';
+import { useState } from 'react';
+import { X, Link, FileText, Loader2, AlertCircle } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { DocumentService } from '../../api/services/documentService';
-import { DocumentLinkRequestDto, DocumentSearchItem } from '../../types/api';
+import { linkRuleService } from '../../api/services/linkRuleService';
+import { DocumentLinkRequestDto, DocumentResponseDto } from '../../types/api';
 import { formatFileSize } from '../../utils/documentUtils';
+import FolderNavigationPicker from './FolderNavigationPicker';
 
 interface LinkDocumentModalProps {
   isOpen: boolean;
@@ -35,59 +36,17 @@ export default function LinkDocumentModal({
   sourceDocumentId, 
   sourceDocumentName 
 }: LinkDocumentModalProps) {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<DocumentSearchItem[]>([]);
-  const [selectedDocument, setSelectedDocument] = useState<DocumentSearchItem | null>(null);
+  const [selectedDocument, setSelectedDocument] = useState<DocumentResponseDto | null>(null);
   const [linkType, setLinkType] = useState('related');
   const [description, setDescription] = useState('');
-  const [isSearching, setIsSearching] = useState(false);
   const [isLinking, setIsLinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Search for documents
-  const handleSearch = async (query: string) => {
-    if (!query.trim()) {
-      setSearchResults([]);
-      return;
-    }
-
-    setIsSearching(true);
+  // Handle document selection from folder navigation
+  const handleSelectDocument = (document: DocumentResponseDto) => {
+    setSelectedDocument(document);
     setError(null);
-
-    try {
-      const response = await DocumentService.unifiedSearch({
-        query: query,
-        page: 0,
-        size: 20,
-        includeDocuments: true,
-        includeFolders: false
-      });
-      
-      // Filter out the source document
-      const filteredResults = (response.documents || [])
-        .filter((doc: DocumentSearchItem) => doc.id !== sourceDocumentId);
-      
-      setSearchResults(filteredResults);
-    } catch (error) {
-      console.error('Error searching documents:', error);
-      setError('Failed to search documents. Please try again.');
-    } finally {
-      setIsSearching(false);
-    }
   };
-
-  // Debounced search
-  useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      if (searchQuery.trim()) {
-        handleSearch(searchQuery);
-      } else {
-        setSearchResults([]);
-      }
-    }, 300);
-
-    return () => clearTimeout(timeoutId);
-  }, [searchQuery]);
 
   const handleLink = async () => {
     if (!selectedDocument) {
@@ -101,12 +60,12 @@ export default function LinkDocumentModal({
     try {
       const linkRequest: DocumentLinkRequestDto = {
         sourceDocumentId: sourceDocumentId,
-        targetDocumentId: selectedDocument.id,
+        targetDocumentId: selectedDocument.documentId,
         linkType: linkType,
         description: description.trim() || undefined
       };
 
-      await DocumentService.createDocumentLink(linkRequest);
+      await linkRuleService.createDocumentLink(linkRequest);
       onLinkCreated();
       handleClose();
     } catch (error) {
@@ -119,8 +78,6 @@ export default function LinkDocumentModal({
 
   const handleClose = () => {
     if (!isLinking) {
-      setSearchQuery('');
-      setSearchResults([]);
       setSelectedDocument(null);
       setLinkType('related');
       setDescription('');
@@ -132,8 +89,8 @@ export default function LinkDocumentModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-hidden">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[95vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b">
           <div className="flex items-center gap-2">
@@ -153,80 +110,18 @@ export default function LinkDocumentModal({
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-4 overflow-y-auto max-h-[calc(90vh-140px)]">
-          {/* Search Documents */}
+        <div className="p-6 space-y-4 overflow-y-auto flex-1">
+          {/* Folder Navigation Picker */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Search Documents
+              Select Document from Folders
             </label>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search by document name or title..."
-                className="pl-10"
-                disabled={isLinking}
-              />
-            </div>
+            <FolderNavigationPicker
+              excludeDocumentId={sourceDocumentId}
+              onSelectDocument={handleSelectDocument}
+              selectedDocument={selectedDocument}
+            />
           </div>
-
-          {/* Search Results */}
-          {searchQuery && (
-            <div className="border rounded-lg max-h-60 overflow-y-auto">
-              {isSearching ? (
-                <div className="p-4 text-center text-gray-500">
-                  <Loader2 className="w-4 h-4 animate-spin mx-auto mb-2" />
-                  Searching documents...
-                </div>
-              ) : searchResults.length > 0 ? (
-                <div className="divide-y">
-                  {searchResults.map((doc) => (
-                    <button
-                      key={doc.id}
-                      onClick={() => setSelectedDocument(doc)}
-                      disabled={isLinking}
-                      className={`w-full p-3 text-left hover:bg-gray-50 transition-colors disabled:opacity-50 ${
-                        selectedDocument?.id === doc.id ? 'bg-blue-50 border-l-4 border-blue-500' : ''
-                      }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <FileText className="h-5 w-5 text-gray-400 mt-0.5 flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <h4 className="font-medium text-gray-900 truncate">{doc.name}</h4>
-                            {selectedDocument?.id === doc.id && (
-                              <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                                Selected
-                              </span>
-                            )}
-                          </div>
-                          {doc.title && doc.title !== doc.name && (
-                            <p className="text-sm text-gray-600 truncate mb-1">{doc.title}</p>
-                          )}
-                           <div className="flex items-center gap-4 text-xs text-gray-500">
-                             <div className="flex items-center gap-1">
-                               <User className="h-3 w-3" />
-                               {doc.ownerName}
-                             </div>
-                             <span>{formatFileSize(doc.sizeBytes)}</span>
-                             <span className="text-xs bg-gray-100 px-2 py-1 rounded">
-                               {doc.mimeType}
-                             </span>
-                           </div>
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="p-4 text-center text-gray-500">
-                  No documents found matching "{searchQuery}"
-                </div>
-              )}
-            </div>
-          )}
 
           {/* Link Type */}
           <div>
@@ -273,7 +168,6 @@ export default function LinkDocumentModal({
                     <p className="text-sm text-blue-700">{selectedDocument.title}</p>
                   )}
                    <div className="flex items-center gap-4 text-xs text-blue-600 mt-1">
-                     <span>{selectedDocument.ownerName}</span>
                      <span>{formatFileSize(selectedDocument.sizeBytes)}</span>
                      <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
                        {selectedDocument.mimeType}
@@ -294,7 +188,7 @@ export default function LinkDocumentModal({
         </div>
 
         {/* Actions */}
-        <div className="flex gap-3 p-6 border-t bg-gray-50">
+        <div className="flex gap-3 p-6 border-t bg-gray-50 flex-shrink-0">
           <Button
             type="button"
             variant="outline"

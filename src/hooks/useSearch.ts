@@ -218,6 +218,8 @@ export const useSearch = () => {
         includeFolders: searchScope.includeFolders,
         includeDocuments: searchScope.includeDocuments,
         ownerId: selectedUser?.id,
+        // Map selected model/category to backend filter
+        categoryId: selectedModel?.id,
         createdAt: undefined, // Will be set if date filters are used
         createdAtFrom: undefined, // Will be set if date range filters are used
         createdAtTo: undefined, // Will be set if date range filters are used

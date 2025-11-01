@@ -1,7 +1,7 @@
 // app/favorites/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { 
   Star, 
   Search, 
@@ -21,7 +21,18 @@ import {
 import { useLanguage } from '../../contexts/LanguageContext';
 import { favoriteService } from '../../api/services/favoriteService';
 import { notificationApiClient } from '../../api/notificationClient';
-import { Favorite, FolderFavorite } from '../../types/api';
+import Pagination from '@/components/main/Pagination';
+import SearchBar from '@/components/main/SearchBar';
+import { PageResponse } from '../../types/api';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import UserAvatar from '@/components/main/UserAvatar';
+import { UserDto } from '@/types/api';
 
 interface FavoriteItem {
   id: number;
@@ -32,6 +43,8 @@ interface FavoriteItem {
   size: number;
   lastModified: string;
   owner?: string;
+  ownerEmail?: string;
+  ownerUser?: UserDto | null;
   mimeType?: string;
   versionNumber?: number;
   isPublic?: boolean;
@@ -40,69 +53,62 @@ interface FavoriteItem {
 export default function FavoritesPage() {
   const { t } = useLanguage();
   const [items, setItems] = useState<FavoriteItem[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [visibleItems, setVisibleItems] = useState<FavoriteItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [tableLoading, setTableLoading] = useState(false);
   const [filterType, setFilterType] = useState<'all' | 'documents' | 'folders'>('all');
-  const [sortBy, setSortBy] = useState<'name' | 'favoritedAt' | 'lastModified'>('favoritedAt');
+  const [sortBy, setSortBy] = useState<'name' | 'favoritedAt'>('favoritedAt');
   const [sortDesc, setSortDesc] = useState(true);
+  const [page, setPage] = useState(0);
+  const [size, setSize] = useState(20);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
+  const [query, setQuery] = useState('');
 
   useEffect(() => {
     const fetchFavorites = async () => {
       try {
-        setLoading(true);
-        
-        // Fetch both document and folder favorites
-        const [documentFavorites, folderFavorites] = await Promise.all([
-          favoriteService.getMyFavorites({
-            page: 0,
-            size: 100,
-            sortBy: 'createdAt',
-            sortDir: 'desc'
-          }),
-          favoriteService.getMyFolderFavorites({
-            page: 0,
-            size: 100,
-            sortBy: 'createdAt',
-            sortDir: 'desc'
-          })
-        ]);
+        if (items.length === 0) {
+          setLoading(true);
+        } else {
+          setTableLoading(true);
+        }
+        const backendSortBy = sortBy === 'favoritedAt' ? 'createdAt' : 'name';
+        const backendSortDir = sortDesc ? 'desc' as const : 'asc' as const;
+        const res: PageResponse<any> = await favoriteService.getFavorites(page, size, backendSortBy, backendSortDir, query, filterType);
 
-        // Transform document favorites
-        const documentItems: FavoriteItem[] = documentFavorites.content.map(fav => ({
-          id: fav.documentId,
-          name: fav.documentName,
-          type: 'document' as const,
-          favoritedAt: fav.createdAt,
-          path: '/Documents', // This would need to be fetched from document details
-          size: 0, // This would need to be fetched from document details
-          lastModified: fav.createdAt,
-          owner: fav.username
-        }));
+        const mapped: FavoriteItem[] = (res.content || []).map((fav: any) => {
+          const isDocument = (fav.type === 'DOCUMENT') || (fav.type === 'document');
+          const doc = fav.document;
+          const folder = fav.folder;
+          return {
+            id: isDocument ? doc?.documentId : folder?.id,
+            name: isDocument ? doc?.name : folder?.name,
+            type: isDocument ? 'document' : 'folder',
+            favoritedAt: fav.favoritedAt,
+            path: isDocument ? doc?.path : folder?.path,
+            size: isDocument ? (doc?.sizeBytes || 0) : (folder?.size || 0),
+            lastModified: isDocument ? (doc?.updatedAt || doc?.createdAt) : (folder?.updatedAt || folder?.createdAt),
+            owner: isDocument ? doc?.ownedBy?.username : folder?.ownedBy?.username,
+            ownerEmail: isDocument ? doc?.ownedBy?.email : folder?.ownedBy?.email,
+            ownerUser: (isDocument ? doc?.ownedBy : folder?.ownedBy) || null,
+          } as FavoriteItem;
+        });
 
-        // Transform folder favorites
-        const folderItems: FavoriteItem[] = folderFavorites.content.map(fav => ({
-          id: fav.folderId,
-          name: fav.folderName,
-          type: 'folder' as const,
-          favoritedAt: fav.createdAt,
-          path: '/Folders', // This would need to be fetched from folder details
-          size: 0, // This would need to be fetched from folder details
-          lastModified: fav.createdAt,
-          owner: fav.username
-        }));
-
-        // Combine and sort
-        const allItems = [...documentItems, ...folderItems];
-        setItems(allItems);
+        setItems(mapped);
+        setVisibleItems(mapped);
+        setTotalPages(res.totalPages || 0);
+        setTotalElements(res.totalElements || 0);
       } catch (error) {
         console.error('Error fetching favorites:', error);
       } finally {
         setLoading(false);
+        setTableLoading(false);
       }
     };
 
     fetchFavorites();
-  }, []);
+  }, [page, size, sortBy, sortDesc, query, filterType]);
 
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return '0 Bytes';
@@ -123,28 +129,29 @@ export default function FavoritesPage() {
   const removeFromFavorites = async (item: FavoriteItem) => {
     try {
       if (item.type === 'document') {
-        await favoriteService.removeFromFavorites(item.id);
+        await favoriteService.removeDocumentFromFavorites(item.id);
       } else {
         await favoriteService.removeFolderFromFavorites(item.id);
       }
       setItems(prev => prev.filter(i => i.id !== item.id || i.type !== item.type));
+      setVisibleItems(prev => prev.filter(i => i.id !== item.id || i.type !== item.type));
     } catch (error) {
       console.error('Error removing from favorites:', error);
     }
   };
 
+  // Stable callbacks for SearchBar to prevent re-render loops
+  const getFields = useCallback((it: FavoriteItem) => [it.name], []);
+  const handleLocalFilter = useCallback((filtered: any[]) => {
+    setVisibleItems(filtered as FavoriteItem[]);
+  }, []);
+  const handleRemoteSearch = useCallback((q: string) => {
+    setQuery(q);
+    setPage(0);
+  }, []);
+
   // Filter and sort items
-  const filteredAndSortedItems = items
-    .filter(item => {
-      if (filterType !== 'all' && item.type !== filterType.slice(0, -1)) {
-        return false;
-      }
-      if (searchQuery) {
-        return item.name.toLowerCase().includes(searchQuery.toLowerCase());
-      }
-      return true;
-    })
-    .sort((a, b) => {
+  const filteredAndSortedItems = visibleItems.sort((a, b) => {
       let aValue: string | number;
       let bValue: string | number;
       
@@ -156,10 +163,6 @@ export default function FavoritesPage() {
         case 'favoritedAt':
           aValue = new Date(a.favoritedAt).getTime();
           bValue = new Date(b.favoritedAt).getTime();
-          break;
-        case 'lastModified':
-          aValue = new Date(a.lastModified).getTime();
-          bValue = new Date(b.lastModified).getTime();
           break;
         default:
           return 0;
@@ -193,7 +196,7 @@ export default function FavoritesPage() {
         <div>
           <h1 className="text-2xl font-semibold text-neutral-text-dark">{t('common.favorites')}</h1>
           <p className="text-neutral-text-light">
-            {filteredAndSortedItems.length} favorite items • Quickly access your most important files
+            {totalElements} favorite items • Quickly access your most important files
           </p>
         </div>
       </div>
@@ -201,14 +204,13 @@ export default function FavoritesPage() {
       {/* Search and Filters */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-neutral-text-light h-4 w-4" />
-            <input
-              type="text"
+          <div className="w-72">
+            <SearchBar
+              sourceData={items}
+              getFields={getFields}
+              onLocalFilter={handleLocalFilter}
+              onRemoteSearch={handleRemoteSearch}
               placeholder={t('common.search')}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 pr-4 py-2 bg-surface border border-ui rounded-lg text-sm text-neutral-text-dark placeholder-neutral-text-light focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent w-64"
             />
           </div>
           
@@ -222,15 +224,27 @@ export default function FavoritesPage() {
             <option value="folders">Folders Only</option>
           </select>
 
-          <select 
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as 'name' | 'favoritedAt' | 'lastModified')}
-            className="text-sm border border-ui rounded px-3 py-2 bg-surface text-neutral-text-dark"
-          >
-            <option value="favoritedAt">Recently Favorited</option>
-            <option value="name">Name</option>
-            <option value="lastModified">Last Modified</option>
-          </select>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                Sort: {sortBy === 'favoritedAt' ? 'Recently Favorited' : 'Name'} {sortDesc ? '↓' : '↑'}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem onClick={() => { setSortBy('favoritedAt'); }}>
+                Recently Favorited
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { setSortBy('name'); }}>
+                Name
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { setSortDesc(false); }}>
+                Ascending
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { setSortDesc(true); }}>
+                Descending
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -256,19 +270,34 @@ export default function FavoritesPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredAndSortedItems.map((item) => (
-                <FavoriteItemRow 
-                  key={`${item.type}-${item.id}`}
-                  item={item}
-                  onRemove={removeFromFavorites}
-                  formatFileSize={formatFileSize}
-                  formatDate={formatDate}
-                />
-              ))}
+              {tableLoading ? (
+                <tr>
+                  <td className="p-4" colSpan={7}>
+                    <div className="h-6 w-full bg-neutral-ui animate-pulse rounded" />
+                  </td>
+                </tr>
+              ) : (
+                filteredAndSortedItems.map((item) => (
+                  <FavoriteItemRow 
+                    key={`${item.type}-${item.id}`}
+                    item={item}
+                    onRemove={removeFromFavorites}
+                    formatFileSize={formatFileSize}
+                    formatDate={formatDate}
+                  />
+                ))
+              )}
             </tbody>
           </table>
         )}
       </div>
+      <Pagination
+        currentPage={page}
+        totalPages={totalPages}
+        totalElements={totalElements}
+        pageSize={size}
+        onPageChange={(p) => setPage(p)}
+      />
     </div>
   );
 }
@@ -284,15 +313,7 @@ function FavoriteItemRow({ item, onRemove, formatFileSize, formatDate }: any) {
     }
   };
 
-  const handleDownload = async () => {
-    if (item.type === 'document') {
-      try {
-        await notificationApiClient.downloadDocument(item.id);
-      } catch (error) {
-        console.error('Error downloading document:', error);
-      }
-    }
-  };
+  // Actions limited to View and Remove only per requirements
 
   return (
     <tr className="border-b border-ui last:border-b-0 hover:bg-neutral-background/50 group">
@@ -329,7 +350,12 @@ function FavoriteItemRow({ item, onRemove, formatFileSize, formatDate }: any) {
         </div>
       </td>
       <td className="p-4">
-        <div className="text-sm text-neutral-text-light">{item.owner || 'Unknown'}</div>
+        <div className="flex items-center gap-2">
+          <UserAvatar user={item.ownerUser || null} size="sm" />
+          <div className="text-sm text-neutral-text-light">
+            {item.ownerEmail || 'Unknown'}
+          </div>
+        </div>
       </td>
       <td className="p-4">
         <div className="text-sm text-neutral-text-light">{formatDate(item.favoritedAt)}</div>
@@ -349,56 +375,21 @@ function FavoriteItemRow({ item, onRemove, formatFileSize, formatDate }: any) {
           >
             <Eye className="h-4 w-4" />
           </button>
-          {item.type === 'document' && (
-            <button 
-              onClick={handleDownload}
-              className="p-2 rounded hover:bg-ui transition-colors opacity-0 group-hover:opacity-100"
-              title="Download"
-            >
-              <Download className="h-4 w-4" />
-            </button>
-          )}
-          <div className="relative">
-            <button 
-              onClick={() => setShowMenu(!showMenu)}
-              className="p-2 rounded hover:bg-ui transition-colors opacity-0 group-hover:opacity-100"
-            >
-              <MoreVertical className="h-4 w-4" />
-            </button>
-            
-            {showMenu && (
-              <div className="absolute right-0 top-full mt-1 w-48 bg-surface border border-ui rounded-lg shadow-medium z-10">
-                <button 
-                  onClick={handleView}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-text-light hover:text-neutral-text-dark hover:bg-neutral-background"
-                >
-                  <Eye className="h-4 w-4" />
-                  View
-                </button>
-                {item.type === 'document' && (
-                  <button 
-                    onClick={handleDownload}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-text-light hover:text-neutral-text-dark hover:bg-neutral-background"
-                  >
-                    <Download className="h-4 w-4" />
-                    Download
-                  </button>
-                )}
-                <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-text-light hover:text-neutral-text-dark hover:bg-neutral-background">
-                  <Share2 className="h-4 w-4" />
-                  Share
-                </button>
-                <hr className="border-ui" />
-                <button 
-                  onClick={() => onRemove(item)}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-error hover:bg-error/10"
-                >
-                  <Star className="h-4 w-4" />
-                  Remove from Favorites
-                </button>
-              </div>
-            )}
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="p-2 rounded hover:bg-ui transition-colors opacity-0 group-hover:opacity-100">
+                <MoreVertical className="h-4 w-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={handleView}>
+                <Eye className="h-4 w-4 mr-2" /> View
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onRemove(item)} className="text-error">
+                <Star className="h-4 w-4 mr-2" /> Remove from Favorites
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </td>
     </tr>

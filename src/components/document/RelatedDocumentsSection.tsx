@@ -14,10 +14,11 @@ import {
   Settings,
   Maximize2,
   ChevronDown,
-  Loader2
+  Loader2,
+  Trash2
 } from 'lucide-react';
 import { RelatedDocumentResponseDto } from '../../types/api';
-import { DocumentService } from '../../api/services/documentService';
+import { documentService } from '../../api/services/documentService';
 import { formatFileSize, formatDate, getLinkTypeColor } from '../../utils/documentUtils';
 import ViewRelatedDocumentsModal from '../modals/ViewRelatedDocumentsModal';
 import LinkDocumentModal from '../modals/LinkDocumentModal';
@@ -45,6 +46,8 @@ export default function RelatedDocumentsSection({
   const [totalPages, setTotalPages] = useState(0);
   const [totalElements, setTotalElements] = useState(0);
   const pageSize = 5;
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [linkToDelete, setLinkToDelete] = useState<{ linkId: number; documentName: string; isManual: boolean } | null>(null);
 
   useEffect(() => {
     loadRelatedDocuments(0);
@@ -59,7 +62,7 @@ export default function RelatedDocumentsSection({
       }
       setError(null);
       
-      const response = await DocumentService.getRelatedDocuments(documentId, {
+      const response = await documentService.getRelatedDocuments(documentId, {
         page,
         size: pageSize
       });
@@ -93,14 +96,31 @@ export default function RelatedDocumentsSection({
     onLinkCreated?.();
   };
 
-  const handleUnlinkDocument = async (linkId: number) => {
+  const handleDeleteLinkClick = (linkId: number, documentName: string, isManual: boolean) => {
+    setLinkToDelete({ linkId, documentName, isManual });
+    setShowDeleteConfirmation(true);
+  };
+
+  const confirmDeleteLink = async () => {
+    if (!linkToDelete) return;
+
     try {
-      await DocumentService.deleteDocumentLink(linkId);
-      loadRelatedDocuments(0);
+      setIsLoading(true);
+      await documentService.deleteDocumentLink(linkToDelete.linkId);
+      await loadRelatedDocuments(0);
+      setShowDeleteConfirmation(false);
+      setLinkToDelete(null);
     } catch (error) {
       console.error('Error unlinking document:', error);
       setError('Failed to unlink document');
+    } finally {
+      setIsLoading(false);
     }
+  };
+
+  const cancelDeleteLink = () => {
+    setShowDeleteConfirmation(false);
+    setLinkToDelete(null);
   };
 
   const handleViewDocument = (docId: number) => {
@@ -109,8 +129,8 @@ export default function RelatedDocumentsSection({
 
   const handleDownloadDocument = async (docId: number) => {
     try {
-      const downloadUrl = await DocumentService.downloadDocument(docId);
-      await DocumentService.fileDownloaded(docId);
+      const downloadUrl = await documentService.downloadDocument(docId);
+      await documentService.fileDownloaded(docId);
       window.open(downloadUrl, '_blank');
     } catch (error) {
       console.error('Error downloading document:', error);
@@ -197,7 +217,7 @@ export default function RelatedDocumentsSection({
                             <span className={`inline-flex items-center px-1 py-0.5 rounded text-xs font-medium ${getLinkTypeColor(doc.linkType)}`}>
                               {doc.linkType}
                             </span>
-                            {doc.isManual ? (
+                            {doc.manual ? (
                               <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
                                 <Settings className="h-2.5 w-2.5" />
                                 Manual
@@ -231,13 +251,13 @@ export default function RelatedDocumentsSection({
                               <Download className="h-3 w-3" />
                             </button>
                           )}
-                          {canEdit && doc.isManual && (
+                          {canEdit && (
                             <button
-                              onClick={() => handleUnlinkDocument(doc.documentId)}
+                              onClick={() => handleDeleteLinkClick(doc.linkId, doc.documentName, doc.isManual)}
                               className="p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-600"
-                              title="Unlink Document"
+                              title={doc.isManual ? "Remove Manual Link" : "Remove Auto Link"}
                             >
-                              <Unlink className="h-3 w-3" />
+                              <Trash2 className="h-3 w-3" />
                             </button>
                           )}
                         </div>
@@ -300,6 +320,66 @@ export default function RelatedDocumentsSection({
         sourceDocumentId={documentId}
         sourceDocumentName={documentName}
       />
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirmation && linkToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                  <Trash2 className="h-5 w-5 text-red-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Remove Document Link
+                </h3>
+              </div>
+              
+              <p className="text-gray-600 mb-2">
+                Are you sure you want to remove the link to{' '}
+                <span className="font-medium text-gray-900">"{linkToDelete.documentName}"</span>?
+              </p>
+              
+              {!linkToDelete.isManual && (
+                <div className="flex items-start gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800 mb-4">
+                  <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="font-medium">This is an automatic link</p>
+                    <p className="text-xs mt-1">It was created by a link rule and may be recreated automatically.</p>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={cancelDeleteLink}
+                  disabled={isLoading}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDeleteLink}
+                  disabled={isLoading}
+                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Removing...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-4 w-4" />
+                      Remove Link
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

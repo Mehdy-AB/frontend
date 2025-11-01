@@ -81,7 +81,7 @@ export default function DocumentViewPage() {
           notificationApiClient.getDocument(parseInt(documentId), { silent: true }),
           notificationApiClient.downloadDocument(
             parseInt(documentId), 
-            versionToFetch ? { version: versionToFetch } : {}, 
+            versionToFetch || undefined, 
             { silent: true }
           )
         ]);
@@ -257,12 +257,18 @@ export default function DocumentViewPage() {
     
     try {
       // Download the current version (use versionId if available, otherwise latest)
-      const versionToDownload = currentVersion || document.documentId;
-      const downloadUrl = await notificationApiClient.downloadDocument(document.documentId, { version: versionToDownload });
+      // Pass versionId directly as second parameter (not as object)
+      const downloadUrl = await notificationApiClient.downloadDocument(
+        document.documentId, 
+        currentVersion || undefined
+      );
       
       // Log the download operation
       try {
-        await notificationApiClient.fileDownloaded(document.documentId, { version: versionToDownload });
+        await notificationApiClient.fileDownloaded(
+          document.documentId, 
+          currentVersion || undefined
+        );
       } catch (logError) {
         console.warn('Failed to log download operation:', logError);
       }
@@ -336,7 +342,7 @@ export default function DocumentViewPage() {
       // Fetch the specific version content with version parameter
       const newDownloadUrl = await notificationApiClient.downloadDocument(
         document.documentId, 
-        { version: versionId }, // Explicitly fetch the restored version
+        versionId, // Explicitly fetch the restored version
         { silent: true }
       );
       
@@ -493,7 +499,7 @@ export default function DocumentViewPage() {
           try {
             const [docData, downloadUrl] = await Promise.all([
               notificationApiClient.getDocument(parseInt(documentId), { silent: true }),
-              notificationApiClient.downloadDocument(parseInt(documentId), {}, { silent: true })
+              notificationApiClient.downloadDocument(parseInt(documentId), undefined, { silent: true })
             ]);
             
             // Update document with new data
@@ -530,7 +536,7 @@ export default function DocumentViewPage() {
           onClose={() => setShowDeleteConfirm(false)}
           onConfirm={handleDeleteDocument}
           title="Delete Document"
-          message="This action cannot be undone"
+          message="Are you sure you want to delete this document?"
           confirmText="Delete"
           cancelText="Cancel"
           variant="destructive"

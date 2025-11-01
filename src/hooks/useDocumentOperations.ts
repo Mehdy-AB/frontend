@@ -1,7 +1,7 @@
 // hooks/useDocumentOperations.ts
 import { useState, useCallback } from 'react';
 import { notificationApiClient } from '../api/notificationClient';
-import AuditLogService from '../api/services/auditLogService';
+import { auditLogService } from '../api/services/auditLogService';
 import { commentService } from '../api/services/commentService';
 import { favoriteService } from '../api/services/favoriteService';
 import { DocumentViewDto } from '../types/documentView';
@@ -19,10 +19,7 @@ export const useDocumentOperations = (documentId: number) => {
   const fetchAuditLogs = useCallback(async (docId: number) => {
     try {
       setIsLoadingAuditLogs(true);
-      const response = await AuditLogService.getAuditLogsByEntity('DOCUMENT', docId.toString(), {
-        page: 0,
-        size: 50
-      });
+      const response = await auditLogService.getAuditLogsByEntity('DOCUMENT', docId, 0, 50);
       setAuditLogs(response.content);
     } catch (error) {
       console.error('Error fetching audit logs:', error);
@@ -52,7 +49,7 @@ export const useDocumentOperations = (documentId: number) => {
   // Check if document is favorite
   const checkFavoriteStatus = useCallback(async (docId: number) => {
     try {
-      const response = await favoriteService.isFavorite(docId);
+      const response = await favoriteService.checkDocumentFavorite(docId);
       setIsFavorite(response.isFavorite);
     } catch (error) {
       console.error('Error checking favorite status:', error);
@@ -63,10 +60,10 @@ export const useDocumentOperations = (documentId: number) => {
   const toggleFavorite = useCallback(async (document: DocumentViewDto) => {
     try {
       if (isFavorite) {
-        await favoriteService.removeFromFavorites(document.documentId);
+        await favoriteService.removeDocumentFromFavorites(document.documentId);
         setIsFavorite(false);
       } else {
-        await favoriteService.addToFavorites(document.documentId);
+        await favoriteService.addDocumentToFavorites(document.documentId);
         setIsFavorite(true);
       }
     } catch (error) {
@@ -141,11 +138,11 @@ export const useDocumentOperations = (documentId: number) => {
   // Download document
   const downloadDocument = useCallback(async (document: DocumentViewDto, version?: number) => {
     try {
-      const downloadUrl = await notificationApiClient.downloadDocument(document.documentId, { version });
+      const downloadUrl = await notificationApiClient.downloadDocument(document.documentId, version);
       
       // Log the download operation
       try {
-        await notificationApiClient.fileDownloaded(document.documentId, { version });
+        await notificationApiClient.fileDownloaded(document.documentId, version);
       } catch (logError) {
         console.warn('Failed to log download operation:', logError);
         // Don't throw here as the download was successful
