@@ -30,7 +30,9 @@ interface ClassAFilterPanelProps {
 
 export interface ClassAFilters {
   query?: string;
+  userId?: string;
   categoryId?: number;
+  name?: string;
   dateFrom?: string;
   dateTo?: string;
   exactDate?: string;
