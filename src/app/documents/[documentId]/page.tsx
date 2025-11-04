@@ -6,6 +6,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { notificationApiClient } from '../../../api/notificationClient';
 import { DocumentViewDto, DocumentTab } from '../../../types/documentView';
+import { DocumentVersionResponseDto } from '../../../types/api';
 import { useDocumentOperations } from '../../../hooks/useDocumentOperations';
 import { copyToClipboard } from '../../../utils/documentUtils';
 import FileViewer from '../../../components/viewers/FileViewer';
@@ -171,7 +172,7 @@ export default function DocumentViewPage() {
     if (!document) return;
     
     try {
-      const versions = await notificationApiClient.getDocumentVersionsList(document.documentId);
+      const versions = await notificationApiClient.getDocumentVersionsList(document.documentId) as unknown as DocumentVersionResponseDto[];
       // Sort versions by version number
       const sortedVersions = versions.sort((a, b) => a.versionNumber - b.versionNumber);
       
@@ -182,8 +183,8 @@ export default function DocumentViewPage() {
         sizeBytes: version.sizeBytes,
         mimeType: version.mimeType,
         createdAt: version.createdAt,
-        updatedAt: version.updatedAt,
-        createdBy: version.createdBy
+        updatedAt: version.createdAt, // DocumentVersionResponseDto doesn't have updatedAt, use createdAt
+        createdBy: undefined // DocumentVersionResponseDto doesn't include user info
       }));
       setVersions(versionInfos);
     } catch (error) {
