@@ -1233,7 +1233,8 @@ function RuleModal({
   const [linkType, setLinkType] = useState(initial?.linkType || 'RELATED');
   const [enabled, setEnabled] = useState(initial?.enabled ?? true);
   const [bidirectional, setBidirectional] = useState(initial?.bidirectional ?? false);
-  const [conditionsLogic, setConditionsLogic] = useState<'AND' | 'OR'>(initial?.conditionsLogic || 'AND');
+  // Note: LinkRuleResponseDto doesn't include conditionsLogic, defaulting to 'AND'
+  const [conditionsLogic, setConditionsLogic] = useState<'AND' | 'OR'>('AND');
   const [saving, setSaving] = useState(false);
 
   // Filing categories + metadata
@@ -1561,9 +1562,13 @@ function RuleDetailsModal({
               {(rule.conditions || []).map((c, idx) => (
                 <div key={idx} className="p-2 border rounded text-sm">
                   <div className="flex flex-wrap gap-2 items-center">
-                    <span className="px-2 py-0.5 rounded bg-gray-100">source #{c.sourceMetadataId}</span>
+                    <span className="px-2 py-0.5 rounded bg-gray-100">
+                      source: {c.sourceMetadata?.metadataName || c.sourceMetadata?.metadataId || 'N/A'}
+                    </span>
                     <span className="text-gray-500">{c.operator}</span>
-                    <span className="px-2 py-0.5 rounded bg-gray-100">target #{c.targetMetadataId}</span>
+                    <span className="px-2 py-0.5 rounded bg-gray-100">
+                      target: {c.targetMetadata?.metadataName || c.targetMetadata?.metadataId || 'N/A'}
+                    </span>
                     {c.caseSensitive && (
                       <span className="ml-2 text-xs text-gray-600">case sensitive</span>
                     )}

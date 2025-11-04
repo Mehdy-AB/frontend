@@ -276,7 +276,7 @@ export default function UsersPage() {
                     </td>
                     <td className="p-4">
                       {user.status === 'ACTIVE' || user.enabled ? (
-                        <Badge variant="success">Active</Badge>
+                        <Badge variant="default" className="bg-green-500">Active</Badge>
                       ) : (
                         <Badge variant="destructive">Disabled</Badge>
                       )}

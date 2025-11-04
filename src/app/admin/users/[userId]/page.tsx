@@ -387,7 +387,7 @@ export default function UserDetailPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   {user.status === 'ACTIVE' || user.enabled ? (
-                    <Badge variant="success">Active</Badge>
+                    <Badge variant="default" className="bg-green-500">Active</Badge>
                   ) : (
                     <Badge variant="destructive">Disabled</Badge>
                   )}
@@ -550,7 +550,7 @@ export default function UserDetailPage() {
                       <dt className="text-sm text-muted-foreground">Status</dt>
                       <dd>
                         {user.status === 'ACTIVE' || user.enabled ? (
-                          <Badge variant="success">Active</Badge>
+                          <Badge variant="default" className="bg-green-500">Active</Badge>
                         ) : (
                           <Badge variant="destructive">Disabled</Badge>
                         )}
@@ -560,7 +560,7 @@ export default function UserDetailPage() {
                       <dt className="text-sm text-muted-foreground">Email Verified</dt>
                       <dd>
                         {user.emailVerified ? (
-                          <Badge variant="success">Verified</Badge>
+                          <Badge variant="default" className="bg-green-500">Verified</Badge>
                         ) : (
                           <Badge variant="outline">Not Verified</Badge>
                         )}
