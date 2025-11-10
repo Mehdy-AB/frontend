@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { 
   Plus, 
   Edit,
@@ -21,6 +22,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { notificationApiClient } from '@/api/notificationClient';
 import { GroupDto } from '@/types/api';
 import Pagination from '@/components/main/Pagination';
@@ -32,9 +34,19 @@ import EditGroupModal, { EditGroupData } from '@/components/modals/EditGroupModa
 import AssignGroupModal from '@/components/modals/AssignGroupModal';
 import ViewGroupUsersModal from '@/components/modals/ViewGroupUsersModal';
 import ConfirmationModal from '@/components/modals/ConfirmationModal';
+import { useAdminPagePermissions } from '@/hooks/useAdminPagePermissions';
 
 export default function GroupsPage() {
+  const router = useRouter();
   const pageSize = 20;
+  const { canView, canCreate, canUpdate, canDelete, canAssign } = useAdminPagePermissions();
+  
+  // Redirect if user doesn't have view permission
+  useEffect(() => {
+    if (!canView) {
+      router.push('/');
+    }
+  }, [canView, router]);
   
   // Use the server-side search hook
   const {
@@ -206,6 +218,16 @@ export default function GroupsPage() {
     );
   }
 
+  if (!canView) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <p className="text-destructive text-lg">You don't have permission to view this page</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 p-6">
       {/* Header */}
@@ -214,10 +236,23 @@ export default function GroupsPage() {
           <h1 className="text-3xl font-bold">Group Management</h1>
           <p className="text-muted-foreground">Manage user groups and their members</p>
         </div>
-        <Button className="gap-2" onClick={() => setIsCreateModalOpen(true)}>
-          <Plus className="h-4 w-4" />
-          Add Group
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button 
+              className="gap-2" 
+              onClick={() => setIsCreateModalOpen(true)}
+              disabled={!canCreate}
+            >
+              <Plus className="h-4 w-4" />
+              Add Group
+            </Button>
+          </TooltipTrigger>
+          {!canCreate && (
+            <TooltipContent>
+              <p>You don't have permission to create groups</p>
+            </TooltipContent>
+          )}
+        </Tooltip>
       </div>
 
       {/* Error Display */}
@@ -344,22 +379,38 @@ export default function GroupsPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => handleEditClick(group)}>
+                              <DropdownMenuItem 
+                                onClick={() => canUpdate && handleEditClick(group)}
+                                disabled={!canUpdate}
+                                className={!canUpdate ? 'opacity-50 cursor-not-allowed' : ''}
+                                title={!canUpdate ? "You don't have permission to edit groups" : undefined}
+                              >
                                 <Edit className="h-4 w-4 mr-2" />
                                 Edit Group
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleAssignClick(group)}>
+                              
+                              <DropdownMenuItem 
+                                onClick={() => canAssign && handleAssignClick(group)}
+                                disabled={!canAssign}
+                                className={!canAssign ? 'opacity-50 cursor-not-allowed' : ''}
+                                title={!canAssign ? "You don't have permission to assign users to groups" : undefined}
+                              >
                                 <UserPlus className="h-4 w-4 mr-2" />
                                 Assign Users
                               </DropdownMenuItem>
+                              
                               <DropdownMenuItem onClick={() => handleViewUsersClick(group)}>
                                 <UsersIcon className="h-4 w-4 mr-2" />
                                 View Users
                               </DropdownMenuItem>
-                              <DropdownMenuSeparator />
+                              
+                              {canDelete && <DropdownMenuSeparator />}
+                              
                               <DropdownMenuItem 
-                                onClick={() => handleDeleteClick(group)} 
-                                className="text-destructive"
+                                onClick={() => canDelete && handleDeleteClick(group)} 
+                                disabled={!canDelete}
+                                className={`${!canDelete ? 'opacity-50 cursor-not-allowed' : 'text-destructive'}`}
+                                title={!canDelete ? "You don't have permission to delete groups" : undefined}
                               >
                                 <Trash2 className="h-4 w-4 mr-2" />
                                 Delete Group

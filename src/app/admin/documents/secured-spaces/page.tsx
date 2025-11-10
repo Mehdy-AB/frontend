@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { 
   Shield, 
   Plus, 
@@ -55,7 +56,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useLanguage } from '../../../../contexts/LanguageContext';
+import { useAdminPagePermissions } from '@/hooks/useAdminPagePermissions';
 
 // Mock data for demonstration
 const mockSecuredSpaces = [
@@ -194,6 +197,8 @@ const statuses = ['All', 'Active', 'Inactive', 'Maintenance', 'Error'];
 
 export default function SecuredSpacesPage() {
   const { t } = useLanguage();
+  const router = useRouter();
+  const { canView, canCreate, canUpdate, canDelete } = useAdminPagePermissions();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [securedSpaces, setSecuredSpaces] = useState(mockSecuredSpaces);
@@ -203,6 +208,12 @@ export default function SecuredSpacesPage() {
   const [selectedStatus, setSelectedStatus] = useState('All');
   const [loading, setLoading] = useState(false);
   const [expandedSpaces, setExpandedSpaces] = useState<string[]>([]);
+  
+  useEffect(() => {
+    if (!canView) {
+      router.push('/');
+    }
+  }, [canView, router]);
 
   // Filter spaces based on search, type, access level, and status
   useEffect(() => {
@@ -341,6 +352,16 @@ export default function SecuredSpacesPage() {
     }
   };
 
+  if (!canView) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <p className="text-destructive text-lg">You don't have permission to view this page</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -354,10 +375,23 @@ export default function SecuredSpacesPage() {
             <Server className="h-4 w-4" />
             Import Spaces
           </Button>
-          <Button className="gap-2">
-            <Plus className="h-4 w-4" />
-            Create Space
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button 
+                className="gap-2"
+                disabled={!canCreate}
+                onClick={() => {/* TODO: Open create modal */}}
+              >
+                <Plus className="h-4 w-4" />
+                Create Space
+              </Button>
+            </TooltipTrigger>
+            {!canCreate && (
+              <TooltipContent>
+                <p>You don't have permission to create secured spaces</p>
+              </TooltipContent>
+            )}
+          </Tooltip>
         </div>
       </div>
 

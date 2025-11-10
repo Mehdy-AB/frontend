@@ -5,9 +5,14 @@ import {
   Edit, 
   Folder, 
   Settings, 
-  Trash2 
+  Trash2,
+  Download,
+  Share2,
+  Eye,
+  Copy
 } from 'lucide-react';
 import { DocumentResponseDto, FolderResDto } from '@/types/api';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 type TableItem = (FolderResDto & { type: 'folder' }) | (DocumentResponseDto & { type: 'document' });
 
@@ -19,6 +24,10 @@ interface ItemMenuProps {
   onRename?: (item: TableItem) => void;
   onDelete?: (item: TableItem) => void;
   onShowComments?: (item: TableItem) => void;
+  onDownload?: (item: TableItem) => void;
+  onShare?: (item: TableItem) => void;
+  onCopyLink?: (item: TableItem) => void;
+  onView?: (item: TableItem) => void;
   onClose: () => void;
   buttonRef?: React.RefObject<HTMLButtonElement | null>;
 }
@@ -31,6 +40,10 @@ export function ItemMenu({
   onRename, 
   onDelete, 
   onShowComments,
+  onDownload,
+  onShare,
+  onCopyLink,
+  onView,
   onClose, 
   buttonRef 
 }: ItemMenuProps) {
@@ -75,6 +88,8 @@ export function ItemMenu({
   const canMove = item.userPermissions?.canEdit;
   const canDelete = item.userPermissions?.canDelete;
   const canManagePermissions = item.userPermissions?.canManagePermissions;
+  const canView = item.userPermissions?.canView;
+  const canShare = item.userPermissions?.canShare;
 
   // 💡 Don’t render until position is known
   if (!position) return null;
@@ -88,6 +103,110 @@ export function ItemMenu({
         zIndex: 9999,
       }}
     >
+      {!isFolder && onView && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (canView) {
+                  onView(item);
+                  onClose();
+                }
+              }}
+              disabled={!canView}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
+                canView
+                  ? 'text-gray-700 hover:bg-gray-100'
+                  : 'text-gray-400 cursor-not-allowed'
+              }`}
+            >
+              <Eye className="h-4 w-4" />
+              View
+            </button>
+          </TooltipTrigger>
+          {!canView && (
+            <TooltipContent>
+              <p>You don't have permission to view this document</p>
+            </TooltipContent>
+          )}
+        </Tooltip>
+      )}
+
+      {onDownload && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (canView) {
+                  onDownload(item);
+                  onClose();
+                }
+              }}
+              disabled={!canView}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
+                canView
+                  ? 'text-gray-700 hover:bg-gray-100'
+                  : 'text-gray-400 cursor-not-allowed'
+              }`}
+            >
+              <Download className="h-4 w-4" />
+              Download
+            </button>
+          </TooltipTrigger>
+          {!canView && (
+            <TooltipContent>
+              <p>You don't have permission to download this item</p>
+            </TooltipContent>
+          )}
+        </Tooltip>
+      )}
+
+      {onShare && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (canShare) {
+                  onShare(item);
+                  onClose();
+                }
+              }}
+              disabled={!canShare}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
+                canShare
+                  ? 'text-gray-700 hover:bg-gray-100'
+                  : 'text-gray-400 cursor-not-allowed'
+              }`}
+            >
+              <Share2 className="h-4 w-4" />
+              Share
+            </button>
+          </TooltipTrigger>
+          {!canShare && (
+            <TooltipContent>
+              <p>You don't have permission to share this item</p>
+            </TooltipContent>
+          )}
+        </Tooltip>
+      )}
+
+      {onCopyLink && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onCopyLink(item);
+            onClose();
+          }}
+          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+        >
+          <Copy className="h-4 w-4" />
+          Copy Link
+        </button>
+      )}
+
       <button 
         onClick={(e) => {
           e.stopPropagation();
@@ -100,76 +219,156 @@ export function ItemMenu({
         Comments
       </button>
 
-      {canRename && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onRename?.(item);
-            onClose();
-          }}
-          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
-        >
-          <Edit className="h-4 w-4" />
-          Rename
-        </button>
+      {onRename && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (canRename) {
+                  onRename(item);
+                  onClose();
+                }
+              }}
+              disabled={!canRename}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
+                canRename
+                  ? 'text-gray-700 hover:bg-gray-100'
+                  : 'text-gray-400 cursor-not-allowed'
+              }`}
+            >
+              <Edit className="h-4 w-4" />
+              Rename
+            </button>
+          </TooltipTrigger>
+          {!canRename && (
+            <TooltipContent>
+              <p>You don't have permission to edit this item</p>
+            </TooltipContent>
+          )}
+        </Tooltip>
       )}
 
-      {canMove && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onMove?.(item);
-            onClose();
-          }}
-          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
-        >
-          <Folder className="h-4 w-4" />
-          Move
-        </button>
+      {onMove && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (canMove) {
+                  onMove(item);
+                  onClose();
+                }
+              }}
+              disabled={!canMove}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
+                canMove
+                  ? 'text-gray-700 hover:bg-gray-100'
+                  : 'text-gray-400 cursor-not-allowed'
+              }`}
+            >
+              <Folder className="h-4 w-4" />
+              Move
+            </button>
+          </TooltipTrigger>
+          {!canMove && (
+            <TooltipContent>
+              <p>You don't have permission to move this item</p>
+            </TooltipContent>
+          )}
+        </Tooltip>
       )}
 
-      {isFolder && onEditFolderPermissions && canManagePermissions && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onEditFolderPermissions(item as FolderResDto);
-            onClose();
-          }}
-          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
-        >
-          <Settings className="h-4 w-4" />
-          Edit Permissions
-        </button>
+      {isFolder && onEditFolderPermissions && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (canManagePermissions) {
+                  onEditFolderPermissions(item as FolderResDto);
+                  onClose();
+                }
+              }}
+              disabled={!canManagePermissions}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
+                canManagePermissions
+                  ? 'text-gray-700 hover:bg-gray-100'
+                  : 'text-gray-400 cursor-not-allowed'
+              }`}
+            >
+              <Settings className="h-4 w-4" />
+              Edit Permissions
+            </button>
+          </TooltipTrigger>
+          {!canManagePermissions && (
+            <TooltipContent>
+              <p>You don't have permission to manage permissions for this folder</p>
+            </TooltipContent>
+          )}
+        </Tooltip>
       )}
 
-      {!isFolder && onEditPermissions && canManagePermissions && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onEditPermissions(item as DocumentResponseDto);
-            onClose();
-          }}
-          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
-        >
-          <Settings className="h-4 w-4" />
-          Edit Permissions
-        </button>
+      {!isFolder && onEditPermissions && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (canManagePermissions) {
+                  onEditPermissions(item as DocumentResponseDto);
+                  onClose();
+                }
+              }}
+              disabled={!canManagePermissions}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
+                canManagePermissions
+                  ? 'text-gray-700 hover:bg-gray-100'
+                  : 'text-gray-400 cursor-not-allowed'
+              }`}
+            >
+              <Settings className="h-4 w-4" />
+              Edit Permissions
+            </button>
+          </TooltipTrigger>
+          {!canManagePermissions && (
+            <TooltipContent>
+              <p>You don't have permission to manage permissions for this document</p>
+            </TooltipContent>
+          )}
+        </Tooltip>
       )}
 
-      {canDelete && (
+      {onDelete && (
         <>
           <hr className="border-gray-200" />
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete?.(item);
-              onClose();
-            }}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
-          >
-            <Trash2 className="h-4 w-4" />
-            Move to Trash
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (canDelete) {
+                    onDelete(item);
+                    onClose();
+                  }
+                }}
+                disabled={!canDelete}
+                className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
+                  canDelete
+                    ? 'text-red-600 hover:bg-red-50'
+                    : 'text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                <Trash2 className="h-4 w-4" />
+                Move to Trash
+              </button>
+            </TooltipTrigger>
+            {!canDelete && (
+              <TooltipContent>
+                <p>You don't have permission to delete this item</p>
+              </TooltipContent>
+            )}
+          </Tooltip>
         </>
       )}
     </div>

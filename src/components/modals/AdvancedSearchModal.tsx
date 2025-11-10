@@ -287,18 +287,20 @@ export default function AdvancedSearchModal({
 
     // add its metadata definitions as filters (category-scoped)
     if (category.metadataDefinitions && category.metadataDefinitions.length > 0) {
-      const newFilters = category.metadataDefinitions.map((def: CategoryMetadataDefinitionDto) => ({
-        id: `filter-${def.id}`,
-        metadataId: def.id,
-        metadataName: def.name,
-        fieldName: def.key,
-        fieldType: def.dataType,
-        operator: getDefaultOperator(def.dataType || 'STRING'),
-        value: "",
-        categoryId: String(category.id),
-        categoryName: category.name,
-        metadataDefinitionId: def.id,
-      }));
+      const newFilters = category.metadataDefinitions
+        .filter((def: CategoryMetadataDefinitionDto) => def.id != null) // Filter out definitions without IDs
+        .map((def: CategoryMetadataDefinitionDto) => ({
+          id: `filter-${def.id}`,
+          metadataId: def.id!,
+          metadataName: def.key, // Use key as the metadata name
+          fieldName: def.key,
+          fieldType: def.dataType,
+          operator: getDefaultOperator(def.dataType || 'STRING'),
+          value: "",
+          categoryId: String(category.id),
+          categoryName: category.name,
+          metadataDefinitionId: def.id!,
+        }));
 
       setMetadataFilters(newFilters);
     }

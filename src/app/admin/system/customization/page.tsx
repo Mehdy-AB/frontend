@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { 
   Palette, 
   Save, 
@@ -40,7 +41,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useLanguage } from '../../../../contexts/LanguageContext';
+import { useAdminPagePermissions } from '@/hooks/useAdminPagePermissions';
 
 // Mock data for demonstration
 const mockThemes = [
@@ -172,6 +175,8 @@ const mockUIPreferences = {
 
 export default function SystemCustomizationPage() {
   const { t } = useLanguage();
+  const router = useRouter();
+  const { canView, canUpdate } = useAdminPagePermissions();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('themes');
@@ -179,6 +184,12 @@ export default function SystemCustomizationPage() {
   const [branding, setBranding] = useState(mockBranding);
   const [layoutSettings, setLayoutSettings] = useState(mockLayoutSettings);
   const [uiPreferences, setUiPreferences] = useState(mockUIPreferences);
+  
+  useEffect(() => {
+    if (!canView) {
+      router.push('/');
+    }
+  }, [canView, router]);
   const [customTheme, setCustomTheme] = useState({
     name: '',
     primaryColor: '#3b82f6',
@@ -245,6 +256,16 @@ export default function SystemCustomizationPage() {
     });
   };
 
+  if (!canView) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <p className="text-destructive text-lg">You don't have permission to view this page</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -258,10 +279,23 @@ export default function SystemCustomizationPage() {
             <RefreshCw className="h-4 w-4" />
             Reset to Default
           </Button>
-          <Button onClick={handleSaveSettings} disabled={saving} className="gap-2">
-            <Save className="h-4 w-4" />
-            {saving ? 'Saving...' : 'Save Changes'}
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button 
+                onClick={handleSaveSettings} 
+                disabled={saving || !canUpdate} 
+                className="gap-2"
+              >
+                <Save className="h-4 w-4" />
+                {saving ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </TooltipTrigger>
+            {!canUpdate && (
+              <TooltipContent>
+                <p>You don't have permission to update system customization settings</p>
+              </TooltipContent>
+            )}
+          </Tooltip>
         </div>
       </div>
 

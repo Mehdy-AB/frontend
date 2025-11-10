@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { X, Upload, FileText, AlertCircle, File, Image, Video, Music } from 'lucide-react';
 import { notificationApiClient } from '../../api/notificationClient';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface UploadVersionModalProps {
   isOpen: boolean;
@@ -228,16 +229,22 @@ export default function UploadVersionModal({
                         <label className="block text-sm font-medium text-neutral-text-dark mb-2">
                           Document Language
                         </label>
-                        <select 
+                        <Select 
                           value={language}
-                          onChange={(e) => setLanguage(e.target.value as 'ENG' | 'FRA' | 'ARA')}
-                          className="w-full p-2 border border-ui rounded text-sm bg-surface text-neutral-text-dark"
+                          onValueChange={(value) => setLanguage(value as 'ENG' | 'FRA' | 'ARA')}
                           disabled={isUploading}
                         >
-                          {SUPPORTED_LANGUAGES.map(lang => (
-                            <option key={lang.value} value={lang.value}>{lang.label}</option>
-                          ))}
-                        </select>
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select language" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {SUPPORTED_LANGUAGES.map(lang => (
+                              <SelectItem key={lang.value} value={lang.value}>
+                                {lang.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
                   </div>

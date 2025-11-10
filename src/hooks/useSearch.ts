@@ -164,9 +164,9 @@ export const useSearch = () => {
     setSearchingModels(true);
     try {
       // Filter models locally for now since we don't have API
-      const filtered = models.filter(model => 
+      const filtered = models.filter(model =>
         model.name.toLowerCase().includes(query.toLowerCase()) ||
-        model.description.toLowerCase().includes(query.toLowerCase())
+        (model.description && model.description.toLowerCase().includes(query.toLowerCase()))
       );
       setFilteredModels(filtered);
     } catch (error) {
@@ -268,22 +268,32 @@ export const useSearch = () => {
     setLocalSearchQuery(query);
   }, [query]);
 
-  // Debounced search effect
+  // Debounced search effect for query changes, immediate for pagination/sorting
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      // Check if there are any search criteria
-      const hasQuery = localSearchQuery.trim();
-      const hasSelectedUser = selectedUser !== null;
-      const hasSelectedModel = selectedModel !== null;
-      const hasMetadataFilters = metadataFilters.length > 0;
-      const hasOtherFilters = Object.values(searchScope).some(value => value === false);
-      
-      if (hasQuery || hasSelectedUser || hasSelectedModel || hasMetadataFilters || hasOtherFilters) {
-        fetchSearchResults();
-      }
-    }, 500); // 500ms debounce
+    // Check if there are any search criteria
+    const hasQuery = localSearchQuery.trim();
+    const hasSelectedUser = selectedUser !== null;
+    const hasSelectedModel = selectedModel !== null;
+    const hasMetadataFilters = metadataFilters.length > 0;
+    const hasOtherFilters = Object.values(searchScope).some(value => value === false);
+    
+    if (!hasQuery && !hasSelectedUser && !hasSelectedModel && !hasMetadataFilters && !hasOtherFilters) {
+      return;
+    }
 
-    return () => clearTimeout(timeoutId);
+    // For pagination and sorting changes, fetch immediately
+    // For query changes, use debounce
+    const shouldDebounce = hasQuery && localSearchQuery.trim().length > 0;
+    
+    if (shouldDebounce) {
+      const timeoutId = setTimeout(() => {
+        fetchSearchResults();
+      }, 500); // 500ms debounce for query changes
+      return () => clearTimeout(timeoutId);
+    } else {
+      // Immediate fetch for pagination, sorting, filter changes
+      fetchSearchResults();
+    }
   }, [localSearchQuery, currentPage, selectedUser, selectedModel, metadataFilters, searchScope, sortBy, sortDesc, fetchSearchResults]);
 
   // Smart search with local filtering first, then API call
@@ -295,11 +305,11 @@ export const useSearch = () => {
         documents: searchResults.documents.filter(doc => 
           doc.name.toLowerCase().includes(query.toLowerCase()) ||
           doc.description?.toLowerCase().includes(query.toLowerCase()) ||
-          doc.tags?.some(tag => tag.toLowerCase().includes(query.toLowerCase()))
+          (doc as any).tags?.some((tag: string) => tag.toLowerCase().includes(query.toLowerCase()))
         ),
         folders: searchResults.folders.filter(folder => 
-          folder.name.toLowerCase().includes(query.toLowerCase()) ||
-          folder.description?.toLowerCase().includes(query.toLowerCase())
+          ((folder as any).name || '').toLowerCase().includes(query.toLowerCase()) ||
+          ((folder as any).description || '').toLowerCase().includes(query.toLowerCase())
         )
       };
       // Update display with local results immediately

@@ -15,7 +15,7 @@ const nextConfig = {
     formats: ['image/webp', 'image/avif'],
   },
   
-  // Webpack configuration
+  // Webpack configuration (for non-Turbopack builds)
   webpack: (config, { isServer }) => {
     // Handle PDF.js canvas module issue
     if (!isServer) {

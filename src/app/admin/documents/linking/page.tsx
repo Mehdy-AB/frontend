@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { 
   Link2, 
   Plus, 
@@ -44,6 +45,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { linkRuleService } from '@/api/services/linkRuleService';
@@ -59,10 +61,19 @@ import {
 } from '@/types/api';
 import { useLanguage } from '../../../../contexts/LanguageContext';
 import { useNotifications } from '../../../../hooks/useNotifications';
+import { useAdminPagePermissions } from '@/hooks/useAdminPagePermissions';
 
 export default function LinkRulesManagementPage() {
   const { t } = useLanguage();
   const { showNotification, showSuccess } = useNotifications();
+  const router = useRouter();
+  const { canView, canCreate, canUpdate, canDelete } = useAdminPagePermissions();
+  
+  useEffect(() => {
+    if (!canView) {
+      router.push('/');
+    }
+  }, [canView, router]);
   
   // Main data state
   const [linkRules, setLinkRules] = useState<LinkRuleResponseDto[]>([]);
@@ -492,6 +503,16 @@ export default function LinkRulesManagementPage() {
     return <LinkRulesSkeleton />;
   }
 
+  if (!canView) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <p className="text-destructive text-lg">You don't have permission to view this page</p>
+        </div>
+      </div>
+    );
+  }
+
   if (error) {
     return (
       <Card className="flex flex-col items-center justify-center py-12">
@@ -525,16 +546,29 @@ export default function LinkRulesManagementPage() {
           <Button 
             variant="outline" 
             onClick={handleReapplyAllRules}
-            disabled={bulkOperationLoading}
+            disabled={bulkOperationLoading || !canUpdate}
             className="gap-2"
           >
             <RefreshCw className={`h-4 w-4 ${bulkOperationLoading ? 'animate-spin' : ''}`} />
             Reapply All
           </Button>
-          <Button onClick={() => setShowCreateModal(true)} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Create Rule
-        </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button 
+                onClick={() => canCreate && setShowCreateModal(true)} 
+                disabled={!canCreate}
+                className="gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                Create Rule
+              </Button>
+            </TooltipTrigger>
+            {!canCreate && (
+              <TooltipContent>
+                <p>You don't have permission to create link rules</p>
+              </TooltipContent>
+            )}
+          </Tooltip>
       </div>
       </div>
 
@@ -639,7 +673,7 @@ export default function LinkRulesManagementPage() {
                     variant="outline" 
                     size="sm"
                     onClick={handleBulkEnable}
-                    disabled={bulkOperationLoading}
+                    disabled={bulkOperationLoading || !canUpdate}
                   >
                 Enable Selected
               </Button>
@@ -647,7 +681,7 @@ export default function LinkRulesManagementPage() {
                     variant="outline" 
                     size="sm"
                     onClick={handleBulkDisable}
-                    disabled={bulkOperationLoading}
+                    disabled={bulkOperationLoading || !canUpdate}
                   >
                 Disable Selected
               </Button>
@@ -655,7 +689,7 @@ export default function LinkRulesManagementPage() {
                     variant="destructive" 
                     size="sm"
                     onClick={handleBulkDelete}
-                    disabled={bulkOperationLoading}
+                    disabled={bulkOperationLoading || !canDelete}
                   >
                 Delete Selected
               </Button>
@@ -702,7 +736,12 @@ export default function LinkRulesManagementPage() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => openEditRule(rule.id)}>
+                          <DropdownMenuItem 
+                            onClick={() => canUpdate && openEditRule(rule.id)}
+                            disabled={!canUpdate}
+                            className={!canUpdate ? 'opacity-50 cursor-not-allowed' : ''}
+                            title={!canUpdate ? "You don't have permission to edit rules" : undefined}
+                          >
                         <Edit className="mr-2 h-4 w-4" />
                         Edit
                       </DropdownMenuItem>
@@ -710,14 +749,22 @@ export default function LinkRulesManagementPage() {
                         <Eye className="mr-2 h-4 w-4" />
                         View Details
                       </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleExecuteRule(rule.id)}>
+                          <DropdownMenuItem 
+                            onClick={() => canUpdate && handleExecuteRule(rule.id)}
+                            disabled={!canUpdate}
+                            className={!canUpdate ? 'opacity-50 cursor-not-allowed' : ''}
+                            title={!canUpdate ? "You don't have permission to execute rules" : undefined}
+                          >
                             <Zap className="mr-2 h-4 w-4" />
                             Execute Rule
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem 
                         variant="destructive"
-                        onClick={() => handleDeleteRule(rule.id)}
+                        onClick={() => canDelete && handleDeleteRule(rule.id)}
+                        disabled={!canDelete}
+                        className={!canDelete ? 'opacity-50 cursor-not-allowed' : ''}
+                        title={!canDelete ? "You don't have permission to delete rules" : undefined}
                       >
                         <Trash2 className="mr-2 h-4 w-4" />
                         Delete
@@ -755,8 +802,10 @@ export default function LinkRulesManagementPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleExecuteRule(rule.id)}
+                              onClick={() => canUpdate && handleExecuteRule(rule.id)}
+                              disabled={!canUpdate}
                               className="h-6 px-2 text-xs"
+                              title={!canUpdate ? "You don't have permission to execute rules" : undefined}
                             >
                               <Zap className="h-3 w-3 mr-1" />
                               Execute
@@ -796,7 +845,13 @@ export default function LinkRulesManagementPage() {
                         </>
                       )}
                     </Button>
-                     <Button variant="outline" size="sm" onClick={() => openEditRule(rule.id)}>
+                     <Button 
+                       variant="outline" 
+                       size="sm" 
+                       onClick={() => canUpdate && openEditRule(rule.id)}
+                       disabled={!canUpdate}
+                       title={!canUpdate ? "You don't have permission to edit rules" : undefined}
+                     >
                       <Settings className="h-4 w-4 mr-2" />
                       Configure
                     </Button>
@@ -870,10 +925,22 @@ export default function LinkRulesManagementPage() {
                 : 'Create your first link rule to get started.'
               }
             </p>
-                <Button onClick={() => setShowCreateModal(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Create Rule
-            </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      onClick={() => canCreate && setShowCreateModal(true)}
+                      disabled={!canCreate}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Create Rule
+                    </Button>
+                  </TooltipTrigger>
+                  {!canCreate && (
+                    <TooltipContent>
+                      <p>You don't have permission to create link rules</p>
+                    </TooltipContent>
+                  )}
+                </Tooltip>
           </CardContent>
         </Card>
       )}

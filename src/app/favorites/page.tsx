@@ -8,9 +8,6 @@ import {
   Filter,
   File,
   Folder,
-  MoreVertical,
-  Download,
-  Share2,
   Eye,
   Heart,
   Clock,
@@ -266,13 +263,12 @@ export default function FavoritesPage() {
                 <th className="text-left p-4 text-sm font-medium text-neutral-text-dark">Favorited</th>
                 <th className="text-left p-4 text-sm font-medium text-neutral-text-dark">Last Modified</th>
                 <th className="text-left p-4 text-sm font-medium text-neutral-text-dark">Size</th>
-                <th className="text-left p-4 text-sm font-medium text-neutral-text-dark">Actions</th>
               </tr>
             </thead>
             <tbody>
               {tableLoading ? (
                 <tr>
-                  <td className="p-4" colSpan={7}>
+                  <td className="p-4" colSpan={6}>
                     <div className="h-6 w-full bg-neutral-ui animate-pulse rounded" />
                   </td>
                 </tr>
@@ -303,33 +299,51 @@ export default function FavoritesPage() {
 }
 
 function FavoriteItemRow({ item, onRemove, formatFileSize, formatDate }: any) {
-  const [showMenu, setShowMenu] = useState(false);
-
   const handleView = () => {
     if (item.type === 'document') {
-      window.open(`/documents/${item.id}`, '_blank');
+      window.location.href = `/documents/${item.id}`;
     } else {
-      window.open(`/folders/${item.id}`, '_blank');
+      window.location.href = `/folders/${item.id}`;
     }
   };
 
-  // Actions limited to View and Remove only per requirements
+  const handleRemoveFromFavorites = () => {
+    onRemove(item);
+  };
 
   return (
     <tr className="border-b border-ui last:border-b-0 hover:bg-neutral-background/50 group">
       <td className="p-4">
-        <div className="flex items-center gap-3">
-          <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <div className={`h-10 w-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
             item.type === 'document' ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'
           }`}>
             {item.type === 'document' ? <File className="h-5 w-5" /> : <Folder className="h-5 w-5" />}
           </div>
-          <div>
+            <div className="flex-1 min-w-0">
             <div className="font-medium text-neutral-text-dark flex items-center gap-2">
-              {item.name}
-              <Star className="h-4 w-4 text-yellow-500 fill-current" />
+                <span className="truncate">{item.name}</span>
+                <Star className="h-4 w-4 text-yellow-500 fill-current flex-shrink-0" />
+              </div>
+              <div className="text-sm text-neutral-text-light capitalize">{item.type}</div>
             </div>
-            <div className="text-sm text-neutral-text-light capitalize">{item.type}</div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button 
+              onClick={handleView}
+              className="p-2 rounded hover:bg-ui transition-colors text-neutral-text-light hover:text-neutral-text-dark"
+              title="View"
+            >
+              <Eye className="h-4 w-4" />
+            </button>
+            <button 
+              onClick={handleRemoveFromFavorites}
+              className="p-2 rounded hover:bg-ui transition-colors text-yellow-500 hover:text-yellow-600"
+              title="Remove from Favorites"
+            >
+              <Star className="h-4 w-4 fill-current" />
+            </button>
           </div>
         </div>
       </td>
@@ -365,32 +379,6 @@ function FavoriteItemRow({ item, onRemove, formatFileSize, formatDate }: any) {
       </td>
       <td className="p-4">
         <div className="text-sm text-neutral-text-light">{formatFileSize(item.size)}</div>
-      </td>
-      <td className="p-4">
-        <div className="flex gap-2">
-          <button 
-            onClick={handleView}
-            className="p-2 rounded hover:bg-ui transition-colors opacity-0 group-hover:opacity-100"
-            title="View"
-          >
-            <Eye className="h-4 w-4" />
-          </button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="p-2 rounded hover:bg-ui transition-colors opacity-0 group-hover:opacity-100">
-                <MoreVertical className="h-4 w-4" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={handleView}>
-                <Eye className="h-4 w-4 mr-2" /> View
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onRemove(item)} className="text-error">
-                <Star className="h-4 w-4 mr-2" /> Remove from Favorites
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
       </td>
     </tr>
   );

@@ -19,23 +19,30 @@ export default withAuth(
     // Allow access to auth pages (signin, error) for non-authenticated users
     if (pathname.startsWith('/auth/')) {
       // If user is authenticated and trying to access signin, redirect to home
-      if (token && pathname === '/auth/signin') {
-        return NextResponse.redirect(new URL('/', req.url))
+      // Only redirect if explicitly on /auth/signin to avoid loops
+      if (token && (pathname === '/auth/signin' || pathname === '/auth/signin/')) {
+        const redirectUrl = new URL('/', req.url)
+        redirectUrl.searchParams.set('redirected', 'true')
+        return NextResponse.redirect(redirectUrl)
       }
       // Allow access to auth pages for non-authenticated users
       return NextResponse.next()
     }
     
     // Handle root route first - redirect to signin if not authenticated
-    if (pathname === '/') {
+    if (pathname === '/' || pathname === '') {
       if (!token) {
-        return NextResponse.redirect(new URL('/auth/signin', req.url))
+        const signInUrl = new URL('/auth/signin', req.url)
+        // Preserve the original URL for redirect after login
+        if (req.url !== signInUrl.toString()) {
+          signInUrl.searchParams.set('callbackUrl', req.url)
+        }
+        return NextResponse.redirect(signInUrl)
       }
-      // If authenticated, let intl middleware handle the redirect to locale
-      const intlResponse = intlMiddleware(req)
-      if (intlResponse) {
-        return intlResponse
-      }
+      // If authenticated, allow direct access to root route
+      // Skip intl middleware to avoid routing conflicts with page.tsx
+      // The LanguageProvider handles translations on the client side
+      return NextResponse.next()
     }
     
     // Handle locale-based routes
@@ -50,13 +57,18 @@ export default withAuth(
       
       // After handling intl, check authentication for these routes
       if (!token) {
-        return NextResponse.redirect(new URL('/auth/signin', req.url))
+        const signInUrl = new URL('/auth/signin', req.url)
+        signInUrl.searchParams.set('callbackUrl', req.url)
+        return NextResponse.redirect(signInUrl)
       }
+      return NextResponse.next()
     }
     
     // For all other routes, require authentication
     if (!token) {
-      return NextResponse.redirect(new URL('/auth/signin', req.url))
+      const signInUrl = new URL('/auth/signin', req.url)
+      signInUrl.searchParams.set('callbackUrl', req.url)
+      return NextResponse.redirect(signInUrl)
     }
     
     return NextResponse.next()
@@ -72,7 +84,12 @@ export default withAuth(
         }
         
         // Allow access to public assets
-        if (pathname.startsWith('/_next/') || pathname.startsWith('/api/auth/') || pathname.includes('.')) {
+        if (
+          pathname.startsWith('/_next/') || 
+          pathname.startsWith('/api/auth/') || 
+          pathname.includes('.') ||
+          pathname === '/favicon.ico'
+        ) {
           return true
         }
         

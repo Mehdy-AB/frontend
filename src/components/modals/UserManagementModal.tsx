@@ -21,8 +21,8 @@ import {
   SelectValue 
 } from '@/components/ui/select';
 import { 
-  UserCreateReq, 
-  UserUpdateReq, 
+  CreateUserRequest, 
+  UpdateUserRequest, 
   UserDto, 
   RoleDto, 
   GroupDto 
@@ -70,10 +70,10 @@ export default function UserManagementModal({
       setFormData({
         username: user.username,
         email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
         password: '',
-        jobTitle: user.jobTitle || [],
+        jobTitle: Array.isArray(user.jobTitle) ? user.jobTitle : (user.jobTitle ? [user.jobTitle] : []),
         imageUrl: user.imageUrl || ''
       });
       
@@ -184,24 +184,30 @@ export default function UserManagementModal({
 
     try {
       if (isEditMode && user) {
-        const updateData: UserUpdateReq = {
-          firstName: formData.firstName,
-          lastName: formData.lastName,
+        const updateData: UpdateUserRequest = {
+          username: formData.username,
           email: formData.email,
-          jobTitle: formData.jobTitle,
-          imageUrl: formData.imageUrl
+          displayName: formData.firstName && formData.lastName 
+            ? `${formData.firstName} ${formData.lastName}`.trim() 
+            : formData.username,
+          firstName: formData.firstName || undefined,
+          lastName: formData.lastName || undefined,
+          jobTitle: formData.jobTitle.length > 0 ? formData.jobTitle[0] : undefined,
+          imageUrl: formData.imageUrl || undefined
         };
         
         await notificationApiClient.updateUser(user.id, updateData);
       } else {
-        const createData: UserCreateReq = {
+        const createData: CreateUserRequest = {
           username: formData.username,
           email: formData.email,
-          firstName: formData.firstName,
-          lastName: formData.lastName,
-          password: formData.password,
-          job: formData.jobTitle,
-          imageUrl: formData.imageUrl
+          displayName: formData.firstName && formData.lastName 
+            ? `${formData.firstName} ${formData.lastName}`.trim() 
+            : formData.username,
+          firstName: formData.firstName || undefined,
+          lastName: formData.lastName || undefined,
+          jobTitle: formData.jobTitle.length > 0 ? formData.jobTitle[0] : undefined,
+          imageUrl: formData.imageUrl || undefined
         };
         
         await notificationApiClient.createUser(createData);

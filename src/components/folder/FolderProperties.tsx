@@ -119,9 +119,9 @@ export function FolderProperties({
                       <div className="text-xs text-gray-500">
                         @{folder.ownedBy.username}
                       </div>
-                      {folder.ownedBy.jobTitle && folder.ownedBy.jobTitle.length > 0 && (
+                      {folder.ownedBy.jobTitle && (
                         <div className="text-xs text-gray-400 mt-1">
-                          {folder.ownedBy.jobTitle.join(', ')}
+                          {folder.ownedBy.jobTitle}
                         </div>
                       )}
                     </div>
@@ -153,9 +153,9 @@ export function FolderProperties({
                       <div className="text-xs text-gray-500">
                         @{folder.createdBy.username}
                       </div>
-                      {folder.createdBy.jobTitle && folder.createdBy.jobTitle.length > 0 && (
+                      {folder.createdBy.jobTitle && (
                         <div className="text-xs text-gray-400 mt-1">
-                          {folder.createdBy.jobTitle.join(', ')}
+                          {folder.createdBy.jobTitle}
                         </div>
                       )}
                     </div>

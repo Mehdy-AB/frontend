@@ -17,6 +17,10 @@ interface UnifiedTableViewProps {
   onRename?: (item: TableItem) => void;
   onDelete?: (item: TableItem) => void;
   onShowComments?: (item: TableItem) => void;
+  onDownload?: (item: TableItem) => void;
+  onShare?: (item: TableItem) => void;
+  onCopyLink?: (item: TableItem) => void;
+  onView?: (item: TableItem) => void;
   openDropdownId: string | null;
   setOpenDropdownId: (id: string | null) => void;
   showLoadingRows?: boolean;
@@ -33,6 +37,10 @@ export function UnifiedTableView({
   onRename, 
   onDelete, 
   onShowComments,
+  onDownload,
+  onShare,
+  onCopyLink,
+  onView,
   openDropdownId, 
   setOpenDropdownId, 
   showLoadingRows = false 
@@ -75,6 +83,10 @@ export function UnifiedTableView({
               onRename={onRename}
               onDelete={onDelete}
               onShowComments={onShowComments}
+              onDownload={onDownload}
+              onShare={onShare}
+              onCopyLink={onCopyLink}
+              onView={onView}
               openDropdownId={openDropdownId}
               setOpenDropdownId={setOpenDropdownId}
             />

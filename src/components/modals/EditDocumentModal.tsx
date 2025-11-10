@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSession } from 'next-auth/react';
 import { 
   FileText, 
   Plus, 
@@ -19,6 +20,7 @@ import {
   Check
 } from 'lucide-react';
 import { documentService } from '@/api/services/documentService';
+import { notificationApiClient } from '@/api/notificationClient';
 import { 
   DocumentPermissionReq, 
   UserDto, 
@@ -87,6 +89,8 @@ function isRole(grantee: UserDto | GroupDto | RoleDto | null | undefined): grant
 }
 
 export default function EditDocumentModal({ isOpen, onClose, document }: EditDocumentModalProps) {
+  const { data: session } = useSession();
+  const currentUserId = session?.user?.id;
   
   // Client-side only check
   const [isClient, setIsClient] = useState(false);
@@ -127,11 +131,12 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
     searchFields: (grant) => {
       if (!grant.grantee) return [];
       if (isUser(grant.grantee)) {
+        const user = grant.grantee as UserDto;
         return [
-          grant.grantee.username || '',
-          grant.grantee.firstName || '',
-          grant.grantee.lastName || '',
-          grant.grantee.email || ''
+          user.username || '',
+          user.firstName || '',
+          user.lastName || '',
+          user.email || ''
         ];
       } else if (isGroup(grant.grantee)) {
         return [grant.grantee.name || '', grant.grantee.description || ''];
@@ -297,7 +302,7 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
     }
   }, [availableEntities, searching, selectedEntityType]);
 
-  // Close dropdowns when clicking outside
+  // Close dropdowns when clicking outside or selecting a grantee
   useEffect(() => {
     // Only run when modal is open and we're on the client side
     if (!isOpen || !isClient || typeof window === 'undefined' || typeof document === 'undefined') return;
@@ -310,7 +315,7 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
     };
 
     try {
-      document.addEventListener('mousedown', handleClickOutside);
+      window.document.addEventListener('mousedown', handleClickOutside);
     } catch (error) {
       console.warn('Failed to add event listener:', error);
       return;
@@ -318,14 +323,20 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
 
     return () => {
       try {
-        if (typeof document !== 'undefined') {
-          document.removeEventListener('mousedown', handleClickOutside);
+        if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
+          window.document.removeEventListener('mousedown', handleClickOutside);
         }
       } catch (error) {
         console.warn('Failed to remove event listener:', error);
       }
     };
   }, [isOpen, isClient]);
+
+  // Close dropdown when a grantee is selected
+  const handleAddPermissionWithClose = (entity: UserDto | GroupDto | RoleDto) => {
+    addPermission(entity);
+    handleCloseDropdown(); // Close dropdown after selection
+  };
 
   // Toggle permission panel collapse
   const togglePermissionPanel = (panelKey: string) => {
@@ -387,6 +398,12 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
   // Permission management functions - NO immediate API calls
   const addPermission = (entity: UserDto | GroupDto | RoleDto) => {
     try {
+      // Prevent users from granting permissions to themselves
+      if (isUser(entity) && entity.id === currentUserId) {
+        notificationApiClient['showNotification']?.('error', 'Cannot Add Permission', 'You cannot grant permissions to yourself');
+        return;
+      }
+
       // Determine entity type
       let granteeType: GranteeType;
       if (isUser(entity)) {
@@ -475,6 +492,12 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
   const handleSavePermission = async () => {
     if (!editingGrant) return;
 
+    // Prevent users from granting permissions to themselves
+    if (editingGrant.type === GranteeType.USER && editingGrant.grantee.id === currentUserId) {
+      notificationApiClient['showNotification']?.('error', 'Cannot Grant Permission', 'You cannot grant permissions to yourself');
+      return;
+    }
+
     const data: TypeShareAccessWithTypeReq = {
       granteeId: editingGrant.grantee.id,
       permission: tempPermission,
@@ -482,19 +505,24 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
     };
 
     try {
-      // Always use createOrUpdate for documents (it handles both)
-      const result = await documentService.createOrUpdateDocumentShared(document.documentId, data);
-      
       if (editingGrant.isNew) {
+        // POST for new permission
+        const result = await documentService.createOrUpdateDocumentShared(document.documentId, data);
         addGrantToList(result);
       } else {
+        // PUT for update (use updateDocumentShared which should use PUT)
+        const result = await documentService.updateDocumentShared(document.documentId, data);
         updateGrantInList(editingGrant.grantee.id, () => result, (g) => g.grantee?.id);
       }
 
       setShowPermissionModal(false);
       setEditingGrant(null);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving permission:', error);
+      // Check if error is about self-granting
+      if (error?.response?.status === 400 || error?.message?.includes('cannot grant permissions to yourself')) {
+        notificationApiClient['showNotification']?.('error', 'Cannot Grant Permission', 'You cannot grant permissions to yourself');
+      }
     }
   };
 
@@ -567,7 +595,7 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    addPermission(entity);
+                    handleAddPermissionWithClose(entity);
                   }}
                   className="w-full px-4 py-2 text-left text-sm text-neutral-text-dark hover:bg-neutral-background focus:bg-neutral-background focus:outline-none border-b border-ui last:border-b-0"
                 >
@@ -707,10 +735,11 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
                 
                 if (isUser(grantee)) {
                   // User
+                  const user = grantee as UserDto;
                   granteeType = GranteeType.USER;
                   IconComponent = User;
-                  displayName = `${grantee.firstName || ''} ${grantee.lastName || ''}`.trim() || grantee.username;
-                  displaySubtitle = `@${grantee.username}${grantee.email ? ` • ${grantee.email}` : ''}`;
+                  displayName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username;
+                  displaySubtitle = `@${user.username}${user.email ? ` • ${user.email}` : ''}`;
                 } else if (isGroup(grantee)) {
                   // Group
                   granteeType = GranteeType.GROUP;
@@ -858,7 +887,10 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
               <div>
                   <div className="font-medium text-neutral-text-dark">
                     {isUser(editingGrant.grantee) 
-                      ? `${editingGrant.grantee.firstName || ''} ${editingGrant.grantee.lastName || ''}`.trim() || editingGrant.grantee.username
+                      ? (() => {
+                          const user = editingGrant.grantee as UserDto;
+                          return `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username;
+                        })()
                       : editingGrant.grantee.name
                     }
                   </div>

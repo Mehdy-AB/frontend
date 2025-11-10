@@ -21,8 +21,8 @@ import {
   SelectValue 
 } from '@/components/ui/select';
 import { 
-  GroupCreateReq, 
-  GroupUpdateReq, 
+  CreateGroupRequest, 
+  UpdateGroupRequest, 
   GroupDto, 
   UserDto 
 } from '@/types/api';
@@ -48,8 +48,7 @@ export default function GroupManagementModal({
 }: GroupManagementModalProps) {
   const [formData, setFormData] = useState({
     name: '',
-    description: '',
-    path: ''
+    description: ''
   });
   
   const [groupMembers, setGroupMembers] = useState<UserDto[]>([]);
@@ -62,8 +61,7 @@ export default function GroupManagementModal({
     if (group) {
       setFormData({
         name: group.name,
-        description: group.description,
-        path: group.path
+        description: group.description || ''
       });
       
       // Load group members
@@ -72,8 +70,7 @@ export default function GroupManagementModal({
       // Reset form for new group
       setFormData({
         name: '',
-        description: '',
-        path: ''
+        description: ''
       });
       setGroupMembers([]);
     }
@@ -84,8 +81,8 @@ export default function GroupManagementModal({
     if (!group) return;
     
     try {
-      const members = await notificationApiClient.getGroupMembers(group.id, { max: 100 });
-      setGroupMembers(members);
+      const response = await notificationApiClient.getGroupMembers(group.id, { max: 100 });
+      setGroupMembers(response.content || []);
     } catch (error) {
       console.error('Error loading group members:', error);
       setGroupMembers([]);
@@ -131,18 +128,16 @@ export default function GroupManagementModal({
 
     try {
       if (isEditMode && group) {
-        const updateData: GroupUpdateReq = {
+        const updateData: UpdateGroupRequest = {
           name: formData.name,
-          description: formData.description,
-          path: formData.path
+          description: formData.description
         };
         
         await notificationApiClient.updateGroup(group.id, updateData);
       } else {
-        const createData: GroupCreateReq = {
+        const createData: CreateGroupRequest = {
           name: formData.name,
-          description: formData.description,
-          path: formData.path
+          description: formData.description
         };
         
         await notificationApiClient.createGroup(createData);
@@ -198,19 +193,6 @@ export default function GroupManagementModal({
             />
           </div>
 
-          <div>
-            <Label htmlFor="path">Group Path *</Label>
-            <Input
-              id="path"
-              value={formData.path}
-              onChange={(e) => handleInputChange('path', e.target.value)}
-              required
-              placeholder="/group/path"
-            />
-            <p className="text-sm text-gray-500 mt-1">
-              The hierarchical path for this group (e.g., /departments/engineering)
-            </p>
-          </div>
 
           <div>
             <Label htmlFor="description">Description</Label>

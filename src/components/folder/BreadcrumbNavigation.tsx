@@ -26,11 +26,23 @@ export function BreadcrumbNavigation({
   }
   
   // Parse the path into segments using dot separator (ltree format)
-  // The path is in format like "mehdi.q.subfolder"
+  // The path now starts with user UUID, then folder names
+  // Format: "uuid.folder1.folder2.subfolder"
   const pathSegments = folderPath.split('.').filter(segment => segment.trim() !== '');
   
   // Check if current user is the owner
   const isOwner = currentUserId === folderOwnerId;
+  
+  // Check if first segment is a UUID (supports both dash and underscore formats)
+  // Format 1: "8fec38ca-8f8b-44a4-90fe-bd6c5161e028" (with dashes)
+  // Format 2: "8fec38ca_8f8b_44a4_90fe_bd6c5161e028" (with underscores)
+  const uuidPatternDash = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const uuidPatternUnderscore = /^[0-9a-f]{8}_[0-9a-f]{4}_[0-9a-f]{4}_[0-9a-f]{4}_[0-9a-f]{12}$/i;
+  const firstSegmentIsUuid = pathSegments.length > 0 && 
+    (uuidPatternDash.test(pathSegments[0]) || uuidPatternUnderscore.test(pathSegments[0]));
+  
+  // Skip the UUID segment if it exists (it's the user's root folder identifier)
+  const folderSegments = firstSegmentIsUuid ? pathSegments.slice(1) : pathSegments;
   
   return (
     <div className="flex items-center gap-2 text-sm text-neutral-text-light mb-4">
@@ -46,10 +58,13 @@ export function BreadcrumbNavigation({
       )}
       
       {/* Path segments with cumulative links */}
-      {pathSegments.map((segment, index) => {
-        const isLastSegment = index === pathSegments.length - 1;
-        // Build cumulative path with dot separator (ltree format)
-        const cumulativePath = pathSegments.slice(0, index + 1).join('.');
+      {folderSegments.map((segment, index) => {
+        const isLastSegment = index === folderSegments.length - 1;
+        // Build cumulative path: include UUID if it exists, then folder segments
+        const segmentsToInclude = firstSegmentIsUuid 
+          ? [pathSegments[0], ...folderSegments.slice(0, index + 1)]
+          : folderSegments.slice(0, index + 1);
+        const cumulativePath = segmentsToInclude.join('.');
         
         return (
           <React.Fragment key={index}>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   Users, 
@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { notificationApiClient } from '@/api/notificationClient';
 import { UserDto } from '@/types/api';
 import CreateUserModal, { CreateUserData } from '@/components/modals/CreateUserModal';
@@ -24,11 +25,20 @@ import ServerSearchInput from '@/components/main/ServerSearchInput';
 import Pagination from '@/components/main/Pagination';
 import { useServerSideSearch } from '@/components/main/useServerSideSearch';
 import { formatDate } from '@/lib/dateFormatter';
+import { useAdminPagePermissions } from '@/hooks/useAdminPagePermissions';
 
 export default function UsersPage() {
   const router = useRouter();
+  const { canView, canCreate, canUpdate, canDelete } = useAdminPagePermissions();
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const pageSize = 20;
+  
+  // Redirect if user doesn't have view permission
+  useEffect(() => {
+    if (!canView) {
+      router.push('/');
+    }
+  }, [canView, router]);
   
   // Modal states
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -140,6 +150,16 @@ export default function UsersPage() {
     );
   }
 
+  if (!canView) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <p className="text-destructive text-lg">You don't have permission to view this page</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 p-6">
       {/* Header */}
@@ -148,10 +168,23 @@ export default function UsersPage() {
           <h1 className="text-3xl font-bold">User Management</h1>
           <p className="text-muted-foreground">Manage system users, roles, groups, and permissions</p>
         </div>
-        <Button className="gap-2" onClick={() => setIsCreateModalOpen(true)}>
-          <Plus className="h-4 w-4" />
-          Add User
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button 
+              className="gap-2" 
+              onClick={() => setIsCreateModalOpen(true)}
+              disabled={!canCreate}
+            >
+              <Plus className="h-4 w-4" />
+              Add User
+            </Button>
+          </TooltipTrigger>
+          {!canCreate && (
+            <TooltipContent>
+              <p>You don't have permission to create users</p>
+            </TooltipContent>
+          )}
+        </Tooltip>
       </div>
 
       {/* Error Display */}
@@ -289,27 +322,47 @@ export default function UsersPage() {
                       onClick={(e) => e.stopPropagation()}
                     >
                       <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleUpdateUserStatus(user.id, !user.enabled)}
-                          title={user.enabled ? 'Disable user' : 'Enable user'}
-                        >
-                          {user.enabled ? (
-                            <Ban className="h-4 w-4 text-orange-500" />
-                          ) : (
-                            <CheckCircle className="h-4 w-4 text-green-500" />
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => canUpdate && handleUpdateUserStatus(user.id, !user.enabled)}
+                              disabled={!canUpdate}
+                              title={user.enabled ? 'Disable user' : 'Enable user'}
+                            >
+                              {user.enabled ? (
+                                <Ban className="h-4 w-4 text-orange-500" />
+                              ) : (
+                                <CheckCircle className="h-4 w-4 text-green-500" />
+                              )}
+                            </Button>
+                          </TooltipTrigger>
+                          {!canUpdate && (
+                            <TooltipContent>
+                              <p>You don't have permission to update users</p>
+                            </TooltipContent>
                           )}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteClick(user)}
-                          className="text-destructive hover:text-destructive"
-                          title="Delete user"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => canDelete && handleDeleteClick(user)}
+                              disabled={!canDelete}
+                              className={canDelete ? "text-destructive hover:text-destructive" : "opacity-50 cursor-not-allowed"}
+                              title="Delete user"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          {!canDelete && (
+                            <TooltipContent>
+                              <p>You don't have permission to delete users</p>
+                            </TooltipContent>
+                          )}
+                        </Tooltip>
                       </div>
                     </td>
                   </tr>

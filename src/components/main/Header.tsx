@@ -3,6 +3,8 @@
 
 import { Search, Bell, User, Settings, LogOut, Sun, Moon, ChevronDown, Filter, Clock, X } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import { signOut, useSession } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -22,6 +24,8 @@ import { isAdmin } from '../../utils/adminUtils';
 import { SearchHistoryService, SearchHistoryItem } from '../../utils/searchHistory';
 
 export default function Header() {
+  const router = useRouter();
+  const { data: session } = useSession();
   const [searchQuery, setSearchQuery] = useState('');
   const [darkMode, setDarkMode] = useState(false);
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
@@ -33,6 +37,18 @@ export default function Header() {
   
   // Check if user is admin
   const userIsAdmin = isAdmin();
+  
+  // Get user information from session
+  const userName = session?.user?.name 
+    || session?.user?.displayName 
+    || (session?.user?.firstName && session?.user?.lastName 
+      ? `${session.user.firstName} ${session.user.lastName}` 
+      : session?.user?.email?.split('@')[0] || 'User');
+  const userEmail = session?.user?.email || '';
+  const userImage = session?.user?.image || session?.user?.imageUrl || '';
+  const userInitials = session?.user?.firstName && session?.user?.lastName
+    ? `${session.user.firstName.charAt(0)}${session.user.lastName.charAt(0)}`.toUpperCase()
+    : session?.user?.name?.charAt(0).toUpperCase() || session?.user?.email?.charAt(0).toUpperCase() || 'U';
 
   // Initialize dark mode from system preference or localStorage
   useEffect(() => {
@@ -225,29 +241,31 @@ export default function Header() {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="flex items-center gap-2 px-2">
               <Avatar className="h-8 w-8">
-                <AvatarImage src="" alt="Admin" />
+                <AvatarImage src={userImage} alt={userName} />
                 <AvatarFallback className="bg-primary text-primary-foreground">
-                  <User className="h-4 w-4" />
+                  <span className="text-xs font-medium">{userInitials}</span>
                 </AvatarFallback>
               </Avatar>
-              <span className="text-sm font-medium hidden sm:inline">Admin</span>
+              <span className="text-sm font-medium hidden sm:inline">{userName}</span>
               <ChevronDown className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-56" align="end">
             <DropdownMenuLabel>
               <div className="flex flex-col space-y-1">
-                <p className="text-sm font-medium">Admin User</p>
-                <p className="text-xs text-muted-foreground">admin@aeb-dms.com</p>
+                <p className="text-sm font-medium">{userName}</p>
+                {userEmail && (
+                  <p className="text-xs text-muted-foreground">{userEmail}</p>
+                )}
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push('/settings')}>
               <Settings className="mr-2 h-4 w-4" />
               {t('common.settings')}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive">
+            <DropdownMenuItem variant="destructive" onClick={() => signOut({ callbackUrl: '/auth/signin' })}>
               <LogOut className="mr-2 h-4 w-4" />
               {t('common.signOut')}
             </DropdownMenuItem>

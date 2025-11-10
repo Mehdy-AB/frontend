@@ -56,10 +56,6 @@ export default function DocumentModals({
         isOpen={showManagePermissions}
         onClose={onCloseManagePermissions}
         document={document}
-        onSuccess={() => {
-          onCloseManagePermissions();
-          // Optionally refresh document data
-        }}
       />
 
       {/* Move Document Modal */}

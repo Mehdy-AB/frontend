@@ -39,6 +39,7 @@ import { useServerSideSearch } from '@/components/main/useServerSideSearch';
 import ServerSearchInput from '@/components/main/ServerSearchInput';
 import Pagination from '@/components/main/Pagination';
 import { notificationApiClient } from '@/api/notificationClient';
+import { documentService } from '@/api/services/documentService';
 import { useRouter } from 'next/navigation';
 
 // Types
@@ -90,18 +91,35 @@ export default function SharedDocumentsPage() {
   } = useServerSideSearch<SharedDocument>({
     fetchFunction: async (page, searchTerm) => {
       try {
-        const response = await notificationApiClient.getSharedDocuments({
+        const response = await documentService.getSharedDocuments({
           page,
           size: 20,
-          query: searchTerm,
+          search: searchTerm,
           sortBy,
           sortDir,
-          userId: userFilter !== 'all' ? userFilter : undefined
         });
-        return response;
+        // Map DocumentResponseDto to SharedDocument
+        const mappedContent: SharedDocument[] = response.content.map(doc => ({
+          id: doc.documentId,
+          name: doc.name,
+          title: doc.title,
+          folderId: doc.folderId,
+          folderPath: doc.path,
+          createdBy: doc.createdBy,
+          ownedBy: doc.ownedBy,
+          createdAt: doc.createdAt,
+          updatedAt: doc.updatedAt,
+          sizeBytes: doc.sizeBytes,
+          mimeType: doc.mimeType,
+          isPublic: doc.isPublic,
+        }));
+        return {
+          ...response,
+          content: mappedContent,
+        };
       } catch (error) {
         console.error('Error fetching shared documents:', error);
-        return { content: [], totalPages: 0, totalElements: 0 };
+        return { content: [], totalPages: 0, totalElements: 0, pageable: { pageNumber: page, pageSize: 20 }, sort: { empty: true, sorted: false, unsorted: true }, last: true, size: 20, number: page, first: true, numberOfElements: 0, empty: true };
       }
     },
     searchFields: (doc) => [

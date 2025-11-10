@@ -21,8 +21,8 @@ import {
   SelectValue 
 } from '@/components/ui/select';
 import { 
-  RoleCreateReq, 
-  RoleUpdateReq, 
+  CreateRoleRequest, 
+  UpdateRoleRequest, 
   RoleDto, 
   UserDto 
 } from '@/types/api';
@@ -62,8 +62,8 @@ export default function RoleManagementModal({
     if (role) {
       setFormData({
         name: role.name,
-        description: role.description,
-        permissions: role.permissions || []
+        description: role.description || '',
+        permissions: role.permissions?.map(p => p.name || p.id) || []
       });
       
       // Load role's users
@@ -84,8 +84,8 @@ export default function RoleManagementModal({
     if (!role) return;
     
     try {
-      const usersWithRole = await notificationApiClient.getRoleUsers(role.name, { size: 100 });
-      setRoleUsers(usersWithRole);
+      const response = await notificationApiClient.getRoleUsers(role.name, { size: 100 });
+      setRoleUsers(response.content || []);
     } catch (error) {
       console.error('Error loading role users:', error);
       setRoleUsers([]);
@@ -140,20 +140,21 @@ export default function RoleManagementModal({
 
     try {
       if (isEditMode && role) {
-        const updateData: RoleUpdateReq = {
-          description: formData.description,
-          permissions: formData.permissions
+        const updateData: UpdateRoleRequest = {
+          name: formData.name,
+          description: formData.description
         };
         
         await notificationApiClient.updateRole(role.id, updateData);
+        // TODO: Handle permissions separately if needed
       } else {
-        const createData: RoleCreateReq = {
+        const createData: CreateRoleRequest = {
           name: formData.name,
-          description: formData.description,
-          permissions: formData.permissions
+          description: formData.description
         };
         
         await notificationApiClient.createRole(createData);
+        // TODO: Handle permissions separately if needed
       }
       
       onRoleSaved();

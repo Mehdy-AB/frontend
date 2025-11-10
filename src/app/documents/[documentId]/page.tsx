@@ -472,6 +472,7 @@ export default function DocumentViewPage() {
           onShare={() => setShowManagePermissions(true)}
           onToggleFavorite={handleToggleFavorite}
           onUpdateMetadata={(metadata) => {
+            // Update metadata without changing fileViewerKey to prevent content view from disappearing
             setDocument(prev => prev ? { ...prev, metadata } : null);
           }}
           onUpdateDocument={(updatedDocument) => setDocument(updatedDocument)}

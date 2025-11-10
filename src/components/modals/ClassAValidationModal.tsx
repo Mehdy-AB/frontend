@@ -61,8 +61,8 @@ export default function ClassAValidationModal({
     if (isOpen && document) {
       fetchDocumentDetails();
       fetchDownloadUrl();
-      setTitle(document.title);
-      setName(document.name);
+      setTitle(document.title || '');
+      setName(document.name || '');
       setDescription(document.description || '');
       loadAvailableTags();
     }
@@ -88,11 +88,10 @@ export default function ClassAValidationModal({
       
       // Initialize metadata with empty values
       const initialMetadata: Record<string, string> = {};
-      if (details.metadataDefinitions && Array.isArray(details.metadataDefinitions)) {
-        details.metadataDefinitions.forEach(def => {
-          if (def && ((def as any).key || def.metadataName)) {
-            const fieldKey = (def as any).key || def.metadataName;
-            initialMetadata[fieldKey] = '';
+      if (details.filingCategory?.metadataDefinitions && Array.isArray(details.filingCategory.metadataDefinitions)) {
+        details.filingCategory.metadataDefinitions.forEach(def => {
+          if (def && def.key) {
+            initialMetadata[def.key] = '';
           }
         });
       }

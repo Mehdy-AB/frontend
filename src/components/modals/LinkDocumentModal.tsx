@@ -1,14 +1,16 @@
 'use client';
 
-import { useState } from 'react';
-import { X, Link, FileText, Loader2, AlertCircle } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { X, Link, FileText, Loader2, AlertCircle, Share2, Folder, Search, ChevronRight, Home } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { linkRuleService } from '../../api/services/linkRuleService';
-import { DocumentLinkRequestDto, DocumentResponseDto } from '../../types/api';
+import { notificationApiClient } from '../../api/notificationClient';
+import { DocumentLinkRequestDto, DocumentResponseDto, FolderRepoResDto, FolderResDto, SortFields } from '../../types/api';
 import { formatFileSize } from '../../utils/documentUtils';
 import FolderNavigationPicker from './FolderNavigationPicker';
+import Pagination from '../main/Pagination';
 
 interface LinkDocumentModalProps {
   isOpen: boolean;
@@ -29,6 +31,9 @@ const LINK_TYPES = [
   { value: 'alternative', label: 'Alternative Version' }
 ];
 
+// Unified type for table items
+type TableItem = (FolderResDto & { type: 'folder' }) | (DocumentResponseDto & { type: 'document' });
+
 export default function LinkDocumentModal({ 
   isOpen, 
   onClose, 
@@ -41,12 +46,144 @@ export default function LinkDocumentModal({
   const [description, setDescription] = useState('');
   const [isLinking, setIsLinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'folders' | 'shared'>('folders');
+  
+  // Shared items state
+  const [sharedData, setSharedData] = useState<FolderRepoResDto | null>(null);
+  const [sharedLoading, setSharedLoading] = useState(false);
+  const [sharedSearchQuery, setSharedSearchQuery] = useState('');
+  const [sharedDebouncedQuery, setSharedDebouncedQuery] = useState('');
+  const [sharedCurrentPage, setSharedCurrentPage] = useState(0);
+  const [sharedPageSize] = useState(20);
+  const [sharedCurrentFolderId, setSharedCurrentFolderId] = useState<number | null>(null);
+  const [sharedBreadcrumbs, setSharedBreadcrumbs] = useState<Array<{ id: number; name: string }>>([]);
 
   // Handle document selection from folder navigation
   const handleSelectDocument = (document: DocumentResponseDto) => {
     setSelectedDocument(document);
     setError(null);
   };
+
+  // Handle document selection from shared items
+  const handleSelectSharedDocument = (document: DocumentResponseDto) => {
+    setSelectedDocument(document);
+    setError(null);
+  };
+
+  // Note: Breadcrumbs are built incrementally as we navigate into folders
+  // This provides the most reliable way to track navigation since we have folder IDs
+
+  // Fetch shared folders and documents
+  const fetchSharedData = useCallback(async () => {
+    setSharedLoading(true);
+    try {
+      let response: FolderRepoResDto;
+      
+      if (sharedCurrentFolderId !== null) {
+        // Fetch folder contents
+        response = await notificationApiClient.getFolder(sharedCurrentFolderId, {
+          page: sharedCurrentPage,
+          size: sharedPageSize,
+          showFolder: true,
+          name: sharedDebouncedQuery || undefined,
+          sort: SortFields.NAME,
+          desc: false
+        });
+      } else {
+        // Fetch root shared items
+        response = await notificationApiClient.getSharedFolders({
+          page: sharedCurrentPage,
+          size: sharedPageSize,
+          name: sharedDebouncedQuery || undefined,
+          showFolder: true,
+          sort: SortFields.NAME,
+          desc: false
+        });
+      }
+      
+      setSharedData(response);
+    } catch (err: any) {
+      console.error('Error fetching shared data:', err);
+      setError('Failed to load shared items');
+    } finally {
+      setSharedLoading(false);
+    }
+  }, [sharedCurrentPage, sharedDebouncedQuery, sharedCurrentFolderId, sharedPageSize]);
+
+  // Debounce shared search query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSharedDebouncedQuery(sharedSearchQuery);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [sharedSearchQuery]);
+
+  // Reset to page 0 when debounced search query changes
+  useEffect(() => {
+    setSharedCurrentPage(0);
+  }, [sharedDebouncedQuery]);
+
+  // Fetch shared data when tab is active, query changes, page changes, or folder changes
+  useEffect(() => {
+    if (activeTab === 'shared' && isOpen) {
+      fetchSharedData();
+    }
+  }, [activeTab, isOpen, sharedDebouncedQuery, sharedCurrentPage, sharedCurrentFolderId, fetchSharedData]);
+
+  // Navigate to folder
+  const navigateToSharedFolder = (folderId: number, folderName: string) => {
+    setSharedCurrentFolderId(folderId);
+    setSharedBreadcrumbs(prev => [...prev, { id: folderId, name: folderName }]);
+    setSharedCurrentPage(0); // Reset to first page when navigating
+  };
+
+  // Navigate back in breadcrumbs
+  const navigateSharedBreadcrumb = (folderId: number | null, breadcrumbIndex?: number) => {
+    if (folderId === null) {
+      // Go to root (Shared)
+      setSharedCurrentFolderId(null);
+      setSharedBreadcrumbs([]);
+    } else {
+      // Navigate to the clicked breadcrumb
+      // If breadcrumbIndex is provided, use it directly
+      if (breadcrumbIndex !== undefined) {
+        setSharedCurrentFolderId(folderId);
+        setSharedBreadcrumbs(prev => prev.slice(0, breadcrumbIndex + 1));
+      } else {
+        // Find the index of this folder in breadcrumbs
+        const index = sharedBreadcrumbs.findIndex(b => b.id === folderId);
+        if (index !== -1) {
+          setSharedCurrentFolderId(folderId);
+          setSharedBreadcrumbs(prev => prev.slice(0, index + 1));
+        }
+      }
+    }
+    setSharedCurrentPage(0); // Reset to first page when navigating
+  };
+
+  // Combine folders and documents for shared items
+  const sharedTableItems = useMemo(() => {
+    if (!sharedData) return [];
+    
+    const folderItems: TableItem[] = (sharedData.folders || []).map(folder => ({
+      ...folder,
+      type: 'folder' as const
+    }));
+    
+    const documentItems: TableItem[] = (sharedData.documents || []).map(doc => ({
+      ...doc,
+      type: 'document' as const
+    }));
+    
+    return [...folderItems, ...documentItems];
+  }, [sharedData]);
+
+  // Use API results directly (no local filtering since we're doing server-side search)
+  const filteredSharedItems = sharedTableItems;
+
+  // Get pagination info
+  const sharedTotalElements = sharedData?.totalElements || 0;
+  const sharedTotalPages = sharedData?.totalPages || 1;
 
   const handleLink = async () => {
     if (!selectedDocument) {
@@ -82,6 +219,13 @@ export default function LinkDocumentModal({
       setLinkType('related');
       setDescription('');
       setError(null);
+      setActiveTab('folders');
+      setSharedSearchQuery('');
+      setSharedDebouncedQuery('');
+      setSharedCurrentPage(0);
+      setSharedCurrentFolderId(null);
+      setSharedBreadcrumbs([]);
+      setSharedData(null);
       onClose();
     }
   };
@@ -111,17 +255,221 @@ export default function LinkDocumentModal({
 
         {/* Content */}
         <div className="p-6 space-y-4 overflow-y-auto flex-1">
-          {/* Folder Navigation Picker */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Select Document from Folders
-            </label>
-            <FolderNavigationPicker
-              excludeDocumentId={sourceDocumentId}
-              onSelectDocument={handleSelectDocument}
-              selectedDocument={selectedDocument}
-            />
+          {/* Tab Selection */}
+          <div className="flex gap-2 border-b">
+            <button
+              onClick={() => setActiveTab('folders')}
+              className={`px-4 py-2 font-medium text-sm transition-colors border-b-2 ${
+                activeTab === 'folders'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Folder className="h-4 w-4" />
+                My Folders
+              </div>
+            </button>
+            <button
+              onClick={() => setActiveTab('shared')}
+              className={`px-4 py-2 font-medium text-sm transition-colors border-b-2 ${
+                activeTab === 'shared'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Share2 className="h-4 w-4" />
+                Shared with Me
+              </div>
+            </button>
           </div>
+
+          {/* Tab Content */}
+          {activeTab === 'folders' ? (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Select Document from Folders
+              </label>
+              <FolderNavigationPicker
+                excludeDocumentId={sourceDocumentId}
+                onSelectDocument={handleSelectDocument}
+                selectedDocument={selectedDocument}
+              />
+            </div>
+          ) : (
+            <div className="flex flex-col h-[500px] border rounded-lg overflow-hidden">
+              {/* Search Bar */}
+              <div className="p-3 border-b bg-gray-50">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    type="text"
+                    value={sharedSearchQuery}
+                    onChange={(e) => setSharedSearchQuery(e.target.value)}
+                    placeholder="Search shared folders and documents..."
+                    className="pl-10"
+                  />
+                </div>
+              </div>
+
+              {/* Breadcrumb Navigation - Always show when in a folder */}
+              <div className="p-3 border-b bg-white flex items-center gap-2 text-sm overflow-x-auto">
+                <button
+                  onClick={() => navigateSharedBreadcrumb(null)}
+                  className={`flex items-center gap-1 px-2 py-1 rounded transition-colors flex-shrink-0 ${
+                    sharedCurrentFolderId === null 
+                      ? 'font-medium text-blue-600' 
+                      : 'hover:bg-gray-100 text-gray-700'
+                  }`}
+                >
+                  <Home className="h-4 w-4" />
+                  <span>Shared</span>
+                </button>
+                
+                {sharedBreadcrumbs.map((crumb, index) => (
+                  <div key={`${crumb.id}-${index}`} className="flex items-center gap-2 flex-shrink-0">
+                    <ChevronRight className="h-4 w-4 text-gray-400" />
+                    <button
+                      onClick={() => navigateSharedBreadcrumb(crumb.id, index)}
+                      className={`px-2 py-1 rounded transition-colors truncate max-w-[150px] ${
+                        index === sharedBreadcrumbs.length - 1 && sharedCurrentFolderId === crumb.id
+                          ? 'font-medium text-blue-600'
+                          : 'hover:bg-gray-100 text-gray-700'
+                      }`}
+                      title={crumb.name}
+                    >
+                      {crumb.name}
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Shared Items List */}
+              <div className="flex-1 overflow-y-auto bg-white">
+                {sharedLoading ? (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="text-center">
+                      <Loader2 className="h-8 w-8 animate-spin text-blue-500 mx-auto mb-2" />
+                      <p className="text-sm text-gray-500">Loading shared items...</p>
+                    </div>
+                  </div>
+                ) : filteredSharedItems.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                      <Share2 className="h-8 w-8 text-gray-400" />
+                    </div>
+                    <h3 className="text-sm font-medium text-gray-900 mb-1">No shared items found</h3>
+                    <p className="text-xs text-gray-500">
+                      {sharedSearchQuery 
+                        ? `No items match "${sharedSearchQuery}"`
+                        : sharedCurrentFolderId !== null
+                          ? 'This folder is empty'
+                          : 'No folders or documents have been shared with you yet'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="divide-y">
+                    {filteredSharedItems.map((item) => {
+                      const isDocument = item.type === 'document';
+                      const isFolder = item.type === 'folder';
+                      const excluded = isDocument && item.documentId === sourceDocumentId;
+                      const selected = isDocument && selectedDocument?.documentId === item.documentId;
+                      
+                      if (isFolder) {
+                        return (
+                          <button
+                            key={`folder-${item.id}`}
+                            onClick={() => navigateToSharedFolder(item.id, item.name)}
+                            className="w-full p-3 hover:bg-gray-50 transition-colors flex items-center gap-3 text-left group"
+                          >
+                            <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                              <Folder className="h-5 w-5 text-blue-600" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-gray-900 truncate">{item.name}</div>
+                              {item.description && (
+                                <div className="text-sm text-gray-500 truncate">{item.description}</div>
+                              )}
+                              <div className="flex items-center gap-3 text-xs text-gray-500 mt-1">
+                                <span>Folder • {formatFileSize(item.size || 0)}</span>
+                              </div>
+                            </div>
+                            <ChevronRight className="h-5 w-5 text-gray-400 group-hover:text-gray-600" />
+                          </button>
+                        );
+                      }
+
+                      return (
+                        <button
+                          key={`doc-${item.documentId}`}
+                          onClick={() => !excluded && handleSelectSharedDocument(item)}
+                          disabled={excluded}
+                          className={`w-full p-3 transition-colors flex items-center gap-3 text-left
+                            ${excluded 
+                              ? 'opacity-50 cursor-not-allowed bg-gray-100' 
+                              : selected
+                                ? 'bg-blue-50 border-l-4 border-blue-500'
+                                : 'hover:bg-gray-50'
+                            }`}
+                        >
+                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center
+                            ${excluded 
+                              ? 'bg-gray-200' 
+                              : selected 
+                                ? 'bg-blue-100' 
+                                : 'bg-green-50'
+                            }`}>
+                            <FileText className={`h-5 w-5 ${excluded ? 'text-gray-400' : selected ? 'text-blue-600' : 'text-green-600'}`} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <div className="font-medium text-gray-900 truncate">{item.name}</div>
+                              {excluded && (
+                                <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded flex-shrink-0">
+                                  Current Doc
+                                </span>
+                              )}
+                              {selected && !excluded && (
+                                <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded flex-shrink-0">
+                                  Selected
+                                </span>
+                              )}
+                            </div>
+                            {item.title && item.title !== item.name && (
+                              <div className="text-sm text-gray-600 truncate">{item.title}</div>
+                            )}
+                            <div className="flex items-center gap-3 text-xs text-gray-500 mt-1">
+                              <span>{formatFileSize(item.sizeBytes || 0)}</span>
+                              {item.ownedBy && (
+                                <span className="text-gray-600">
+                                  by {item.ownedBy.firstName} {item.ownedBy.lastName}
+                                </span>
+                              )}
+                              <span className="bg-gray-100 px-2 py-0.5 rounded">{item.mimeType}</span>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Pagination */}
+              {sharedTotalPages > 1 && (
+                <div className="p-3 border-t bg-gray-50">
+                  <Pagination
+                    currentPage={sharedCurrentPage}
+                    totalPages={sharedTotalPages}
+                    totalElements={sharedTotalElements}
+                    pageSize={sharedPageSize}
+                    onPageChange={setSharedCurrentPage}
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Link Type */}
           <div>

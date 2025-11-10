@@ -54,7 +54,7 @@ class AuthService {
   private baseURL: string;
 
   constructor() {
-    this.baseURL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080';
+    this.baseURL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://105.107.29.176:8080';
   }
 
   /**
@@ -68,6 +68,7 @@ class AuthService {
         headers: {
           'Content-Type': 'application/json',
         },
+        withCredentials: true, // Important: Send cookies for CORS
       }
     );
     

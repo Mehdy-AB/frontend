@@ -41,7 +41,7 @@ export default function DocumentTabs({ activeTab, onTabChange }: DocumentTabsPro
             <button
               key={tab.id}
               onClick={() => onTabChange(tab.id)}
-              className={`flex-1 py-3 px-4 text-sm font-medium border-b-2 transition-colors ${
+              className={`flex-1 py-3 px-2 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === tab.id
                   ? 'border-primary text-primary'
                   : 'border-transparent text-neutral-text-light hover:text-neutral-text-dark'

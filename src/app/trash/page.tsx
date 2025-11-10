@@ -12,8 +12,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { recycleBinService } from '../../api/services/recycleBinService';
-import { RecycleBinEntry } from '../../types/api';
+import { trashService, TrashItemDto } from '../../api/services/trashService';
 import ServerSearchInput from '../../components/main/ServerSearchInput';
 import Pagination from '../../components/main/Pagination';
 import UserAvatar from '../../components/main/UserAvatar';
@@ -22,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 export default function TrashPage() {
   const { t } = useLanguage();
-  const [items, setItems] = useState<RecycleBinEntry[]>([]);
+  const [items, setItems] = useState<TrashItemDto[]>([]);
   const [selectedItems, setSelectedItems] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isRestoring, setIsRestoring] = useState<number | null>(null);
@@ -44,17 +43,22 @@ export default function TrashPage() {
     totalPages: hookTotalPages,
     totalElements: hookTotalElements,
     fetchData
-  } = useServerSideSearch<RecycleBinEntry>({
+  } = useServerSideSearch<TrashItemDto>({
     fetchFunction: async (pageIdx: number, _query?: string) => {
-      const resp = await recycleBinService.getMyRecycleBinEntries({
+      const resp = await trashService.getMyTrash({
         page: pageIdx,
         size,
-        sortBy: sortBy === 'deletedAt' ? 'deletedAt' : sortBy === 'createdAt' ? 'id' : 'deletedAt',
-        sortDir: sortDesc ? 'desc' : 'asc'
-      } as any & { entityType?: string });
+        sortBy: sortBy === 'deletedAt' ? 'deletedAt' : sortBy === 'name' ? 'entityName' : 'deletedAt',
+        sortDir: sortDesc ? 'desc' : 'asc',
+        entityType: filterType === 'all' ? undefined : filterType
+      });
       return resp;
     },
-    searchFields: (item) => [item.entityName, item.entityType, String(item.entityId)],
+    searchFields: (item) => [
+      item.entityName || '', 
+      item.entityType || '', 
+      String(item.entityId || '')
+    ],
     debounceMs: 500,
     initialPage: 0,
     fetchOnMount: true
@@ -68,7 +72,7 @@ export default function TrashPage() {
 
   useEffect(() => {
     fetchData(true);
-  }, [sortBy, sortDesc, size]);
+  }, [sortBy, sortDesc, size, filterType]);
 
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return '0 Bytes';
@@ -88,15 +92,12 @@ export default function TrashPage() {
     });
   };
 
-  const restoreItem = async (item: RecycleBinEntry) => {
+  const restoreItem = async (item: TrashItemDto) => {
     try {
       setIsRestoring(item.id);
-      await recycleBinService.restoreFromRecycleBin({
-        entityType: item.entityType,
-        entityId: item.entityId
-      });
-      setItems(prev => prev.filter(i => i.id !== item.id));
+      await trashService.restoreItem(item.entityType, item.entityId);
       setSelectedItems(prev => prev.filter(itemId => itemId !== item.id));
+      fetchData(true); // Refresh the data from server
     } catch (error) {
       console.error('Error restoring item:', error);
       setError('Failed to restore item');
@@ -105,16 +106,13 @@ export default function TrashPage() {
     }
   };
 
-  const permanentlyDelete = async (item: RecycleBinEntry) => {
+  const permanentlyDelete = async (item: TrashItemDto) => {
     if (confirm('Are you sure you want to permanently delete this item? This action cannot be undone.')) {
       try {
         setIsDeleting(item.id);
-        await recycleBinService.permanentlyDelete({
-          entityType: item.entityType,
-          entityId: item.entityId
-        });
-        setItems(prev => prev.filter(i => i.id !== item.id));
+        await trashService.permanentlyDelete(item.entityType, item.entityId);
         setSelectedItems(prev => prev.filter(itemId => itemId !== item.id));
+        fetchData(true); // Refresh the data from server
       } catch (error) {
         console.error('Error permanently deleting item:', error);
         setError('Failed to permanently delete item');
@@ -127,21 +125,22 @@ export default function TrashPage() {
   const emptyTrash = async () => {
     if (confirm('Are you sure you want to empty the trash? This will permanently delete all items.')) {
       try {
-        setLoading(true);
-        await recycleBinService.emptyMyRecycleBin();
+        await trashService.emptyTrash();
         setItems([]);
         setSelectedItems([]);
+        setTotalElements(0);
+        setTotalPages(0);
+        fetchData(true); // Refresh the data
       } catch (error) {
         console.error('Error emptying trash:', error);
         setError('Failed to empty trash');
-      } finally {
-        setLoading(false);
       }
     }
   };
 
-  // Filter items (search + type)
+  // Filter items (search + type) - server-side filtering is handled by the API
   const filteredItems = items.filter(item => {
+    if (!item.entityName) return false; // Safety check
     const matchesSearch = item.entityName.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesType = filterType === 'all' || item.entityType.toLowerCase() === filterType;
     return matchesSearch && matchesType;
@@ -373,7 +372,7 @@ function TrashItemRow({
   isRestoring, 
   isDeleting 
 }: { 
-  item: RecycleBinEntry;
+  item: TrashItemDto;
   isSelected: boolean;
   onSelect: () => void;
   onRestore: () => void;
@@ -382,8 +381,9 @@ function TrashItemRow({
   isRestoring: boolean;
   isDeleting: boolean;
 }) {
-  const isDocument = item.entityType.toLowerCase() === 'document';
-  const isFolder = item.entityType.toLowerCase() === 'folder';
+  const isDocument = item.entityType?.toLowerCase() === 'document';
+  const isFolder = item.entityType?.toLowerCase() === 'folder';
+  const entityName = item.entityName || 'Unknown';
 
   return (
     <tr className="border-b border-ui last:border-b-0 hover:bg-neutral-background/50">
@@ -403,8 +403,8 @@ function TrashItemRow({
             {isDocument ? <File className="h-4 w-4" /> : <Folder className="h-4 w-4" />}
           </div>
           <div>
-            <div className="font-medium text-neutral-text-dark">{item.entityName}</div>
-            <div className="text-sm text-neutral-text-light capitalize">{item.entityType}</div>
+            <div className="font-medium text-neutral-text-dark">{entityName}</div>
+            <div className="text-sm text-neutral-text-light capitalize">{item.entityType || 'Unknown'}</div>
           </div>
         </div>
       </td>
@@ -421,8 +421,17 @@ function TrashItemRow({
       </td>
       <td className="p-4">
         <div className="flex items-center gap-2">
-          <UserAvatar user={item.deletedBy} size="sm" />
-          <div className="text-sm text-neutral-text-dark">{item.deletedBy?.displayName || item.deletedBy?.username || 'Unknown'}</div>
+          {item.deletedBy && (
+            <>
+              <UserAvatar user={item.deletedBy} size="sm" />
+              <div className="text-sm text-neutral-text-dark">
+                {item.deletedBy.displayName || item.deletedBy.username || item.deletedBy.email || 'Unknown'}
+              </div>
+            </>
+          )}
+          {!item.deletedBy && (
+            <div className="text-sm text-neutral-text-light">Unknown</div>
+          )}
         </div>
       </td>
       <td className="p-4">

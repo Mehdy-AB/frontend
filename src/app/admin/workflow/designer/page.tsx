@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { 
   Workflow, 
   Plus, 
@@ -60,9 +61,28 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '../../../../contexts/LanguageContext';
+import { useAdminPagePermissions } from '@/hooks/useAdminPagePermissions';
 
 export default function WorkflowDesignerPage() {
   const { t } = useLanguage();
+  const router = useRouter();
+  const { canView } = useAdminPagePermissions();
+  
+  useEffect(() => {
+    if (!canView) {
+      router.push('/');
+    }
+  }, [canView, router]);
+
+  if (!canView) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <p className="text-destructive text-lg">You don't have permission to view this page</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

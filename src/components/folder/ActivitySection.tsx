@@ -80,12 +80,12 @@ export function ActivitySection({
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-start mb-1">
-                      <span className="font-medium text-gray-900 text-sm">{log.username}</span>
+                      <span className="font-medium text-gray-900 text-sm">{log.user?.username || log.user?.displayName || 'Unknown User'}</span>
                       <span className="text-xs text-gray-500 ml-2">{formatDate(log.timestamp).split(',')[0]}</span>
                     </div>
                     <div className="text-gray-700 capitalize text-sm">{log.action}</div>
-                    {log.details && (
-                      <div className="text-xs text-gray-500 mt-1 line-clamp-2">{log.details}</div>
+                    {log.description && (
+                      <div className="text-xs text-gray-500 mt-1 line-clamp-2">{log.description}</div>
                     )}
                   </div>
                 </div>

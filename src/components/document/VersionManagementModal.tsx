@@ -65,16 +65,16 @@ export default function VersionManagementModal({
       setError(null);
       const versions = await notificationApiClient.getDocumentVersionsList(document.documentId);
       
-      // Map the DocumentVersionResponse to VersionInfo format
+      // Map the DocumentVersionResponseDto to VersionInfo format
       const versionInfos: VersionInfo[] = versions.map(version => ({
         versionId: version.id,
         versionNumber: version.versionNumber,
         sizeBytes: version.sizeBytes,
         mimeType: version.mimeType,
         createdAt: version.createdAt,
-        updatedAt: version.createdAt, // DocumentVersionResponse doesn't have updatedAt, use createdAt
+        updatedAt: version.updatedAt || version.createdAt,
         createdBy: {
-          id: '', // DocumentVersionResponse doesn't include user info
+          id: '', // DocumentVersionResponseDto doesn't include user info
           username: '',
           firstName: '',
           lastName: ''
@@ -143,7 +143,7 @@ export default function VersionManagementModal({
       link.download = `${document.name}_v${version?.versionNumber}`;
       window.document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
+      window.document.body.removeChild(link);
     } catch (err) {
       console.error('Error downloading version:', err);
       setError('Failed to download version');

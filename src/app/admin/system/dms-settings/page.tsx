@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { 
   Save, 
   RefreshCw, 
@@ -12,6 +13,7 @@ import {
   FileText
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useDMSSettings } from './lib/hooks';
 import OverviewTab from './components/OverviewTab';
@@ -20,9 +22,18 @@ import SecurityTab from './components/SecurityTab';
 import PerformanceTab from './components/PerformanceTab';
 import BackupTab from './components/BackupTab';
 import LogsTab from './components/LogsTab';
+import { useAdminPagePermissions } from '@/hooks/useAdminPagePermissions';
 
 export default function DMSSettingsPage() {
+  const router = useRouter();
+  const { canView, canUpdate } = useAdminPagePermissions();
   const [activeTab, setActiveTab] = useState('overview');
+  
+  useEffect(() => {
+    if (!canView) {
+      router.push('/');
+    }
+  }, [canView, router]);
   
   const {
     saving,
@@ -70,6 +81,16 @@ export default function DMSSettingsPage() {
     console.log('Delete backup location:', id);
   };
 
+  if (!canView) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <p className="text-destructive text-lg">You don't have permission to view this page</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -83,10 +104,23 @@ export default function DMSSettingsPage() {
             <RefreshCw className="h-4 w-4" />
             Refresh
           </Button>
-          <Button onClick={handleSaveSettings} disabled={saving} className="gap-2">
-            <Save className="h-4 w-4" />
-            {saving ? 'Saving...' : 'Save Changes'}
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button 
+                onClick={handleSaveSettings} 
+                disabled={saving || !canUpdate} 
+                className="gap-2"
+              >
+                <Save className="h-4 w-4" />
+                {saving ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </TooltipTrigger>
+            {!canUpdate && (
+              <TooltipContent>
+                <p>You don't have permission to update system settings</p>
+              </TooltipContent>
+            )}
+          </Tooltip>
         </div>
       </div>
 

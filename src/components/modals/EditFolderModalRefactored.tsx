@@ -219,10 +219,13 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
   const handleEditPermission = (grant: TypeShareAccessRes) => {
     if (!grant.grantee) return;
 
-    let type: GranteeType;
-    if (isUser(grant.grantee)) type = 'USER';
-    else if (isGroup(grant.grantee)) type = 'GROUP';
-    else type = 'ROLE';
+    // Use type from response if available, otherwise determine from grantee
+    let type: GranteeType = grant.type;
+    if (!type) {
+      if (isUser(grant.grantee)) type = 'USER';
+      else if (isGroup(grant.grantee)) type = 'GROUP';
+      else type = 'ROLE';
+    }
 
     setEditingGrant({
       grantee: grant.grantee,
@@ -248,12 +251,10 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
         // POST for new permission
         const result = await notificationApiClient.createOrUpdateFolderShared(folder.id, data);
         addGrantToList(result);
-        notificationApiClient['showSuccess']?.('Permission added successfully');
       } else {
         // PUT for update
         const result = await notificationApiClient.createOrUpdateFolderShared(folder.id, data);
         updateGrantInList(editingGrant.grantee.id, () => result, (g) => g.grantee?.id);
-        notificationApiClient['showSuccess']?.('Permission updated successfully');
       }
 
       setShowPermissionModal(false);
@@ -267,7 +268,6 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
     try {
       await notificationApiClient.deleteFolderShared(folder.id, granteeId, false);
       removeGrantFromList(granteeId, (g) => g.grantee?.id);
-      notificationApiClient['showSuccess']?.('Permission removed successfully');
     } catch (error) {
       console.error('Error removing permission:', error);
     }
@@ -410,7 +410,7 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
                       >
                         <div className="flex items-center gap-3 flex-1 min-w-0">
                           {isUser(grant.grantee) && (
-                            <UserAvatar user={grant.grantee} size="sm" showTooltip={false} />
+                            <UserAvatar user={grant.grantee} size="sm" />
                           )}
                           {isGroup(grant.grantee) && (
                             <div className="p-2 bg-green-100 rounded-lg shrink-0">
@@ -520,7 +520,7 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
               {/* Grantee Info */}
               <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-lg mb-6">
                 {isUser(editingGrant.grantee) && (
-                  <UserAvatar user={editingGrant.grantee} size="md" showTooltip={false} />
+                  <UserAvatar user={editingGrant.grantee} size="md"  />
                 )}
                 {isGroup(editingGrant.grantee) && (
                   <div className="p-3 bg-green-100 rounded-lg">

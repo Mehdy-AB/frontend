@@ -2,7 +2,7 @@
 
 import { signIn, getSession } from 'next-auth/react'
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { Shield, Lock, FileText, Users, ArrowRight, Loader2, Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -22,6 +22,7 @@ export default function SignInContent() {
     password: ''
   })
   const router = useRouter()
+  const searchParams = useSearchParams()
   
   // Safe translation hook with fallback
   let t: (key: string) => string
@@ -51,17 +52,38 @@ export default function SignInContent() {
     // Check if user is already signed in
     const checkSession = async () => {
       try {
-        const session = await getSession()
+        // Add timeout to prevent hanging
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Session check timeout')), 3000)
+        )
+        
+        const sessionPromise = getSession()
+        const session = await Promise.race([sessionPromise, timeoutPromise]) as any
+        
         if (session) {
-          router.push('/')
+          // Use replace to avoid adding to history stack
+          router.replace('/')
+          // Also use window.location as fallback for immediate redirect
+          if (typeof window !== 'undefined') {
+            setTimeout(() => {
+              window.location.href = '/'
+            }, 100)
+          }
         }
       } catch (err) {
         console.error('Error checking session:', err)
+        // If session check fails, just show the sign-in form
       } finally {
         setIsCheckingSession(false)
       }
     }
-    checkSession()
+    
+    // Only check session if we're on the sign-in page
+    if (typeof window !== 'undefined' && window.location.pathname === '/auth/signin') {
+      checkSession()
+    } else {
+      setIsCheckingSession(false)
+    }
   }, [router])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -89,7 +111,18 @@ export default function SignInContent() {
       if (result?.error) {
         setError(t('signInFailed'))
       } else if (result?.ok) {
-        router.push('/')
+        // Get callback URL from query params, fallback to home
+        const callbackUrl = searchParams.get('callbackUrl') || '/'
+        const redirectUrl = callbackUrl.startsWith('/') ? callbackUrl : '/'
+        
+        // Use replace to avoid adding to history stack
+        router.replace(redirectUrl)
+        // Also use window.location for immediate redirect
+        if (typeof window !== 'undefined') {
+          setTimeout(() => {
+            window.location.href = redirectUrl
+          }, 100)
+        }
       }
     } catch (err) {
       setError(t('unexpectedError'))

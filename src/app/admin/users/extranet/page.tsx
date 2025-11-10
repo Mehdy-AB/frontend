@@ -221,9 +221,9 @@ export default function ExtranetUsersPage() {
       filtered = filtered.filter(user => 
         user.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
         user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        user.firstName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        user.lastName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        user.company.toLowerCase().includes(searchQuery.toLowerCase())
+        (user.firstName?.toLowerCase().includes(searchQuery.toLowerCase()) || false) ||
+        (user.lastName?.toLowerCase().includes(searchQuery.toLowerCase()) || false) ||
+        (user.company?.toLowerCase().includes(searchQuery.toLowerCase()) || false)
       );
     }
 

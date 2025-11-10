@@ -22,22 +22,32 @@ import {
   Smartphone,
   Tablet,
   Plus,
-  X
+  X,
+  Camera,
+  Save
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { notificationApiClient } from '@/api/notificationClient';
 import { roleManagementService } from '@/api/services/roleManagementService';
 import { apiClient } from '@/api/client';
 import { auditLogService, AuditLog } from '@/api/services/auditLogService';
+import { adminUserService } from '@/api/services/adminUserService';
 import { UserDto, RoleDto, GroupDto } from '@/types/api';
 import { formatDate } from '@/lib/dateFormatter';
 import ConfirmationModal from '@/components/modals/ConfirmationModal';
 import AssignUserRolesModal from '@/components/modals/AssignUserRolesModal';
 import AssignUserGroupsModal from '@/components/modals/AssignUserGroupsModal';
+import { usePermissions } from '@/hooks/usePermissions';
+import { Permissions } from '@/constants/permissions';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useNotification } from '@/contexts/NotificationContext';
+import { ImageCropDialog } from '@/components/ui/image-crop-dialog';
 
 interface UserStatistics {
   userId: string;
@@ -76,6 +86,8 @@ export default function UserDetailPage() {
   const router = useRouter();
   const params = useParams();
   const userId = params.userId as string;
+  const { hasPermission } = usePermissions();
+  const { addNotification } = useNotification();
 
   const [user, setUser] = useState<UserDto | null>(null);
   const [statistics, setStatistics] = useState<UserStatistics | null>(null);
@@ -89,6 +101,13 @@ export default function UserDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
   
+  // Permission checks
+  const canViewUser = hasPermission(Permissions.USER_READ);
+  const canUpdateUser = hasPermission(Permissions.USER_UPDATE);
+  const canDeleteUser = hasPermission(Permissions.USER_DELETE);
+  const canAssignRole = hasPermission(Permissions.USER_ASSIGN_ROLE);
+  const canViewRepository = hasPermission(Permissions.FOLDER_READ);
+  
   // Modal states
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isResetPasswordModalOpen, setIsResetPasswordModalOpen] = useState(false);
@@ -97,9 +116,37 @@ export default function UserDetailPage() {
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [revokeSessionId, setRevokeSessionId] = useState<string | null>(null);
 
+  // Edit profile states
+  const [editDisplayName, setEditDisplayName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editFirstName, setEditFirstName] = useState('');
+  const [editLastName, setEditLastName] = useState('');
+  const [editJobTitle, setEditJobTitle] = useState('');
+  const [editUsername, setEditUsername] = useState('');
+  const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
+  const [profilePhotoPreview, setProfilePhotoPreview] = useState<string | null>(null);
+  const [savingProfile, setSavingProfile] = useState(false);
+  
+  // Crop dialog state
+  const [cropDialogOpen, setCropDialogOpen] = useState(false);
+  const [imageToCrop, setImageToCrop] = useState<string | null>(null);
+
   useEffect(() => {
     fetchUserData();
   }, [userId]);
+
+  // Populate edit form fields when user data is loaded
+  useEffect(() => {
+    if (user) {
+      setEditDisplayName(user.displayName || '');
+      setEditEmail(user.email || '');
+      setEditFirstName(user.firstName || '');
+      setEditLastName(user.lastName || '');
+      setEditJobTitle(user.jobTitle || '');
+      setEditUsername(user.username || '');
+      setProfilePhotoPreview(user.imgUrl || null);
+    }
+  }, [user]);
 
   const fetchUserData = async () => {
     try {
@@ -266,15 +313,163 @@ export default function UserDetailPage() {
     }
   };
 
+  // Edit profile handlers
+  const handlePhotoFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        addNotification({
+          type: 'error',
+          title: 'File too large',
+          message: 'Profile photo must be less than 5MB',
+        });
+        return;
+      }
+      if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)) {
+        addNotification({
+          type: 'error',
+          title: 'Invalid file type',
+          message: 'Only JPEG, PNG, GIF, WebP images are allowed',
+        });
+        return;
+      }
+      // Create object URL for cropping
+      const imageUrl = URL.createObjectURL(file);
+      setImageToCrop(imageUrl);
+      setCropDialogOpen(true);
+    }
+  };
+
+  const handleCropComplete = (croppedFile: File) => {
+    setProfilePhotoFile(croppedFile);
+    setProfilePhotoPreview(URL.createObjectURL(croppedFile));
+    // Clean up object URL
+    if (imageToCrop) {
+      URL.revokeObjectURL(imageToCrop);
+      setImageToCrop(null);
+    }
+  };
+
+  const handleCropCancel = () => {
+    setCropDialogOpen(false);
+    if (imageToCrop) {
+      URL.revokeObjectURL(imageToCrop);
+      setImageToCrop(null);
+    }
+  };
+
+  const handleUploadPhoto = async () => {
+    if (!profilePhotoFile) return;
+
+    setSavingProfile(true);
+    try {
+      const updatedUser = await adminUserService.uploadUserProfilePhoto(userId, profilePhotoFile);
+      setUser(updatedUser);
+      setProfilePhotoPreview(updatedUser.imgUrl || null);
+      setProfilePhotoFile(null);
+      addNotification({
+        type: 'success',
+        title: 'Success',
+        message: 'Profile photo updated successfully',
+      });
+    } catch (error: any) {
+      console.error('Failed to upload profile photo:', error);
+      addNotification({
+        type: 'error',
+        title: 'Upload failed',
+        message: error.message || 'Failed to upload profile photo',
+      });
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const handleDeletePhoto = async () => {
+    if (!user?.imgUrl) return;
+
+    setSavingProfile(true);
+    try {
+      await adminUserService.deleteUserProfilePhoto(userId);
+      setUser(prev => prev ? { ...prev, imgUrl: '' } : null);
+      setProfilePhotoPreview(null);
+      addNotification({
+        type: 'success',
+        title: 'Success',
+        message: 'Profile photo deleted successfully',
+      });
+    } catch (error: any) {
+      console.error('Failed to delete profile photo:', error);
+      addNotification({
+        type: 'error',
+        title: 'Delete failed',
+        message: error.message || 'Failed to delete profile photo',
+      });
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+
+    setSavingProfile(true);
+    try {
+      // Build update request with only changed fields (partial update)
+      const updateRequest: any = {};
+      if (editUsername !== user.username) updateRequest.username = editUsername;
+      if (editEmail !== user.email) updateRequest.email = editEmail;
+      if (editDisplayName !== user.displayName) updateRequest.displayName = editDisplayName;
+      if (editFirstName !== user.firstName) updateRequest.firstName = editFirstName;
+      if (editLastName !== user.lastName) updateRequest.lastName = editLastName;
+      if (editJobTitle !== user.jobTitle) updateRequest.jobTitle = editJobTitle;
+
+      // Only make API call if there are changes
+      if (Object.keys(updateRequest).length === 0) {
+        addNotification({
+          type: 'info',
+          title: 'No changes',
+          message: 'No fields were modified',
+        });
+        setSavingProfile(false);
+        return;
+      }
+
+      const updatedUser = await adminUserService.updateUser(userId, updateRequest);
+      setUser(updatedUser);
+      addNotification({
+        type: 'success',
+        title: 'Success',
+        message: 'User profile updated successfully',
+      });
+    } catch (error: any) {
+      console.error('Failed to update profile:', error);
+      addNotification({
+        type: 'error',
+        title: 'Update failed',
+        message: error.message || 'Failed to update user profile',
+      });
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
   useEffect(() => {
+    if (!canViewUser) {
+      router.push('/admin/users');
+      return;
+    }
+    
     if (activeTab === 'sessions') {
       fetchSessions();
     } else if (activeTab === 'documents') {
-      fetchRepository();
+      if (canViewRepository) {
+        fetchRepository();
+      }
     } else if (activeTab === 'activity') {
       fetchActivityLogs();
     }
-  }, [activeTab]);
+  }, [activeTab, canViewUser, canViewRepository, router]);
 
   const parseUserAgent = (userAgent: string) => {
     if (!userAgent) return { browser: 'Unknown', os: 'Unknown', device: 'desktop' };
@@ -399,30 +594,60 @@ export default function UserDetailPage() {
             </div>
 
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleUpdateUserStatus(!user.enabled)}
-              >
-                {user.enabled ? <XCircle className="h-4 w-4 mr-2" /> : <CheckCircle className="h-4 w-4 mr-2" />}
-                {user.enabled ? 'Disable' : 'Enable'}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setIsResetPasswordModalOpen(true)}
-              >
-                <Key className="h-4 w-4 mr-2" />
-                Reset Password
-              </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => setIsDeleteModalOpen(true)}
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Delete
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => canUpdateUser && handleUpdateUserStatus(!user.enabled)}
+                    disabled={!canUpdateUser}
+                  >
+                    {user.enabled ? <XCircle className="h-4 w-4 mr-2" /> : <CheckCircle className="h-4 w-4 mr-2" />}
+                    {user.enabled ? 'Disable' : 'Enable'}
+                  </Button>
+                </TooltipTrigger>
+                {!canUpdateUser && (
+                  <TooltipContent>
+                    <p>You don't have permission to update users</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => canUpdateUser && setIsResetPasswordModalOpen(true)}
+                    disabled={!canUpdateUser}
+                  >
+                    <Key className="h-4 w-4 mr-2" />
+                    Reset Password
+                  </Button>
+                </TooltipTrigger>
+                {!canUpdateUser && (
+                  <TooltipContent>
+                    <p>You don't have permission to reset user passwords</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => canDeleteUser && setIsDeleteModalOpen(true)}
+                    disabled={!canDeleteUser}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete
+                  </Button>
+                </TooltipTrigger>
+                {!canDeleteUser && (
+                  <TooltipContent>
+                    <p>You don't have permission to delete users</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
             </div>
           </div>
         </CardContent>
@@ -478,16 +703,35 @@ export default function UserDetailPage() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="overview">
             <User className="h-4 w-4 mr-2" />
             Overview
           </TabsTrigger>
-          <TabsTrigger value="roles">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div>
+                <TabsTrigger 
+                  value="edit" 
+                  disabled={!canUpdateUser}
+                  className={!canUpdateUser ? 'opacity-50 cursor-not-allowed' : ''}
+                >
+                  <Edit className="h-4 w-4 mr-2" />
+                  Edit Profile
+                </TabsTrigger>
+              </div>
+            </TooltipTrigger>
+            {!canUpdateUser && (
+              <TooltipContent>
+                <p>You don't have permission to update users</p>
+              </TooltipContent>
+            )}
+          </Tooltip>
+          <TabsTrigger value="roles" disabled={!canAssignRole}>
             <Shield className="h-4 w-4 mr-2" />
             Roles
           </TabsTrigger>
-          <TabsTrigger value="groups">
+          <TabsTrigger value="groups" disabled={!canAssignRole}>
             <UsersIcon className="h-4 w-4 mr-2" />
             Groups
           </TabsTrigger>
@@ -495,10 +739,25 @@ export default function UserDetailPage() {
             <LogOut className="h-4 w-4 mr-2" />
             Sessions
           </TabsTrigger>
-          <TabsTrigger value="documents">
-            <FileText className="h-4 w-4 mr-2" />
-            Documents
-          </TabsTrigger>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div>
+                <TabsTrigger 
+                  value="documents" 
+                  disabled={!canViewRepository}
+                  className={!canViewRepository ? 'opacity-50 cursor-not-allowed' : ''}
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  Documents
+                </TabsTrigger>
+              </div>
+            </TooltipTrigger>
+            {!canViewRepository && (
+              <TooltipContent>
+                <p>You don't have permission to view user repositories (folder:read required)</p>
+              </TooltipContent>
+            )}
+          </Tooltip>
           <TabsTrigger value="activity">
             <Activity className="h-4 w-4 mr-2" />
             Activity
@@ -583,6 +842,131 @@ export default function UserDetailPage() {
           </Card>
         </TabsContent>
 
+        {/* Edit Profile Tab */}
+        <TabsContent value="edit">
+          <Card>
+            <CardHeader>
+              <CardTitle>Edit User Profile</CardTitle>
+              <CardDescription>Update user information and profile photo</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Profile Photo Section */}
+              <div className="flex flex-col items-center gap-4 pb-6 border-b">
+                <Avatar className="h-32 w-32">
+                  <AvatarImage src={profilePhotoPreview || undefined} alt={user.displayName || 'User'} />
+                  <AvatarFallback className="bg-primary text-primary-foreground text-5xl">
+                    {user.displayName ? user.displayName.charAt(0).toUpperCase() : <User className="h-16 w-16" />}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex gap-2">
+                  <Input
+                    id="profilePhotoInput"
+                    type="file"
+                    accept="image/jpeg, image/png, image/gif, image/webp"
+                    className="hidden"
+                    onChange={handlePhotoFileChange}
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={() => document.getElementById('profilePhotoInput')?.click()}
+                    disabled={savingProfile}
+                  >
+                    <Camera className="h-4 w-4 mr-2" />
+                    Choose Photo
+                  </Button>
+                  {profilePhotoFile && (
+                    <Button onClick={handleUploadPhoto} disabled={savingProfile}>
+                      <Save className="h-4 w-4 mr-2" />
+                      {savingProfile ? 'Uploading...' : 'Upload Photo'}
+                    </Button>
+                  )}
+                  {user.imgUrl && !profilePhotoFile && (
+                    <Button variant="destructive" onClick={handleDeletePhoto} disabled={savingProfile}>
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete Photo
+                    </Button>
+                  )}
+                </div>
+                {profilePhotoFile && (
+                  <p className="text-sm text-muted-foreground">
+                    Selected: {profilePhotoFile.name}
+                  </p>
+                )}
+              </div>
+
+              {/* Profile Information Form */}
+              <form onSubmit={handleUpdateProfile} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="editUsername">Username</Label>
+                    <Input
+                      id="editUsername"
+                      value={editUsername}
+                      onChange={(e) => setEditUsername(e.target.value)}
+                      required
+                      disabled={savingProfile}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="editDisplayName">Display Name</Label>
+                    <Input
+                      id="editDisplayName"
+                      value={editDisplayName}
+                      onChange={(e) => setEditDisplayName(e.target.value)}
+                      required
+                      disabled={savingProfile}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="editEmail">Email</Label>
+                  <Input
+                    id="editEmail"
+                    type="email"
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                    required
+                    disabled={savingProfile}
+                  />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="editFirstName">First Name</Label>
+                    <Input
+                      id="editFirstName"
+                      value={editFirstName}
+                      onChange={(e) => setEditFirstName(e.target.value)}
+                      disabled={savingProfile}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="editLastName">Last Name</Label>
+                    <Input
+                      id="editLastName"
+                      value={editLastName}
+                      onChange={(e) => setEditLastName(e.target.value)}
+                      disabled={savingProfile}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="editJobTitle">Job Title</Label>
+                  <Input
+                    id="editJobTitle"
+                    value={editJobTitle}
+                    onChange={(e) => setEditJobTitle(e.target.value)}
+                    disabled={savingProfile}
+                  />
+                </div>
+                <Button type="submit" disabled={savingProfile} className="w-full">
+                  <Save className="h-4 w-4 mr-2" />
+                  {savingProfile ? 'Saving...' : 'Save Changes'}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         {/* Roles Tab */}
         <TabsContent value="roles">
           <Card>
@@ -592,10 +976,23 @@ export default function UserDetailPage() {
                   <CardTitle>User Roles</CardTitle>
                   <CardDescription>Manage roles assigned to this user</CardDescription>
                 </div>
-                <Button size="sm" onClick={() => setIsRolesModalOpen(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Assign Roles
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      size="sm" 
+                      onClick={() => setIsRolesModalOpen(true)}
+                      disabled={!canAssignRole}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Assign Roles
+                    </Button>
+                  </TooltipTrigger>
+                  {!canAssignRole && (
+                    <TooltipContent>
+                      <p>You don't have permission to assign roles</p>
+                    </TooltipContent>
+                  )}
+                </Tooltip>
               </div>
             </CardHeader>
             <CardContent>
@@ -608,13 +1005,23 @@ export default function UserDetailPage() {
                           <Shield className="h-4 w-4 text-primary" />
                           <span className="font-medium">{role}</span>
                         </div>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleRemoveRole(role)}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => canAssignRole && handleRemoveRole(role)}
+                              disabled={!canAssignRole}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          {!canAssignRole && (
+                            <TooltipContent>
+                              <p>You don't have permission to remove roles</p>
+                            </TooltipContent>
+                          )}
+                        </Tooltip>
                       </div>
                     ))}
                   </div>
@@ -638,10 +1045,23 @@ export default function UserDetailPage() {
                   <CardTitle>User Groups</CardTitle>
                   <CardDescription>Manage groups this user belongs to</CardDescription>
                 </div>
-                <Button size="sm" onClick={() => setIsGroupsModalOpen(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Assign Groups
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      size="sm" 
+                      onClick={() => setIsGroupsModalOpen(true)}
+                      disabled={!canAssignRole}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Assign Groups
+                    </Button>
+                  </TooltipTrigger>
+                  {!canAssignRole && (
+                    <TooltipContent>
+                      <p>You don't have permission to assign groups</p>
+                    </TooltipContent>
+                  )}
+                </Tooltip>
               </div>
             </CardHeader>
             <CardContent>
@@ -654,13 +1074,23 @@ export default function UserDetailPage() {
                           <UsersIcon className="h-4 w-4 text-primary" />
                           <span className="font-medium">{group}</span>
                         </div>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleRemoveGroup(group)}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => canAssignRole && handleRemoveGroup(group)}
+                              disabled={!canAssignRole}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          {!canAssignRole && (
+                            <TooltipContent>
+                              <p>You don't have permission to remove groups</p>
+                            </TooltipContent>
+                          )}
+                        </Tooltip>
                       </div>
                     ))}
                   </div>
@@ -788,7 +1218,7 @@ export default function UserDetailPage() {
                     Access user's document repository and folders
                   </CardDescription>
                 </div>
-                {repository && (
+                {repository && canViewRepository && (
                   <Button
                     onClick={() => window.open(`/folders/${repository.rootFolderId}`, '_blank')}
                   >
@@ -799,12 +1229,22 @@ export default function UserDetailPage() {
               </div>
             </CardHeader>
             <CardContent>
-              {repository ? (
+              {!canViewRepository ? (
+                <div className="text-center py-12">
+                  <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
+                  <p className="text-lg font-medium text-muted-foreground mb-2">Permission Required</p>
+                  <p className="text-sm text-muted-foreground">
+                    You don't have permission to view user repositories. The folder:read permission is required.
+                  </p>
+                </div>
+              ) : repository ? (
                 <div className="space-y-6">
                   {/* Repository Card */}
                   <div 
-                    className="p-6 border-2 border-primary/20 rounded-lg hover:border-primary/40 cursor-pointer transition-colors bg-gradient-to-br from-primary/5 to-transparent"
-                    onClick={() => window.open(`/folders/${repository.rootFolderId}`, '_blank')}
+                    className={`p-6 border-2 border-primary/20 rounded-lg transition-colors bg-gradient-to-br from-primary/5 to-transparent ${
+                      canViewRepository ? 'hover:border-primary/40 cursor-pointer' : 'opacity-50 cursor-not-allowed'
+                    }`}
+                    onClick={() => canViewRepository && window.open(`/folders/${repository.rootFolderId}`, '_blank')}
                   >
                     <div className="flex items-center gap-4">
                       <div className="p-4 bg-primary/10 rounded-xl">
@@ -1047,6 +1487,16 @@ export default function UserDetailPage() {
         userName={user.displayName}
         currentGroups={userGroups}
       />
+
+      {/* Image Crop Dialog */}
+      {imageToCrop && (
+        <ImageCropDialog
+          isOpen={cropDialogOpen}
+          onClose={handleCropCancel}
+          imageSrc={imageToCrop}
+          onCropComplete={handleCropComplete}
+        />
+      )}
     </div>
   );
 }

@@ -97,6 +97,8 @@ class NotificationApiClient {
     try {
       const result = await apiCall()
       
+      // Only show success notifications if not silent and showSuccess is true
+      // This means GET operations (silent=true) won't show success notifications
       if (!silent && showSuccess) {
         const message = successMessage || DEFAULT_MESSAGES[operation].success
         this.showNotification('success', 'Success', message)
@@ -104,8 +106,36 @@ class NotificationApiClient {
       
       return result
     } catch (error: any) {
-      if (!silent && showError) {
-        const message = errorMessage || DEFAULT_MESSAGES[operation].error
+      // Always show error notifications (even for GET operations or silent requests)
+      // Only respect showError if explicitly set to false
+      if (showError !== false) {
+        let message = errorMessage || DEFAULT_MESSAGES[operation].error
+        
+        // Extract error message from API response if not a 500 error
+        if (error?.response) {
+          const status = error.response?.status
+          const errorData = error.response?.data
+          
+          // For non-500 errors, try to extract the message from the response
+          if (status !== 500 && errorData) {
+            // Try different common error message fields
+            if (errorData.message) {
+              message = errorData.message
+            } else if (errorData.error) {
+              message = typeof errorData.error === 'string' ? errorData.error : errorData.error.message || message
+            } else if (errorData.errors && Array.isArray(errorData.errors) && errorData.errors.length > 0) {
+              // Handle validation errors
+              message = errorData.errors.map((e: any) => e.message || e.defaultMessage || e).join(', ')
+            } else if (typeof errorData === 'string') {
+              message = errorData
+            }
+          }
+          // For 500 errors, use the default message
+        } else if (error?.message && !error?.response) {
+          // Network error or other client-side error
+          message = error.message
+        }
+        
         this.showNotification('error', 'Error', message)
       }
       throw error
@@ -408,6 +438,48 @@ class NotificationApiClient {
     )
   }
 
+  async searchUnclassifiedDocuments(params?: any, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => unclassifiedDocumentService.searchUnclassifiedDocuments({
+        page: params?.page || 0,
+        size: params?.size || 20,
+        query: params?.query,
+        name: params?.query, // Use query as name filter
+        categoryId: params?.categoryId,
+        userId: params?.userId,
+        sortBy: params?.sortBy,
+        sortDirection: params?.sortDir || 'desc',
+      }),
+      { silent: true, ...options }
+    )
+  }
+
+  async getUnclassifiedDocumentUrl(id: number, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      async () => {
+        const result = await unclassifiedDocumentService.getDownloadUrl(id);
+        return result.url;
+      },
+      { silent: true, ...options }
+    )
+  }
+
+  async deleteUnclassifiedDocument(id: number, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => unclassifiedDocumentService.deleteUnclassifiedDocument(id),
+      { successMessage: 'Document deleted successfully', errorMessage: 'Failed to delete document', ...options },
+      'delete'
+    )
+  }
+
+  async classifyUnclassifiedDocument(id: number, payload: any, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => unclassifiedDocumentService.classifyDocument(id, payload),
+      { successMessage: 'Document classified successfully', errorMessage: 'Failed to classify document', ...options },
+      'update'
+    )
+  }
+
   async renameDocument(id: number, name: string, options?: ApiNotificationOptions) {
     return this.withNotification(
       () => documentService.renameDocument(id, name),
@@ -663,6 +735,19 @@ class NotificationApiClient {
         params?.sort,
         params?.desc ? 'desc' : 'asc'
       ),
+      { silent: true, ...options }
+    )
+  }
+
+  async getSharedDocuments(params?: any, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => documentService.getSharedDocuments({
+        page: params?.page || 0,
+        size: params?.size || 20,
+        search: params?.query,
+        sortBy: params?.sortBy,
+        sortDir: params?.sortDir,
+      }),
       { silent: true, ...options }
     )
   }

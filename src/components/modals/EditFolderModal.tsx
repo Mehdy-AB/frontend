@@ -22,6 +22,7 @@ import {
   Check
 } from 'lucide-react';
 import { notificationApiClient } from '@/api/notificationClient';
+import { useNotifications } from '@/hooks/useNotifications';
 import { 
   FolderResDto, 
   FolderPermissionReq, 
@@ -36,6 +37,7 @@ import { useServerSideSearch } from '@/components/main/useServerSideSearch';
 import ServerSearchInput from '@/components/main/ServerSearchInput';
 import SearchPagination from '@/components/search/SearchPagination';
 import UserAvatar from '@/components/main/UserAvatar';
+import ConfirmationModal from './ConfirmationModal';
 
 interface EditFolderModalProps {
   isOpen: boolean;
@@ -124,6 +126,9 @@ function isRole(grantee: UserDto | GroupDto | RoleDto | null | undefined): grant
 }
 
 export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderModalProps) {
+  const { data: session } = useSession();
+  const currentUserId = session?.user?.id;
+  const { showError } = useNotifications();
   
   // Client-side only check
   const [isClient, setIsClient] = useState(false);
@@ -165,11 +170,12 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
     searchFields: (grant) => {
       if (!grant.grantee) return [];
       if (isUser(grant.grantee)) {
+        const user = grant.grantee as UserDto;
         return [
-          grant.grantee.username || '',
-          grant.grantee.firstName || '',
-          grant.grantee.lastName || '',
-          grant.grantee.email || ''
+          user.username || '',
+          user.firstName || '',
+          user.lastName || '',
+          user.email || ''
         ];
       } else if (isGroup(grant.grantee)) {
         return [grant.grantee.name || '', grant.grantee.description || ''];
@@ -424,6 +430,12 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
   // Permission management functions - NO immediate API calls
   const addPermission = (entity: UserDto | GroupDto | RoleDto) => {
     try {
+      // Prevent users from granting permissions to themselves
+      if (isUser(entity) && entity.id === currentUserId) {
+        showError('Cannot Add Permission', 'You cannot grant permissions to yourself');
+        return;
+      }
+
       // Determine entity type
       let granteeType: GranteeType;
       if (isUser(entity)) {
@@ -448,35 +460,56 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
     }
   };
 
-  const removePermission = async (granteeId: string, inherits: boolean) => {
-    try {
-      if (!confirm('Are you sure you want to remove this permission?')) {
-        return;
-      }
+  // Delete confirmation modal state
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [granteeToDelete, setGranteeToDelete] = useState<{ id: string; name: string; inherits: boolean } | null>(null);
 
+  const removePermission = (granteeId: string, granteeName: string, inherits: boolean) => {
+    setGranteeToDelete({ id: granteeId, name: granteeName, inherits });
+    setShowDeleteConfirmation(true);
+  };
+
+  const confirmRemovePermission = async () => {
+    if (!granteeToDelete) return;
+
+    try {
       // Optimistic removal
-      removeGrantFromList(granteeId, (g) => g.grantee?.id);
+      removeGrantFromList(granteeToDelete.id, (g) => g.grantee?.id);
       
       // Delete from backend
-      await notificationApiClient.deleteFolderShared(folder.id, granteeId, inherits);
+      await notificationApiClient.deleteFolderShared(folder.id, granteeToDelete.id, granteeToDelete.inherits);
+      
+      // Close confirmation modal
+      setShowDeleteConfirmation(false);
+      setGranteeToDelete(null);
     } catch (error) {
       console.error('Error removing permission:', error);
       // Refresh to restore on error
       fetchPermissions(false);
+      setShowDeleteConfirmation(false);
+      setGranteeToDelete(null);
     }
+  };
+
+  const cancelRemovePermission = () => {
+    setShowDeleteConfirmation(false);
+    setGranteeToDelete(null);
   };
 
   const updatePermission = (grant: TypeShareAccessRes) => {
     try {
       if (!grant.grantee) return;
 
-      let granteeType: GranteeType;
-      if (isUser(grant.grantee)) {
-        granteeType = GranteeType.USER;
-      } else if (isGroup(grant.grantee)) {
-        granteeType = GranteeType.GROUP;
+      // Use type from response if available, otherwise determine from grantee
+      let granteeType: GranteeType = grant.type;
+      if (!granteeType) {
+        if (isUser(grant.grantee)) {
+          granteeType = GranteeType.USER;
+        } else if (isGroup(grant.grantee)) {
+          granteeType = GranteeType.GROUP;
         } else {
-        granteeType = GranteeType.ROLE;
+          granteeType = GranteeType.ROLE;
+        }
       }
 
       // Open permission modal to edit
@@ -495,6 +528,12 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
 
   const handleSavePermission = async () => {
     if (!editingGrant) return;
+
+    // Prevent users from granting permissions to themselves
+    if (editingGrant.type === GranteeType.USER && editingGrant.grantee.id === currentUserId) {
+      showError('Cannot Grant Permission', 'You cannot grant permissions to yourself');
+      return;
+    }
 
     const data: TypeShareAccessWithTypeReq = {
       granteeId: editingGrant.grantee.id,
@@ -515,8 +554,12 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
 
       setShowPermissionModal(false);
       setEditingGrant(null);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving permission:', error);
+      // Check if error is about self-granting
+      if (error?.response?.status === 400 || error?.message?.includes('cannot grant permissions to yourself')) {
+        showError('Cannot Grant Permission', 'You cannot grant permissions to yourself');
+      }
     }
   };
 
@@ -721,30 +764,39 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
                 const panelKey = `grant-${index}`;
                 const isCollapsed = collapsedPermissions[panelKey];
                 
-                // Determine grantee type and icon
-                let granteeType: GranteeType;
-                let IconComponent;
-                let displayName;
-                let displaySubtitle;
+                // Determine grantee type and icon - use type from response if available
+                let granteeType: GranteeType = grant.type;
+                let IconComponent: React.ComponentType<{ className?: string }> = User;
+                let displayName: string = '';
+                let displaySubtitle: string = '';
                 
-                if (isUser(grantee)) {
-                  // User
-                  granteeType = GranteeType.USER;
+                // If type not in response, determine from grantee
+                if (!granteeType) {
+                  if (isUser(grantee)) {
+                    granteeType = GranteeType.USER;
+                  } else if (isGroup(grantee)) {
+                    granteeType = GranteeType.GROUP;
+                  } else {
+                    granteeType = GranteeType.ROLE;
+                  }
+                }
+                
+                // Set icon and display info based on type
+                if (granteeType === GranteeType.USER && isUser(grantee)) {
+                  const user = grantee as UserDto;
                   IconComponent = User;
-                  displayName = `${grantee.firstName || ''} ${grantee.lastName || ''}`.trim() || grantee.username;
-                  displaySubtitle = `@${grantee.username}${grantee.email ? ` • ${grantee.email}` : ''}`;
-                } else if (isGroup(grantee)) {
-                  // Group
-                  granteeType = GranteeType.GROUP;
+                  displayName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username;
+                  displaySubtitle = `@${user.username}${user.email ? ` • ${user.email}` : ''}`;
+                } else if (granteeType === GranteeType.GROUP && isGroup(grantee)) {
+                  const group = grantee as GroupDto;
                   IconComponent = Users;
-                  displayName = grantee.name;
-                  displaySubtitle = grantee.description || 'Group';
-                } else {
-                  // Role
-                  granteeType = GranteeType.ROLE;
+                  displayName = group.name;
+                  displaySubtitle = group.description || 'Group';
+                } else if (granteeType === GranteeType.ROLE) {
+                  const role = grantee as RoleDto;
                   IconComponent = Shield;
-                  displayName = grantee.name;
-                  displaySubtitle = grantee.description || 'Role';
+                  displayName = role.name;
+                  displaySubtitle = role.description || 'Role';
                 }
                 
                 // Get active permissions for display
@@ -808,7 +860,13 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          removePermission(grantee.id, grant.permission.inherits);
+                          const granteeName = isUser(grantee) 
+                            ? (() => {
+                                const user = grantee as UserDto;
+                                return `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username;
+                              })()
+                            : grantee.name;
+                          removePermission(grantee.id, granteeName, grant.permission.inherits);
                         }}
                         className="p-2 text-error hover:bg-error/10 rounded transition-colors"
                         disabled={loading}
@@ -885,7 +943,10 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
               <div>
                   <div className="font-medium text-neutral-text-dark">
                     {isUser(editingGrant.grantee) 
-                      ? `${editingGrant.grantee.firstName || ''} ${editingGrant.grantee.lastName || ''}`.trim() || editingGrant.grantee.username
+                      ? (() => {
+                          const user = editingGrant.grantee as UserDto;
+                          return `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username;
+                        })()
                       : editingGrant.grantee.name
                     }
                   </div>
@@ -1087,6 +1148,23 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
             </div>
           </div>
         </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirmation && granteeToDelete && (
+        <ConfirmationModal
+          isOpen={showDeleteConfirmation}
+          onClose={cancelRemovePermission}
+          onConfirm={confirmRemovePermission}
+          title="Remove Permission"
+          message="Are you sure you want to remove this permission?"
+          confirmText="Remove"
+          cancelText="Cancel"
+          variant="destructive"
+          loading={loading}
+          itemName={granteeToDelete.name}
+          itemType="user"
+        />
       )}
     </div>
   );

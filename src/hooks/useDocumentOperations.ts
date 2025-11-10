@@ -20,7 +20,7 @@ export const useDocumentOperations = (documentId: number) => {
     try {
       setIsLoadingAuditLogs(true);
       const response = await auditLogService.getAuditLogsByEntity('DOCUMENT', docId, 0, 50);
-      setAuditLogs(response.content);
+      setAuditLogs(response.content as any);
     } catch (error) {
       console.error('Error fetching audit logs:', error);
     } finally {

@@ -429,24 +429,26 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
     const errors: Record<string, string> = {};
     let isValid = true;
 
-    mainFile.filingCategory.metadataDefinitions.forEach(definition => {
-      if (definition.mandatory && (!mainFile.metadata[definition.key] || mainFile.metadata[definition.key].trim() === '')) {
-        errors[definition.key] = 'This field is required';
-        isValid = false;
-      } else if (definition.dataType === MetadataType.NUMBER) {
-        const value = mainFile.metadata[definition.key];
-        if (value && isNaN(Number(value))) {
-          errors[definition.key] = 'Must be a valid number';
+    if (mainFile.filingCategory.metadataDefinitions) {
+      mainFile.filingCategory.metadataDefinitions.forEach(definition => {
+        if (definition.mandatory && (!mainFile.metadata[definition.key] || mainFile.metadata[definition.key].trim() === '')) {
+          errors[definition.key] = 'This field is required';
           isValid = false;
+        } else if (definition.dataType === MetadataType.NUMBER) {
+          const value = mainFile.metadata[definition.key];
+          if (value && isNaN(Number(value))) {
+            errors[definition.key] = 'Must be a valid number';
+            isValid = false;
+          }
+        } else if (definition.dataType === MetadataType.DATE) {
+          const value = mainFile.metadata[definition.key];
+          if (value && isNaN(Date.parse(value))) {
+            errors[definition.key] = 'Must be a valid date';
+            isValid = false;
+          }
         }
-      } else if (definition.dataType === MetadataType.DATE) {
-        const value = mainFile.metadata[definition.key];
-        if (value && isNaN(Date.parse(value))) {
-          errors[definition.key] = 'Must be a valid date';
-          isValid = false;
-        }
-      }
-    });
+      });
+    }
 
     updateFile({ metadataErrors: errors, isValid });
     return isValid;
@@ -477,11 +479,11 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
       const filingCategoryDto = mainFile.filingCategory ? {
         id: mainFile.filingCategory.id,
         metaDataDto: mainFile.filingCategory.metadataDefinitions
-          .filter(def => mainFile.metadata[def.key])
+          ?.filter(def => mainFile.metadata[def.key])
           .map((def, index) => ({
             id: def.id || index + 1,
             value: mainFile.metadata[def.key]
-          }))
+          })) || []
       } : null;
 
       if (hasCategory) {
@@ -620,7 +622,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
 
     if (definition.dataType === MetadataType.LIST && definition.list) {
       const allowCustomValue = definition.list.mandatory ?? false; // When list.mandatory=true, allow custom values
-      const isCustomValue = value && !definition.list.option.includes(value);
+      const isCustomValue = value && definition.list.option && !definition.list.option.includes(value);
       const showCustomInput = isCustomValue || value === "__custom__";
       
       return (
@@ -647,7 +649,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
               <SelectValue placeholder={`Select ${definition.key}`} />
             </SelectTrigger>
             <SelectContent>
-              {definition.list.option.map((option: string) => (
+              {(definition.list.option || []).map((option: string) => (
                 <SelectItem key={option} value={option}>
                   {option}
                 </SelectItem>
@@ -1038,7 +1040,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                                     <div className="text-xs text-neutral-text-light">{files[0]?.filingCategory?.description}</div>
                                   )}
                                   <div className="text-xs text-neutral-text-light mt-1">
-                                    {files[0]?.filingCategory?.metadataDefinitions.length} metadata field{files[0]?.filingCategory?.metadataDefinitions.length !== 1 ? 's' : ''}
+                                    {files[0]?.filingCategory?.metadataDefinitions?.length || 0} metadata field{(files[0]?.filingCategory?.metadataDefinitions?.length || 0) !== 1 ? 's' : ''}
                                   </div>
                                 </div>
                                 <button
@@ -1150,12 +1152,12 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                           <FileText className="h-4 w-4" />
                           {files[0]?.filingCategory?.name} Metadata
                           <span className="text-xs text-neutral-text-light">
-                            ({files[0]?.filingCategory?.metadataDefinitions.filter(d => d.mandatory).length} required)
+                            ({(files[0]?.filingCategory?.metadataDefinitions || []).filter(d => d.mandatory).length} required)
                           </span>
                         </h4>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {files[0]?.filingCategory?.metadataDefinitions.map(definition =>
+                          {(files[0]?.filingCategory?.metadataDefinitions || []).map(definition =>
                             renderMetadataField(definition)
                           )}
                         </div>

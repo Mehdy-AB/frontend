@@ -14,6 +14,7 @@ declare module "next-auth" {
       firstName?: string | null
       lastName?: string | null
       jobTitle?: string | null
+      permissions?: string[]
     }
   }
 
@@ -35,5 +36,6 @@ declare module "next-auth/jwt" {
     expiresIn?: number
     accessTokenExpires?: number
     user?: UserDto
+    permissions?: string[]
   }
 }

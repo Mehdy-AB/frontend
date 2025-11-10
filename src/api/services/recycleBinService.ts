@@ -12,24 +12,7 @@ import {
 export class RecycleBinService {
   private baseUrl = '/api/v1/recycle-bin';
 
-  // Get recycle bin entries with pagination (all entries)
-  async getRecycleBinEntries(
-    page: number = 0,
-    size: number = 20,
-    sortBy: string = 'deletedAt',
-    sortDirection: 'asc' | 'desc' = 'desc'
-  ): Promise<PageResponse<RecycleBinEntry>> {
-    const params = new URLSearchParams({
-      page: page.toString(),
-      size: size.toString(),
-      sortBy,
-      sortDirection,
-    });
-
-    return apiClient.get<PageResponse<RecycleBinEntry>>(`${this.baseUrl}?${params}`);
-  }
-
-  // Get current user's recycle bin entries with pagination
+  // Get current user's recycle bin entries (all deleted documents and folders)
   async getMyRecycleBinEntries(opts?: {
     page?: number;
     size?: number;
@@ -48,7 +31,7 @@ export class RecycleBinService {
       sortDir,
     });
 
-    return apiClient.get<PageResponse<RecycleBinEntry>>(`${this.baseUrl}/my-entries?${params}`);
+    return apiClient.get<PageResponse<RecycleBinEntry>>(`${this.baseUrl}?${params}`);
   }
 
   // Get recycle bin entry by ID
@@ -89,38 +72,11 @@ export class RecycleBinService {
     return apiClient.get<RecycleBinCheckResponse>(`${this.baseUrl}/check/${entityType}/${entityId}`);
   }
 
-  // Get recycle bin count
+  // Get current user's recycle bin count
   async getRecycleBinCount(): Promise<RecycleBinCountResponse> {
     return apiClient.get<RecycleBinCountResponse>(`${this.baseUrl}/count`);
   }
 
-  // Get entries by entity type
-  async getEntriesByEntityType(
-    entityType: string,
-    page: number = 0,
-    size: number = 20
-  ): Promise<PageResponse<RecycleBinEntry>> {
-    const params = new URLSearchParams({
-      page: page.toString(),
-      size: size.toString(),
-    });
-
-    return apiClient.get<PageResponse<RecycleBinEntry>>(`${this.baseUrl}/type/${entityType}?${params}`);
-  }
-
-  // Get entries by user
-  async getEntriesByUser(
-    userId: string,
-    page: number = 0,
-    size: number = 20
-  ): Promise<PageResponse<RecycleBinEntry>> {
-    const params = new URLSearchParams({
-      page: page.toString(),
-      size: size.toString(),
-    });
-
-    return apiClient.get<PageResponse<RecycleBinEntry>>(`${this.baseUrl}/user/${userId}?${params}`);
-  }
 
   // Search recycle bin entries
   async searchRecycleBinEntries(

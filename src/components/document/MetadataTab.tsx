@@ -456,10 +456,18 @@ export default function MetadataTab({
       );
 
       // Refetch document to get full filing category details with metadataDefinitions
+      // Note: We don't update the document's contentUrl or trigger fileViewerKey change
+      // to prevent the content view from disappearing
       try {
         const updatedDoc = await documentService.getDocumentById(document.documentId);
         if (onUpdateDocument) {
-          onUpdateDocument(updatedDoc as DocumentViewDto);
+          // Preserve the existing contentUrl to prevent file viewer from reloading
+          const updatedDocumentView: DocumentViewDto = {
+            ...updatedDoc as DocumentViewDto,
+            contentUrl: document.contentUrl, // Preserve existing contentUrl
+            thumbnailUrl: document.thumbnailUrl // Preserve existing thumbnailUrl
+          };
+          onUpdateDocument(updatedDocumentView);
         }
       } catch (error) {
         console.error('Error refetching document:', error);
@@ -541,10 +549,18 @@ export default function MetadataTab({
       );
 
       // Refetch document to get updated filing category details
+      // Note: We don't update the document's contentUrl or trigger fileViewerKey change
+      // to prevent the content view from disappearing
       try {
         const updatedDoc = await documentService.getDocumentById(document.documentId);
         if (onUpdateDocument) {
-          onUpdateDocument(updatedDoc as DocumentViewDto);
+          // Preserve the existing contentUrl to prevent file viewer from reloading
+          const updatedDocumentView: DocumentViewDto = {
+            ...updatedDoc as DocumentViewDto,
+            contentUrl: document.contentUrl, // Preserve existing contentUrl
+            thumbnailUrl: document.thumbnailUrl // Preserve existing thumbnailUrl
+          };
+          onUpdateDocument(updatedDocumentView);
         }
       } catch (error) {
         console.error('Error refetching document:', error);

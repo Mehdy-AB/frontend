@@ -2,6 +2,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { 
   FolderTree, 
   Plus, 
@@ -30,6 +31,7 @@ import { Label } from '../../../../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../../components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../../components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../components/ui/card';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../components/ui/tooltip';
 import { useLanguage } from '../../../../contexts/LanguageContext';
 import { notificationApiClient } from '../../../../api/notificationClient';
 import { useNotification } from '../../../../contexts/NotificationContext';
@@ -37,6 +39,7 @@ import UserAvatar from '../../../../components/main/UserAvatar';
 import ServerSearchInput from '../../../../components/main/ServerSearchInput';
 import Pagination from '../../../../components/main/Pagination';
 import { useServerSideSearch } from '../../../../components/main/useServerSideSearch';
+import { useAdminPagePermissions } from '@/hooks/useAdminPagePermissions';
 import { 
   FilingCategoryRequestDto, 
   FilingCategoryResponseDto, 
@@ -59,7 +62,16 @@ interface ExtendedCategoryMetadataDefinitionDto extends CategoryMetadataDefiniti
 export default function ModelsPage() {
   const { t } = useLanguage();
   const { addNotification } = useNotification();
+  const router = useRouter();
+  const { canView, canCreate, canUpdate, canDelete } = useAdminPagePermissions();
   const [activeTab, setActiveTab] = useState<'categories' | 'lists'>('categories');
+  
+  // Redirect if user doesn't have view permission
+  useEffect(() => {
+    if (!canView) {
+      router.push('/');
+    }
+  }, [canView, router]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showCreateListModal, setShowCreateListModal] = useState(false);
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
@@ -531,6 +543,28 @@ export default function ModelsPage() {
     }
   };
 
+  // Permission guard
+  if (categoriesLoading && !canView) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!canView) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <p className="text-destructive text-lg">You don't have permission to view this page</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
       <div className="max-w-7xl mx-auto space-y-8">
@@ -584,22 +618,42 @@ export default function ModelsPage() {
                 Export CSV
               </Button>
               {activeTab === 'lists' && (
-                <Button 
-                  onClick={() => setShowCreateListModal(true)}
-                  variant="outline"
-                  className="flex items-center gap-2 bg-white hover:bg-slate-50 border-slate-300"
-                >
-                  <Plus className="h-4 w-4" />
-                  Create List
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      onClick={() => canCreate && setShowCreateListModal(true)}
+                      disabled={!canCreate}
+                      variant="outline"
+                      className="flex items-center gap-2 bg-white hover:bg-slate-50 border-slate-300"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Create List
+                    </Button>
+                  </TooltipTrigger>
+                  {!canCreate && (
+                    <TooltipContent>
+                      <p>You don't have permission to create lists</p>
+                    </TooltipContent>
+                  )}
+                </Tooltip>
               )}
-              <Button 
-                onClick={() => setShowCreateModal(true)}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-200"
-              >
-                <Plus className="h-4 w-4" />
-                {t('models.createModel')}
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    onClick={() => canCreate && setShowCreateModal(true)}
+                    disabled={!canCreate}
+                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-200"
+                  >
+                    <Plus className="h-4 w-4" />
+                    {t('models.createModel')}
+                  </Button>
+                </TooltipTrigger>
+                {!canCreate && (
+                  <TooltipContent>
+                    <p>You don't have permission to create categories</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
             </div>
           </div>
         </div>

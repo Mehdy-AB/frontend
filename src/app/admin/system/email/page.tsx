@@ -1,11 +1,14 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Save, RefreshCw, Send, Server, FileText, Zap, Database, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useLanguage } from '../../../../contexts/LanguageContext';
+import { useAdminPagePermissions } from '@/hooks/useAdminPagePermissions';
 import { useEmailConfiguration } from './lib/hooks';
 import SMTPSettingsTab from './components/SMTPSettingsTab';
 import TemplatesTab from './components/TemplatesTab';
@@ -14,6 +17,8 @@ import LogsTab from './components/LogsTab';
 
 export default function EmailConfigurationPage() {
   const { t } = useLanguage();
+  const router = useRouter();
+  const { canView, canUpdate } = useAdminPagePermissions();
   const [activeTab, setActiveTab] = useState('smtp');
   const {
     loading,
@@ -38,6 +43,22 @@ export default function EmailConfigurationPage() {
     handleDeleteTemplate
   } = useEmailConfiguration();
 
+  useEffect(() => {
+    if (!canView) {
+      router.push('/');
+    }
+  }, [canView, router]);
+
+  if (!canView) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <p className="text-destructive text-lg">You don't have permission to view this page</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -51,10 +72,23 @@ export default function EmailConfigurationPage() {
             <RefreshCw className="h-4 w-4" />
             Refresh
           </Button>
-          <Button onClick={handleSaveSettings} disabled={saving} className="gap-2">
-            <Save className="h-4 w-4" />
-            {saving ? 'Saving...' : 'Save Changes'}
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button 
+                onClick={handleSaveSettings} 
+                disabled={saving || !canUpdate} 
+                className="gap-2"
+              >
+                <Save className="h-4 w-4" />
+                {saving ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </TooltipTrigger>
+            {!canUpdate && (
+              <TooltipContent>
+                <p>You don't have permission to update email settings</p>
+              </TooltipContent>
+            )}
+          </Tooltip>
         </div>
       </div>
 

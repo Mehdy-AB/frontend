@@ -145,7 +145,8 @@ export default function ManageFolderPermissionsModal({
       if ('displayName' in entity) {
         return [entity.displayName, entity.email || '', entity.username || ''];
       }
-      return [entity.name || '', entity.description || ''];
+      const roleOrGroup = entity as RoleDto | GroupDto;
+      return [roleOrGroup.name || '', roleOrGroup.description || ''];
     },
     debounceMs: 300
   });
@@ -314,7 +315,9 @@ export default function ManageFolderPermissionsModal({
 
                           <div className="flex-1">
                             <p className="font-medium text-gray-900">
-                              {perm.type === 'user' ? (perm.entity as UserDto).displayName : perm.entity.name}
+                              {perm.type === 'user' 
+                                ? (perm.entity as UserDto).displayName 
+                                : (perm.entity as RoleDto | GroupDto).name}
                             </p>
                             {perm.type === 'user' && (
                               <p className="text-sm text-gray-500">{(perm.entity as UserDto).email}</p>
@@ -494,7 +497,9 @@ export default function ManageFolderPermissionsModal({
 
                     <div className="flex-1">
                       <p className="font-medium text-gray-900">
-                        {selectedTab === 'user' ? (entity as UserDto).displayName : entity.name}
+                        {selectedTab === 'user' 
+                          ? (entity as UserDto).displayName 
+                          : (entity as RoleDto | GroupDto).name}
                       </p>
                       {selectedTab === 'user' && (
                         <p className="text-sm text-gray-500">{(entity as UserDto).email}</p>
@@ -552,7 +557,7 @@ export default function ManageFolderPermissionsModal({
               <span className="font-medium">
                 {permissionToDelete.type === 'user' 
                   ? (permissionToDelete.entity as UserDto).displayName 
-                  : permissionToDelete.entity.name}
+                  : (permissionToDelete.entity as RoleDto | GroupDto).name}
               </span>?
             </p>
             <div className="flex items-center justify-end gap-3">

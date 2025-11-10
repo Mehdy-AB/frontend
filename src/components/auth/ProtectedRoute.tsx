@@ -19,7 +19,18 @@ export default function ProtectedRoute({
 
   useEffect(() => {
     if (status === 'unauthenticated') {
-      router.push('/auth/signin')
+      // Use replace to avoid adding to history stack
+      router.replace('/auth/signin')
+      // Also use window.location as fallback for immediate redirect
+      if (typeof window !== 'undefined') {
+        const timeout = setTimeout(() => {
+          if (!window.location.pathname.startsWith('/auth/')) {
+            window.location.href = '/auth/signin'
+          }
+        }, 500)
+        
+        return () => clearTimeout(timeout)
+      }
     }
   }, [status, router])
 

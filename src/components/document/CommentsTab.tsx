@@ -133,7 +133,7 @@ export default function CommentsTab({
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        {comment.updatedAt !== comment.createdAt && (
+                        {comment.isEdited && (
                           <span className="text-xs text-neutral-text-light bg-neutral-background px-2 py-1 rounded">
                             edited
                           </span>

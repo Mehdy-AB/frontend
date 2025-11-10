@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { 
   Database, 
   Plus, 
@@ -33,6 +34,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Separator } from '@/components/ui/separator';
 import ServerSearchInput from '@/components/main/ServerSearchInput';
 import Pagination from '@/components/main/Pagination';
@@ -42,9 +44,19 @@ import { TagResponseDto, CreateTagRequestDto, UpdateTagRequestDto, PageResponse 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { useLanguage } from '../../../../contexts/LanguageContext';
+import { useAdminPagePermissions } from '@/hooks/useAdminPagePermissions';
 
 export default function ModelsPage() {
   const { t } = useLanguage();
+  const router = useRouter();
+  const { canView, canCreate, canUpdate, canDelete } = useAdminPagePermissions();
+  
+  // Redirect if user doesn't have view permission
+  useEffect(() => {
+    if (!canView) {
+      router.push('/');
+    }
+  }, [canView, router]);
   const [models, setModels] = useState<TagResponseDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -190,6 +202,27 @@ export default function ModelsPage() {
 
   // Do not fully replace page during fetch; keep content and show a subtle indicator instead
 
+  if (loading && !initialized) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading tags...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!canView) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <p className="text-destructive text-lg">You don't have permission to view this page</p>
+        </div>
+      </div>
+    );
+  }
+
   if (error) {
     return (
       <Card className="flex flex-col items-center justify-center py-12">
@@ -211,10 +244,23 @@ export default function ModelsPage() {
           <h1 className="text-2xl font-semibold">Document Models Management</h1>
           <p className="text-muted-foreground">Manage document models and templates for better organization</p>
         </div>
-        <Button className="gap-2">
-          <Plus className="h-4 w-4" />
-          Create Model
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button 
+              className="gap-2"
+              onClick={() => {/* TODO: Open create modal */}}
+              disabled={!canCreate}
+            >
+              <Plus className="h-4 w-4" />
+              Create Model
+            </Button>
+          </TooltipTrigger>
+          {!canCreate && (
+            <TooltipContent>
+              <p>You don't have permission to create tags</p>
+            </TooltipContent>
+          )}
+        </Tooltip>
       </div>
 
       {isFetching && (

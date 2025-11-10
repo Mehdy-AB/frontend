@@ -14,6 +14,7 @@ import {
   HardDrive
 } from 'lucide-react';
 import { FolderResDto, FolderRepoResDto } from '@/types/api';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface FolderHeaderProps {
   folder: FolderResDto;
@@ -79,33 +80,71 @@ export function FolderHeader({
           </div>
           
           <div className="flex items-center gap-2">
-            {folder.userPermissions?.canUpload && (
-              <button 
-                onClick={onUpload}
-                className="flex items-center gap-2 bg-blue-600 text-white px-3 py-2 rounded-md hover:bg-blue-700 transition-colors text-sm font-medium"
-              >
-                <Upload className="h-4 w-4" />
-                Upload
-              </button>
-            )}
-            {folder.userPermissions?.canCreateSubFolders && (
-              <button 
-                onClick={onCreateFolder}
-                className="flex items-center gap-2 border border-gray-300 text-gray-700 px-3 py-2 rounded-md hover:bg-gray-50 transition-colors text-sm font-medium"
-              >
-                <Plus className="h-4 w-4" />
-                New Folder
-              </button>
-            )}
-            {folder.userPermissions?.canManagePermissions && (
-              <button 
-                onClick={onEditPermissions}
-                className="flex items-center gap-2 border border-gray-300 text-gray-700 px-3 py-2 rounded-md hover:bg-gray-50 transition-colors text-sm font-medium"
-              >
-                <Edit className="h-4 w-4" />
-                Permissions
-              </button>
-            )}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button 
+                  onClick={onUpload}
+                  disabled={!folder.userPermissions?.canUpload}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-md transition-colors text-sm font-medium ${
+                    folder.userPermissions?.canUpload
+                      ? 'bg-blue-600 text-white hover:bg-blue-700'
+                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  }`}
+                >
+                  <Upload className="h-4 w-4" />
+                  Upload
+                </button>
+              </TooltipTrigger>
+              {!folder.userPermissions?.canUpload && (
+                <TooltipContent>
+                  <p>You don't have permission to upload documents to this folder</p>
+                </TooltipContent>
+              )}
+            </Tooltip>
+            
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button 
+                  onClick={onCreateFolder}
+                  disabled={!folder.userPermissions?.canCreateSubFolders}
+                  className={`flex items-center gap-2 border px-3 py-2 rounded-md transition-colors text-sm font-medium ${
+                    folder.userPermissions?.canCreateSubFolders
+                      ? 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                      : 'border-gray-200 text-gray-400 cursor-not-allowed bg-gray-50'
+                  }`}
+                >
+                  <Plus className="h-4 w-4" />
+                  New Folder
+                </button>
+              </TooltipTrigger>
+              {!folder.userPermissions?.canCreateSubFolders && (
+                <TooltipContent>
+                  <p>You don't have permission to create subfolders in this folder</p>
+                </TooltipContent>
+              )}
+            </Tooltip>
+            
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button 
+                  onClick={onEditPermissions}
+                  disabled={!folder.userPermissions?.canManagePermissions}
+                  className={`flex items-center gap-2 border px-3 py-2 rounded-md transition-colors text-sm font-medium ${
+                    folder.userPermissions?.canManagePermissions
+                      ? 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                      : 'border-gray-200 text-gray-400 cursor-not-allowed bg-gray-50'
+                  }`}
+                >
+                  <Edit className="h-4 w-4" />
+                  Permissions
+                </button>
+              </TooltipTrigger>
+              {!folder.userPermissions?.canManagePermissions && (
+                <TooltipContent>
+                  <p>You don't have permission to manage permissions for this folder</p>
+                </TooltipContent>
+              )}
+            </Tooltip>
           </div>
         </div>
       </div>

@@ -139,7 +139,7 @@ export default function ViewRelatedDocumentsModal({
     
     try {
       setIsDeleting(true);
-      await linkRuleService.deleteLink(linkToDelete.linkId);
+      await linkRuleService.deleteDocumentLink(linkToDelete.linkId);
       
       // Remove from list optimistically
       removeDocumentFromList(linkToDelete.linkId, (doc) => doc.linkId || 0);
@@ -342,7 +342,7 @@ export default function ViewRelatedDocumentsModal({
                               <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${getLinkTypeColor(doc.linkType)}`}>
                                 {doc.linkType}
                               </span>
-                              {doc.manual ? (
+                              {doc.isManual ? (
                                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
                                   <Settings className="h-3 w-3" />
                                   Manual
@@ -372,15 +372,6 @@ export default function ViewRelatedDocumentsModal({
                                 <Eye className="h-4 w-4" />
                               </button>
                             )}
-                            {doc.userPermissions?.canView && (
-                              <button
-                                onClick={() => handleDownloadDocument(doc.documentId)}
-                                className="p-2 rounded hover:bg-green-100 text-gray-600 hover:text-green-700 transition-colors"
-                                title="Download Document"
-                              >
-                                <Download className="h-4 w-4" />
-                              </button>
-                            )}
                             {canEdit && doc.linkId && (
                               <button
                                 onClick={() => handleDeleteLinkClick(doc.linkId!, doc.documentName, doc.isManual)}
@@ -396,7 +387,7 @@ export default function ViewRelatedDocumentsModal({
                         {/* Owner & Email */}
                         <div className="flex items-center gap-3 mb-2">
                           <div className="flex items-center gap-2">
-                            <UserAvatar user={doc.ownedBy} size="sm" />
+                            <UserAvatar user={doc.ownedBy as any} size="sm" />
                             <div>
                               <div className="text-sm font-medium text-gray-700">
                                 {doc.ownedBy.firstName} {doc.ownedBy.lastName}

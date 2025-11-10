@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Folder, 
   FileText, 
@@ -11,9 +11,10 @@ import {
   Search
 } from 'lucide-react';
 import { notificationApiClient } from '@/api/notificationClient';
-import { FolderResDto, DocumentResponseDto } from '@/types/api';
+import { FolderResDto, DocumentResponseDto, FolderRepoResDto } from '@/types/api';
 import { formatFileSize, formatDate } from '@/utils/documentUtils';
 import { Input } from '../ui/input';
+import Pagination from '../main/Pagination';
 
 interface FolderNavigationPickerProps {
   /** Document ID to exclude from selection (can't link to itself) */
@@ -35,92 +36,159 @@ export default function FolderNavigationPicker({
   selectedDocument
 }: FolderNavigationPickerProps) {
   const [currentFolderId, setCurrentFolderId] = useState<number | null>(null);
-  const [folders, setFolders] = useState<FolderResDto[]>([]);
-  const [documents, setDocuments] = useState<DocumentResponseDto[]>([]);
+  const [folderData, setFolderData] = useState<FolderRepoResDto | null>(null);
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(0);
+  const [pageSize] = useState(20);
+  const isNavigatingViaBreadcrumb = useRef(false);
 
-  // Load root folders on mount
-  useEffect(() => {
-    loadRootFolders();
-  }, []);
-
-  // Load folders and documents when currentFolderId changes
-  useEffect(() => {
-    if (currentFolderId !== null) {
-      loadFolderContents(currentFolderId);
-    }
-  }, [currentFolderId]);
-
-  // Debounced search effect
+  // Debounce search query
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (currentFolderId !== null) {
-        loadFolderContents(currentFolderId);
-      } else {
-        loadRootFolders();
-      }
+      setDebouncedSearchQuery(searchQuery);
     }, 300);
-
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const loadRootFolders = async () => {
-    try {
-      setLoading(true);
-      const response = await notificationApiClient.getRepository({
-        page: 0,
-        size: 100,
-        name: searchQuery || undefined
-      });
-      setFolders(response.content);
-      setDocuments([]);
-      setBreadcrumbs([]);
-    } catch (error) {
-      console.error('Error loading root folders:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Reset to page 0 when search query changes
+  useEffect(() => {
+    setCurrentPage(0);
+  }, [debouncedSearchQuery]);
 
-  const loadFolderContents = async (folderId: number) => {
+  // Load folder data
+  const loadFolderData = useCallback(async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const response = await notificationApiClient.getFolder(folderId, {
-        page: 0,
-        size: 100,
-        showFolder: true,
-        name: searchQuery || undefined
-      });
+      let response: FolderRepoResDto;
       
-      setFolders(response.folders || []);
-      setDocuments(response.documents || []);
+      if (currentFolderId !== null) {
+        // Fetch folder contents
+        response = await notificationApiClient.getFolder(currentFolderId, {
+          page: currentPage,
+          size: pageSize,
+          showFolder: true,
+          name: debouncedSearchQuery || undefined
+        });
+      } else {
+        // Fetch root repository
+        const repoResponse = await notificationApiClient.getRepository({
+          page: currentPage,
+          size: pageSize,
+          name: debouncedSearchQuery || undefined
+        });
+        // Convert PageResponse<FolderResDto> to FolderRepoResDto format
+        response = {
+          folder: undefined,
+          folders: repoResponse.content || [],
+          documents: [],
+          pageable: {
+            pageNumber: repoResponse.number ?? currentPage,
+            pageSize: repoResponse.size ?? pageSize
+          },
+          totalElements: repoResponse.totalElements || 0,
+          totalPages: repoResponse.totalPages || 0
+        };
+      }
       
-      // Build breadcrumbs from folder path
-      if (response.folder) {
-        const pathSegments = response.folder.path.split('/').filter(Boolean);
-        const newBreadcrumbs: BreadcrumbItem[] = [
-          { id: response.folder.id, name: response.folder.name }
-        ];
-        setBreadcrumbs(newBreadcrumbs);
+      setFolderData(response);
+      
+      // Build breadcrumbs when in a folder
+      if (currentFolderId !== null && response.folder) {
+        const folderId = response.folder.id;
+        const folderName = response.folder.name;
+        
+        // Update breadcrumbs
+        setBreadcrumbs(prev => {
+          // If we navigated via breadcrumb, breadcrumbs should already be set correctly
+          // Just update the name if it changed
+          if (isNavigatingViaBreadcrumb.current) {
+            isNavigatingViaBreadcrumb.current = false; // Reset flag
+            // Find the folder in breadcrumbs and update its name if needed
+            const index = prev.findIndex(b => b.id === folderId);
+            if (index !== -1 && prev[index].name !== folderName) {
+              const updated = [...prev];
+              updated[index] = { id: folderId, name: folderName };
+              return updated;
+            }
+            return prev; // Breadcrumbs already set correctly
+          }
+          
+          // Regular forward navigation - check if folder is already in breadcrumbs
+          const existingIndex = prev.findIndex(b => b.id === folderId);
+          
+          if (existingIndex !== -1) {
+            // Folder already in breadcrumbs (shouldn't happen in forward navigation, but handle it)
+            return prev.slice(0, existingIndex + 1);
+          } else {
+            // New folder (navigated forward by clicking a folder)
+            // Add it to breadcrumbs
+            return [...prev, { id: folderId, name: folderName }];
+          }
+        });
+      } else if (currentFolderId === null) {
+        // At root, clear breadcrumbs
+        setBreadcrumbs([]);
+        isNavigatingViaBreadcrumb.current = false;
       }
     } catch (error) {
-      console.error('Error loading folder contents:', error);
+      console.error('Error loading folder data:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentFolderId, currentPage, pageSize, debouncedSearchQuery]);
 
-  const navigateToFolder = (folderId: number | null) => {
+  // Load data when dependencies change
+  useEffect(() => {
+    loadFolderData();
+  }, [loadFolderData]);
+
+  // Navigate to folder
+  const navigateToFolder = (folderId: number | null, folderName?: string) => {
     if (folderId === null) {
       // Go to root
       setCurrentFolderId(null);
-      loadRootFolders();
+      setBreadcrumbs([]);
     } else {
+      // Navigate into folder
       setCurrentFolderId(folderId);
+      // Breadcrumb will be added in loadFolderData when we get the folder data
     }
+    setCurrentPage(0); // Reset to first page when navigating
   };
+
+  // Navigate back via breadcrumb
+  const navigateBreadcrumb = (folderId: number | null, breadcrumbIndex?: number) => {
+    if (folderId === null) {
+      // Go to root
+      setCurrentFolderId(null);
+      setBreadcrumbs([]);
+      isNavigatingViaBreadcrumb.current = false;
+    } else {
+      // Navigate to clicked breadcrumb
+      isNavigatingViaBreadcrumb.current = true; // Set flag to indicate breadcrumb navigation
+      setCurrentFolderId(folderId);
+      // Trim breadcrumbs to the clicked index
+      if (breadcrumbIndex !== undefined) {
+        setBreadcrumbs(prev => prev.slice(0, breadcrumbIndex + 1));
+      } else {
+        // Find index and trim
+        const index = breadcrumbs.findIndex(b => b.id === folderId);
+        if (index !== -1) {
+          setBreadcrumbs(prev => prev.slice(0, index + 1));
+        }
+      }
+    }
+    setCurrentPage(0); // Reset to first page when navigating
+  };
+
+  // Get folders and documents from folderData
+  const folders = folderData?.folders || [];
+  const documents = folderData?.documents || [];
+  const totalElements = folderData?.totalElements || 0;
+  const totalPages = folderData?.totalPages || 1;
 
   const handleDocumentClick = (document: DocumentResponseDto) => {
     // Don't allow selecting the excluded document
@@ -157,19 +225,27 @@ export default function FolderNavigationPicker({
       {/* Breadcrumb Navigation */}
       <div className="p-3 border-b bg-white flex items-center gap-2 text-sm overflow-x-auto">
         <button
-          onClick={() => navigateToFolder(null)}
-          className="flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-100 transition-colors flex-shrink-0"
+          onClick={() => navigateBreadcrumb(null)}
+          className={`flex items-center gap-1 px-2 py-1 rounded transition-colors flex-shrink-0 ${
+            currentFolderId === null 
+              ? 'font-medium text-blue-600' 
+              : 'hover:bg-gray-100 text-gray-700'
+          }`}
         >
           <Home className="h-4 w-4" />
-          <span className="font-medium">Root</span>
+          <span>Root</span>
         </button>
         
         {breadcrumbs.map((crumb, index) => (
-          <div key={crumb.id} className="flex items-center gap-2 flex-shrink-0">
+          <div key={`${crumb.id}-${index}`} className="flex items-center gap-2 flex-shrink-0">
             <ChevronRight className="h-4 w-4 text-gray-400" />
             <button
-              onClick={() => navigateToFolder(crumb.id)}
-              className="px-2 py-1 rounded hover:bg-gray-100 transition-colors truncate max-w-[150px]"
+              onClick={() => navigateBreadcrumb(crumb.id, index)}
+              className={`px-2 py-1 rounded transition-colors truncate max-w-[150px] ${
+                index === breadcrumbs.length - 1 && currentFolderId === crumb.id
+                  ? 'font-medium text-blue-600'
+                  : 'hover:bg-gray-100 text-gray-700'
+              }`}
               title={crumb.name}
             >
               {crumb.name}
@@ -193,7 +269,7 @@ export default function FolderNavigationPicker({
             {folders.map((folder) => (
               <button
                 key={`folder-${folder.id}`}
-                onClick={() => navigateToFolder(folder.id)}
+                onClick={() => navigateToFolder(folder.id, folder.name)}
                 className="w-full p-3 hover:bg-gray-50 transition-colors flex items-center gap-3 text-left group"
               >
                 <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors">
@@ -259,7 +335,7 @@ export default function FolderNavigationPicker({
                     )}
                     <div className="flex items-center gap-3 text-xs text-gray-500 mt-1">
                       <span>{formatFileSize(document.sizeBytes)}</span>
-                      <span>{formatDate(document.uploadedAt)}</span>
+                      <span>{formatDate(document.createdAt || document.updatedAt)}</span>
                       <span className="bg-gray-100 px-2 py-0.5 rounded">{document.mimeType}</span>
                     </div>
                   </div>
@@ -275,8 +351,8 @@ export default function FolderNavigationPicker({
                 </div>
                 <h3 className="text-sm font-medium text-gray-900 mb-1">No items found</h3>
                 <p className="text-xs text-gray-500">
-                  {searchQuery 
-                    ? `No folders or documents match "${searchQuery}"`
+                  {debouncedSearchQuery 
+                    ? `No folders or documents match "${debouncedSearchQuery}"`
                     : 'This folder is empty'}
                 </p>
               </div>
@@ -284,6 +360,19 @@ export default function FolderNavigationPicker({
           </div>
         )}
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="p-3 border-t bg-gray-50">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalElements={totalElements}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+          />
+        </div>
+      )}
     </div>
   );
 }

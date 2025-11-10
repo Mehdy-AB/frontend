@@ -36,7 +36,10 @@ export const authOptions: NextAuthOptions = {
               accessToken: response.accessToken,
               refreshToken: response.refreshToken,
               expiresIn: response.expiresIn,
-              user: response.user as any
+              user: {
+                ...response.user,
+                permissions: response.user.permissions || []
+              } as any
             };
           }
           
@@ -62,6 +65,8 @@ export const authOptions: NextAuthOptions = {
         const expiresInSeconds = typeof rawExpiresIn === 'number' ? rawExpiresIn : 0;
         token.expiresIn = expiresInSeconds;
         token.user = (user as any).user;
+        // Store permissions in token
+        token.permissions = (user as any).user?.permissions || [];
         token.accessTokenExpires = Date.now() + (expiresInSeconds * 1000);
         return token;
       }
@@ -80,7 +85,10 @@ export const authOptions: NextAuthOptions = {
       session.accessToken = token.accessToken;
       session.refreshToken = token.refreshToken;
       if (token.user) {
-        session.user = token.user as any;
+        session.user = {
+          ...token.user,
+          permissions: (token as any).permissions || []
+        } as any;
       }
       
       return session;

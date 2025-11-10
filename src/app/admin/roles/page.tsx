@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { 
   Shield, 
   Plus, 
@@ -24,6 +25,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { notificationApiClient } from '@/api/notificationClient';
 import { roleManagementService } from '@/api/services/roleManagementService';
 import { RoleDto, PermissionDto } from '@/types/api';
@@ -38,9 +40,19 @@ import EditRoleModal, { EditRoleData } from '@/components/modals/EditRoleModal';
 import ManageRolePermissionsModal from '@/components/modals/ManageRolePermissionsModal';
 import ViewRoleUsersModal from '@/components/modals/ViewRoleUsersModal';
 import ConfirmationModal from '@/components/modals/ConfirmationModal';
+import { useAdminPagePermissions } from '@/hooks/useAdminPagePermissions';
 
 export default function RolesPage() {
+  const router = useRouter();
+  const { canView, canCreate, canUpdate, canDelete, canAssign } = useAdminPagePermissions();
   const pageSize = 20;
+  
+  // Redirect if user doesn't have view permission
+  useEffect(() => {
+    if (!canView) {
+      router.push('/');
+    }
+  }, [canView, router]);
   
   // Use the server-side search hook
   const {
@@ -346,6 +358,16 @@ export default function RolesPage() {
     );
   }
 
+  if (!canView) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <p className="text-destructive text-lg">You don't have permission to view this page</p>
+        </div>
+      </div>
+    );
+  }
+
   if (error) {
     return (
       <Card className="flex flex-col items-center justify-center py-12">
@@ -367,10 +389,23 @@ export default function RolesPage() {
           <h1 className="text-3xl font-bold">Role Management</h1>
           <p className="text-muted-foreground">Manage system roles and permissions</p>
         </div>
-        <Button className="gap-2" onClick={() => setIsCreateModalOpen(true)}>
-          <Plus className="h-4 w-4" />
-          Add Role
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button 
+              className="gap-2" 
+              onClick={() => setIsCreateModalOpen(true)}
+              disabled={!canCreate}
+            >
+              <Plus className="h-4 w-4" />
+              Add Role
+            </Button>
+          </TooltipTrigger>
+          {!canCreate && (
+            <TooltipContent>
+              <p>You don't have permission to create roles</p>
+            </TooltipContent>
+          )}
+        </Tooltip>
       </div>
 
       {/* Search and Filters */}
@@ -516,11 +551,21 @@ export default function RolesPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-56">
-                              <DropdownMenuItem onClick={() => handleEditClick(role)}>
+                              <DropdownMenuItem 
+                                onClick={() => canUpdate && handleEditClick(role)}
+                                disabled={!canUpdate}
+                                className={!canUpdate ? 'opacity-50 cursor-not-allowed' : ''}
+                                title={!canUpdate ? "You don't have permission to edit roles" : undefined}
+                              >
                                 <Edit className="h-4 w-4 mr-2" />
                                 Edit Role
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handlePermissionsClick(role)}>
+                              <DropdownMenuItem 
+                                onClick={() => canAssign && handlePermissionsClick(role)}
+                                disabled={!canAssign}
+                                className={!canAssign ? 'opacity-50 cursor-not-allowed' : ''}
+                                title={!canAssign ? "You don't have permission to manage permissions" : undefined}
+                              >
                                 <Key className="h-4 w-4 mr-2" />
                                 Manage Permissions
                               </DropdownMenuItem>
@@ -529,15 +574,22 @@ export default function RolesPage() {
                                 <UsersIcon className="h-4 w-4 mr-2" />
                                 View Users
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleAssignClick(role)}>
+                              <DropdownMenuItem 
+                                onClick={() => canAssign && handleAssignClick(role)}
+                                disabled={!canAssign}
+                                className={!canAssign ? 'opacity-50 cursor-not-allowed' : ''}
+                                title={!canAssign ? "You don't have permission to assign roles" : undefined}
+                              >
                                 <UserPlus className="h-4 w-4 mr-2" />
                                 Assign to Users
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               {!role.deletedAt && (
                                 <DropdownMenuItem 
-                                  onClick={() => handleToggleStatus(role)}
-                                  disabled={(role as any).isSystem}
+                                  onClick={() => canUpdate && handleToggleStatus(role)}
+                                  disabled={!canUpdate || (role as any).isSystem}
+                                  className={!canUpdate ? 'opacity-50 cursor-not-allowed' : ''}
+                                  title={!canUpdate ? "You don't have permission to update roles" : undefined}
                                 >
                                   <Power className="h-4 w-4 mr-2" />
                                   Disable Role
@@ -545,17 +597,20 @@ export default function RolesPage() {
                               )}
                               {role.deletedAt && (
                                 <DropdownMenuItem 
-                                  onClick={() => handleToggleStatus(role)}
-                                  disabled={(role as any).isSystem}
+                                  onClick={() => canUpdate && handleToggleStatus(role)}
+                                  disabled={!canUpdate || (role as any).isSystem}
+                                  className={!canUpdate ? 'opacity-50 cursor-not-allowed' : ''}
+                                  title={!canUpdate ? "You don't have permission to update roles" : undefined}
                                 >
                                   <Power className="h-4 w-4 mr-2" />
                                   Enable Role
                                 </DropdownMenuItem>
                               )}
                               <DropdownMenuItem 
-                                onClick={() => handleDeleteClick(role)} 
-                                className="text-destructive"
-                                disabled={(role as any).isSystem || (role as any).isDefault}
+                                onClick={() => canDelete && handleDeleteClick(role)} 
+                                disabled={!canDelete || (role as any).isSystem || (role as any).isDefault}
+                                className={`${!canDelete ? 'opacity-50 cursor-not-allowed' : 'text-destructive'}`}
+                                title={!canDelete ? "You don't have permission to delete roles" : undefined}
                               >
                                 <Trash2 className="h-4 w-4 mr-2" />
                                 Delete Role

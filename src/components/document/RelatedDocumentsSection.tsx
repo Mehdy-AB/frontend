@@ -217,7 +217,7 @@ export default function RelatedDocumentsSection({
                             <span className={`inline-flex items-center px-1 py-0.5 rounded text-xs font-medium ${getLinkTypeColor(doc.linkType)}`}>
                               {doc.linkType}
                             </span>
-                            {doc.manual ? (
+                            {doc.isManual ? (
                               <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
                                 <Settings className="h-2.5 w-2.5" />
                                 Manual
@@ -240,15 +240,6 @@ export default function RelatedDocumentsSection({
                               title="View Document"
                             >
                               <Eye className="h-3 w-3" />
-                            </button>
-                          )}
-                          {doc.userPermissions?.canView && (
-                            <button
-                              onClick={() => handleDownloadDocument(doc.documentId)}
-                              className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"
-                              title="Download Document"
-                            >
-                              <Download className="h-3 w-3" />
                             </button>
                           )}
                           {canEdit && (

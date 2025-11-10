@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { X, Folder, Plus, Trash2, ChevronRight, ChevronDown, Users, Shield, User, Settings } from 'lucide-react';
 import { notificationApiClient } from '@/api/notificationClient';
-import { CreateFolderDto, SubfolderDto, FolderPermissionReq, UserDto, RoleDto, GroupDto } from '@/types/api';
+import { CreateFolderDto, SubfolderDto, FolderPermissionReq, UserDto, RoleDto, GroupDto, TypeShareAccessWithTypeReq, GranteeType } from '@/types/api';
 import UserAvatar from '@/components/main/UserAvatar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -187,7 +187,9 @@ export default function CreateFolderModal({
             `${user.firstName} ${user.lastName}`.toLowerCase().includes(q)
           );
         } else {
-          return entity.name?.toLowerCase().includes(q);
+          // For roles and groups, check name property
+          const roleOrGroup = entity as RoleDto | GroupDto;
+          return (roleOrGroup.name?.toLowerCase().includes(q) || false);
         }
       });
       setSearchResults(filtered);
@@ -433,35 +435,18 @@ export default function CreateFolderModal({
     try {
       const cleanedSubfolders = validateAndCleanSubfolders(subfolders);
 
-      // Group permissions by type and convert to API format
-      const userPermissions = permissions
-        .filter(p => p.type === 'user')
-        .map(p => ({
-          id: p.entityId,
-          permission: p.preset === 'custom' ? p.customPermissions! : PERMISSION_PRESETS[p.preset]
-        }));
-
-      const groupPermissions = permissions
-        .filter(p => p.type === 'group')
-        .map(p => ({
-          id: p.entityId,
-          permission: p.preset === 'custom' ? p.customPermissions! : PERMISSION_PRESETS[p.preset]
-        }));
-
-      const rolePermissions = permissions
-        .filter(p => p.type === 'role')
-        .map(p => ({
-          id: p.entityId,
-          permission: p.preset === 'custom' ? p.customPermissions! : PERMISSION_PRESETS[p.preset]
-        }));
+      // Convert permissions to API format using the new sharedWith structure
+      const sharedWith: TypeShareAccessWithTypeReq[] = permissions.map(p => ({
+        granteeId: p.entityId,
+        type: p.type.toUpperCase() as GranteeType,
+        permission: p.preset === 'custom' ? p.customPermissions! : PERMISSION_PRESETS[p.preset]
+      }));
 
       const folderData: CreateFolderDto = {
         name: folderName.trim(),
         description: description.trim() || undefined,
         parentId: parentId || undefined,
-        usersGevenPermission: userPermissions.length > 0 ? userPermissions : undefined,
-        goupesGevenPermission: groupPermissions.length > 0 ? groupPermissions : undefined,
-        rolesGevenPermission: rolePermissions.length > 0 ? rolePermissions : undefined,
+        sharedWith: sharedWith.length > 0 ? sharedWith : undefined,
         subfolders: cleanedSubfolders.length > 0 ? cleanedSubfolders : undefined
       };
 
@@ -623,7 +608,7 @@ export default function CreateFolderModal({
                       )}
                       <div className="flex-1">
                         <p className="font-medium text-gray-900">
-                          {searchType === 'user' ? (entity as UserDto).displayName : entity.name}
+                          {searchType === 'user' ? (entity as UserDto).displayName : (entity as RoleDto | GroupDto).name}
                         </p>
                         {searchType === 'user' && (
                           <p className="text-sm text-gray-500">{(entity as UserDto).email}</p>
@@ -650,7 +635,7 @@ export default function CreateFolderModal({
                   const isExpanded = expandedPermissions.includes(perm.id);
                   const currentPermissions = perm.preset === 'custom' && perm.customPermissions
                     ? perm.customPermissions
-                    : PERMISSION_PRESETS[perm.preset];
+                    : PERMISSION_PRESETS[perm.preset as keyof typeof PERMISSION_PRESETS];
 
     return (
                     <div key={perm.id} className="bg-gray-50 border border-gray-200 rounded-lg overflow-hidden">
@@ -686,7 +671,7 @@ export default function CreateFolderModal({
                               <p className="font-medium text-gray-900 truncate text-sm">
                                 {perm.type === 'user' 
                                   ? (perm.entity as UserDto).displayName 
-                                  : perm.entity.name}
+                                  : (perm.entity as RoleDto | GroupDto).name}
                               </p>
                               {perm.type === 'user' && (
                                 <p className="text-xs text-gray-500 truncate">

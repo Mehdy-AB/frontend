@@ -2,6 +2,7 @@
 
 import { usePathname } from 'next/navigation'
 import { useSession } from 'next-auth/react'
+import { useEffect } from 'react'
 import Sidebar from '@/components/main/Sidebar'
 import Header from '@/components/main/Header'
 
@@ -19,13 +20,30 @@ export default function ConditionalLayout({ children }: ConditionalLayoutProps) 
   // Check if user is authenticated
   const isAuthenticated = status === 'authenticated' && session
   
+  // If not authenticated and not on auth page, middleware should redirect
+  // Add a fallback redirect with timeout in case middleware fails
+  useEffect(() => {
+    if (!isAuthenticated && !isAuthPage && status === 'unauthenticated') {
+      // Set a timeout to force redirect if middleware doesn't handle it
+      const timeout = setTimeout(() => {
+        // Force redirect using window.location for reliability
+        if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/auth/')) {
+          window.location.href = '/auth/signin'
+        }
+      }, 1000) // 1 second fallback
+      
+      return () => {
+        clearTimeout(timeout)
+      }
+    }
+  }, [isAuthenticated, isAuthPage, status])
+
   // If it's an auth page, render without header/sidebar
   if (isAuthPage) {
     return <>{children}</>
   }
   
-  // If user is not authenticated and not on auth page, show loading
-  // The middleware will handle redirecting to signin
+  // Brief loading state while checking session
   if (status === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -36,14 +54,14 @@ export default function ConditionalLayout({ children }: ConditionalLayoutProps) 
       </div>
     )
   }
-  
-  // If not authenticated and not on auth page, show loading (middleware will redirect)
+
+  // Show brief loading state while redirect is being handled
   if (!isAuthenticated && !isAuthPage) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="flex items-center space-x-2">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
-          <span className="text-muted-foreground">Redirecting...</span>
+          <span className="text-muted-foreground">Redirecting to sign in...</span>
         </div>
       </div>
     )

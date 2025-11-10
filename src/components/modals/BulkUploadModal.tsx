@@ -24,6 +24,10 @@ import {
 } from 'lucide-react';
 import { useNotifications } from '@/hooks/useNotifications';
 import { apiClient } from '@/api/client';
+import { filingCategoryService } from '@/api/services/filingCategoryService';
+import { tagService } from '@/api/services/tagService';
+import { documentService } from '@/api/services/documentService';
+import { notificationApiClient } from '@/api/notificationClient';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SearchSelect } from '@/components/main/SearchSelect';
 import {
@@ -129,7 +133,7 @@ export default function BulkUploadModal({ isOpen, onClose, folderId, folderName,
   const loadFilingCategories = async () => {
     try {
       setLoadingCategories(true);
-      const response = await apiClient.getAllFilingCategories();
+      const response = await filingCategoryService.getAllFilingCategories({ size: 100 });
       setFilingCategories(response.content);
       setFilteredCategories(response.content);
     } catch (error) {
@@ -143,7 +147,7 @@ export default function BulkUploadModal({ isOpen, onClose, folderId, folderName,
   const loadTags = async () => {
     try {
       setIsLoadingTags(true);
-      const tags = await apiClient.getAvailableTags();
+      const tags = await tagService.getAvailableTags();
       setAvailableTags(tags);
     } catch (error) {
       console.error('Error loading tags:', error);
@@ -231,7 +235,7 @@ export default function BulkUploadModal({ isOpen, onClose, folderId, folderName,
       isValid = false;
     }
 
-    if (file.filingCategory) {
+    if (file.filingCategory && file.filingCategory.metadataDefinitions) {
       file.filingCategory.metadataDefinitions.forEach(definition => {
         if (definition.mandatory && !file.metadata[definition.key]) {
           errors[definition.key] = `${definition.key} is required`;
@@ -282,7 +286,7 @@ export default function BulkUploadModal({ isOpen, onClose, folderId, folderName,
       const firstFile = files[0];
       let filingCategoryDto: FilingCategoryDocDto | null = null;
       
-      if (firstFile.filingCategory) {
+      if (firstFile.filingCategory && firstFile.filingCategory.metadataDefinitions) {
         const metaDataDto: MetaDataDto[] = firstFile.filingCategory.metadataDefinitions
           .filter(def => firstFile.metadata[def.key])
           .map((def, index) => ({
@@ -297,14 +301,14 @@ export default function BulkUploadModal({ isOpen, onClose, folderId, folderName,
       }
 
       // Upload the first file to main documents table
-      await apiClient.uploadDocument(
+      await documentService.uploadDocument(
         firstFile.file,
         folderId,
         firstFile.title,
         language,
-        filingCategoryDto,
         firstFile.fileName,
-        firstFile.tags.map(tag => tag.id)
+        firstFile.tags.map(tag => tag.id).length > 0 ? JSON.stringify(firstFile.tags.map(tag => tag.id)) : undefined,
+        filingCategoryDto || undefined
       );
 
       // Prepare remaining files for ClassA upload
@@ -374,7 +378,7 @@ export default function BulkUploadModal({ isOpen, onClose, folderId, folderName,
               <SelectValue placeholder={`Select ${definition.key}`} />
             </SelectTrigger>
             <SelectContent>
-              {definition.list.option.map((option) => (
+              {(definition.list?.option || []).map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
                 </SelectItem>
@@ -588,17 +592,24 @@ export default function BulkUploadModal({ isOpen, onClose, folderId, folderName,
                     <div className="mb-4">
                       <label className="block text-sm font-medium mb-2">Filing Category</label>
                       <SearchSelect
-                        options={filteredCategories}
-                        value={file.filingCategory}
-                        onChange={(category) => updateFile(index, { filingCategory: category })}
-                        onSearch={setCategorySearch}
+                        items={filteredCategories}
+                        onSelect={(category) => updateFile(index, { filingCategory: category })}
+                        fetchFunction={async (query: string) => {
+                          setCategorySearch(query);
+                          const response = await filingCategoryService.getAllFilingCategories({ 
+                            size: 100, 
+                            name: query 
+                          });
+                          return response.content || [];
+                        }}
+                        displayField="name"
                         placeholder="Select filing category"
-                        loading={loadingCategories}
+                        valueLabel={file.filingCategory?.name}
                       />
                     </div>
 
                     {/* Metadata Fields */}
-                    {file.filingCategory && file.filingCategory.metadataDefinitions.length > 0 && (
+                    {file.filingCategory && file.filingCategory.metadataDefinitions && file.filingCategory.metadataDefinitions.length > 0 && (
                       <div className="grid grid-cols-2 gap-4">
                         {file.filingCategory.metadataDefinitions.map(definition => 
                           renderMetadataField(definition, index)

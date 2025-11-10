@@ -53,22 +53,22 @@ export default function ActivityTab({ document, auditLogs, isLoading }: Activity
                   </div>
                   <div className="flex-1 w-px bg-neutral-ui my-1"></div>
                 </div>
-                <div className="flex-1 pb-4">
-                  <div className="flex justify-between mb-1">
-                    <span className="font-medium text-sm">{log.username}</span>
-                    <span className="text-xs text-neutral-text-light">{formatDate(log.timestamp)}</span>
+                <div className="flex-1 pb-4 min-w-0">
+                  <div className="flex justify-between mb-1 gap-2">
+                    <span className="font-medium text-sm truncate">{log.user?.username || log.user?.displayName || 'Unknown User'}</span>
+                    <span className="text-xs text-neutral-text-light flex-shrink-0">{formatDate(log.timestamp)}</span>
                   </div>
-                  <div className="text-sm text-neutral-text-light capitalize">
+                  <div className="text-sm text-neutral-text-light capitalize break-words">
                     {log.action || 'Activity'}
                   </div>
-                  {log.details && (
-                    <div className="text-xs text-neutral-text-light mt-1">
-                      {typeof log.details === 'string' ? log.details : JSON.stringify(log.details)}
+                  {log.description && (
+                    <div className="text-xs text-neutral-text-light mt-1 break-words max-w-full">
+                      {log.description}
                     </div>
                   )}
-                  {!log.action && log.details && (
-                    <div className="text-sm text-neutral-text-dark mt-1">
-                      {typeof log.details === 'string' ? log.details : JSON.stringify(log.details)}
+                  {log.changes && Object.keys(log.changes).length > 0 && (
+                    <div className="text-sm text-neutral-text-dark mt-1 break-words max-w-full">
+                      {JSON.stringify(log.changes, null, 2)}
                     </div>
                   )}
                 </div>
@@ -90,7 +90,7 @@ export default function ActivityTab({ document, auditLogs, isLoading }: Activity
             <div className="font-semibold text-lg">
               {auditLogs.filter(log => 
                 (log.action && log.action.toLowerCase().includes('view')) ||
-                (log.details && log.details.toLowerCase().includes('view'))
+                (log.description && log.description.toLowerCase().includes('view'))
               ).length}
             </div>
             <div className="text-neutral-text-light">Views</div>

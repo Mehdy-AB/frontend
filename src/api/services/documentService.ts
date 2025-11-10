@@ -1,6 +1,7 @@
 import { apiClient } from '../client';
 import {
   DocumentResponseDto,
+  DocumentVersionResponseDto,
   DocumentUploadRequestDto,
   DocumentVersionUploadRequestDto,
   EditDocumentTitleRequestDto,
@@ -82,7 +83,7 @@ export class DocumentService {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('documentId', documentId.toString());
-    formData.append('lang', lang);
+    formData.append('lang', lang.toUpperCase());
     
     if (filingCategory) {
       formData.append('filingCategory', JSON.stringify(filingCategory));
@@ -268,8 +269,8 @@ export class DocumentService {
   }
 
   // Get document versions
-  async getDocumentVersions(documentId: number): Promise<DocumentResponseDto[]> {
-    return apiClient.get<DocumentResponseDto[]>(`${this.baseUrl}/${documentId}/versions`);
+  async getDocumentVersions(documentId: number): Promise<DocumentVersionResponseDto[]> {
+    return apiClient.get<DocumentVersionResponseDto[]>(`${this.baseUrl}/${documentId}/versions`);
   }
 
   // Set active version
@@ -349,6 +350,10 @@ export class DocumentService {
     return this.shareDocumentWithType(documentId, data);
   }
 
+  async updateDocumentShared(documentId: number, data: any): Promise<any> {
+    return this.updateDocumentPermission(documentId, data);
+  }
+
   async deleteDocumentShared(documentId: number, granteeId: string): Promise<void> {
     return this.revokeDocumentAccess(documentId, granteeId);
   }
@@ -363,6 +368,54 @@ export class DocumentService {
       urlParams.append('search', params.search);
     }
     return apiClient.get<PageResponse<any>>(`${this.baseUrl}/${documentId}/share/available-users?${urlParams}`);
+  }
+
+  // Get shared documents for the current user
+  async getSharedDocuments(params?: { page?: number; size?: number; search?: string; sortBy?: string; sortDir?: string }): Promise<PageResponse<DocumentResponseDto>> {
+    // The backend endpoint uses limit/offset, so we need to calculate it
+    const page = params?.page || 0;
+    const size = params?.size || 20;
+    const limit = size;
+    const offset = page * size;
+    
+    const urlParams = new URLSearchParams({
+      limit: limit.toString(),
+      offset: offset.toString(),
+    });
+    
+    // Note: The backend endpoint doesn't support search/sort yet, but we can add client-side filtering
+    const documents = await apiClient.get<DocumentResponseDto[]>(`${this.baseUrl}/shared?${urlParams}`);
+    
+    // Return proper PageResponse structure
+    const totalElements = documents?.length || 0;
+    const totalPages = Math.ceil(totalElements / size);
+    
+    const sortInfo = {
+      empty: !params?.sortBy,
+      sorted: !!params?.sortBy,
+      unsorted: !params?.sortBy,
+    };
+    
+    return {
+      content: documents || [],
+      totalPages,
+      totalElements,
+      pageable: {
+        pageNumber: page,
+        pageSize: size,
+        sort: sortInfo,
+        offset: offset,
+        paged: true,
+        unpaged: false,
+      },
+      last: page >= totalPages - 1,
+      size: size,
+      number: page,
+      first: page === 0,
+      numberOfElements: documents?.length || 0,
+      empty: !documents || documents.length === 0,
+      sort: sortInfo,
+    };
   }
 
   async getAvailableRolesForDocument(documentId: number, params?: { page?: number; size?: number; search?: string }): Promise<PageResponse<any>> {

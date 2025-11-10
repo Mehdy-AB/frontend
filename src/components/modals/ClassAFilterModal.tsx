@@ -20,7 +20,7 @@ import {
   ChevronDown,
   Loader2
 } from 'lucide-react';
-import { FilingCategoryService } from '@/api/services/filingCategoryService';
+import { filingCategoryService } from '@/api/services/filingCategoryService';
 import { userManagementService } from '@/api/services/userManagementService';
 import { FilingCategoryResponseDto, UserDto } from '@/types/api';
 
@@ -89,10 +89,10 @@ export default function ClassAFilterModal({
     setFilteredUsers(
       users.filter(
         (user) => 
-          user.firstName.toLowerCase().includes(q) || 
-          user.lastName.toLowerCase().includes(q) ||
-          user.email.toLowerCase().includes(q) ||
-          user.username.toLowerCase().includes(q)
+          (user.firstName?.toLowerCase().includes(q) || false) || 
+          (user.lastName?.toLowerCase().includes(q) || false) ||
+          (user.email?.toLowerCase().includes(q) || false) ||
+          (user.username?.toLowerCase().includes(q) || false)
       )
     );
   }, [userSearchQuery, users]);
@@ -133,7 +133,7 @@ export default function ClassAFilterModal({
     try {
       setLoadingCategories(true);
       const params = searchQuery ? { name: searchQuery, size: 100 } : { size: 100 };
-      const response = await FilingCategoryService.getAllFilingCategories(params);
+      const response = await filingCategoryService.getAllFilingCategories(params);
       const fetchedCategories = response.content || [];
       setCategories(fetchedCategories);
       setFilteredCategories(fetchedCategories);

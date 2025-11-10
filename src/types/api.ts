@@ -608,9 +608,7 @@ export interface CreateFolderDto {
   name: string;
   description?: string;
   parentId?: number;
-  usersGevenPermission?: TypeShareAcces[];
-  goupesGevenPermission?: TypeShareAcces[];
-  rolesGevenPermission?: TypeShareAcces[];
+  sharedWith?: TypeShareAccessWithTypeReq[];
   subfolders?: SubfolderDto[];
 }
 
@@ -635,18 +633,18 @@ export interface FolderPermissionReq {
   inherits: boolean;
 }
 
-export interface TypeShareAcces {
-  id: string;
-  permission: FolderPermissionReq;
+export interface PageableDto {
+  pageNumber: number;
+  pageSize: number;
 }
 
 export interface FolderRepoResDto {
+  folder?: FolderResDto;
   folders: FolderResDto[];
   documents: DocumentResponseDto[];
+  pageable: PageableDto;
   totalElements: number;
   totalPages: number;
-  currentPage: number;
-  pageSize: number;
 }
 
 // ==================== FILING CATEGORIES TYPES ====================
@@ -1341,12 +1339,13 @@ export interface TypeShareAccessDocumentRes {
 
 export interface TypeShareAccessWithTypeReq {
   granteeId: string;
-  permission: FolderPermissionReq;
+  permission: FolderPermissionReq | DocumentPermissionReq;
   type: GranteeType;
 }
 
 export interface TypeShareAccessRes {
   grantee: UserDto | GroupDto | RoleDto;
+  type: GranteeType;
   permission: FolderPermissionReq;
 }
 

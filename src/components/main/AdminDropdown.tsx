@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Cog,
@@ -37,6 +37,9 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
 } from '@/components/ui/dropdown-menu';
+import { usePermissions } from '@/hooks/usePermissions';
+import { AdminPagePermissions } from '@/constants/permissions';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface MenuItem {
   label: string;
@@ -142,16 +145,40 @@ const SECTIONS: Section[] = [
 export default function AdminDropdown() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const { hasPermission } = usePermissions();
   // selected tab id: default to first section
   const [selectedId, setSelectedId] = useState<string>(SECTIONS[0].id);
 
-  const selectedSection = SECTIONS.find((s) => s.id === selectedId) ?? SECTIONS[0];
+  // Filter sections and items based on permissions
+  const filteredSections = useMemo(() => {
+    return SECTIONS.map(section => ({
+      ...section,
+      items: section.items.filter(item => {
+        const pagePermissions = AdminPagePermissions[item.href];
+        // If no permissions defined, allow access (for backward compatibility)
+        if (!pagePermissions) return true;
+        // Check if user has view permission
+        return pagePermissions.view ? hasPermission(pagePermissions.view) : true;
+      })
+    })).filter(section => section.items.length > 0); // Remove sections with no accessible items
+  }, [hasPermission]);
+
+  const selectedSection = filteredSections.find((s) => s.id === selectedId) ?? filteredSections[0];
 
   const handleNavigate = (href: string) => {
+    const pagePermissions = AdminPagePermissions[href];
+    // Check view permission before navigating
+    if (pagePermissions?.view && !hasPermission(pagePermissions.view)) {
+      return;
+    }
     setOpen(false);
-    // small delay so menu can close smoothly before route change (optional)
     router.push(href);
   };
+
+  // Don't show dropdown if user has no accessible admin pages
+  if (filteredSections.length === 0) {
+    return null;
+  }
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -181,7 +208,7 @@ export default function AdminDropdown() {
               aria-orientation="vertical"
               className="mt-2 space-y-1 px-2"
             >
-              {SECTIONS.map((section) => {
+              {filteredSections.map((section) => {
                 const active = section.id === selectedId;
                 return (
                   <button
@@ -211,24 +238,41 @@ export default function AdminDropdown() {
             </header>
 
             <div className="grid grid-cols-2 gap-6">
-              {selectedSection.items.map((item) => (
-                <div key={item.href} className="rounded-md p-2 hover:bg-slate-50">
-                  <button
-                    onClick={() => handleNavigate(item.href)}
-                    className="flex items-start cursor-pointer gap-3 w-full text-left"
-                  >
-                    {item.Icon && <item.Icon className="h-5 w-5 mt-1 text-slate-600" />}
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-slate-900">{item.label}</span>
+              {selectedSection.items.map((item) => {
+                const pagePermissions = AdminPagePermissions[item.href];
+                const canView = !pagePermissions?.view || hasPermission(pagePermissions.view);
+                
+                return (
+                  <Tooltip key={item.href}>
+                    <TooltipTrigger asChild>
+                      <div className={`rounded-md p-2 ${canView ? 'hover:bg-slate-50' : 'opacity-50'}`}>
+                        <button
+                          onClick={() => handleNavigate(item.href)}
+                          disabled={!canView}
+                          className={`flex items-start gap-3 w-full text-left ${
+                            canView ? 'cursor-pointer' : 'cursor-not-allowed'
+                          }`}
+                        >
+                          {item.Icon && <item.Icon className="h-5 w-5 mt-1 text-slate-600" />}
+                          <div className="flex-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-medium text-slate-900">{item.label}</span>
+                            </div>
+                            {item.description && (
+                              <p className="mt-1 text-xs text-slate-500">{item.description}</p>
+                            )}
+                          </div>
+                        </button>
                       </div>
-                      {item.description && (
-                        <p className="mt-1 text-xs text-slate-500">{item.description}</p>
-                      )}
-                    </div>
-                  </button>
-                </div>
-              ))}
+                    </TooltipTrigger>
+                    {!canView && (
+                      <TooltipContent>
+                        <p>You don't have permission to access this page</p>
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
+                );
+              })}
             </div>
 
             {/* Footer small help text */}

@@ -1,17 +1,18 @@
 // app/folders/[folderId]/page.tsx
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { notificationApiClient } from '@/api/notificationClient';
+import { folderService } from '@/api/services/folderService';
 import CreateFolderModal from '@/components/modals/CreateFolderModal';
 import FileUploadModal from '@/components/modals/FileUploadModal';
 import EditFolderModal from '@/components/modals/EditFolderModal';
 import EditDocumentModal from '@/components/modals/EditDocumentModal';
 import AdvancedSearchModal from '@/components/modals/AdvancedSearchModal';
-import { DocumentResponseDto, FolderRepoResDto, FolderResDto, SortFields, AuditLog } from '@/types/api';
-import { auditLogService } from '@/api/services/auditLogService';
+import { DocumentResponseDto, FolderRepoResDto, FolderResDto, SortFields, AuditLog, UserDto } from '@/types/api';
+import { auditLogService, AuditLog as ServiceAuditLog } from '@/api/services/auditLogService';
 import { favoriteService } from '@/api/services/favoriteService';
 import FolderActionModal from '@/components/modals/FolderActionModal';
 import ConfirmationModal from '@/components/modals/ConfirmationModal';
@@ -27,6 +28,7 @@ import {
   UnifiedTableView,
   FolderDetailsSkeleton
 } from '@/components/folder';
+import Pagination from '@/components/main/Pagination';
 
 // Unified interface for table items
 type TableItem = (FolderResDto & { type: 'folder' }) | (DocumentResponseDto & { type: 'document' });
@@ -41,6 +43,7 @@ export default function FolderDetailsPage() {
   const folderId = params.folderId as string;
 
   const [data, setData] = useState<FolderRepoResDto | null>(null);
+  const [folder, setFolder] = useState<FolderResDto | null>(null);
   const [allTableItems, setAllTableItems] = useState<TableItem[]>([]); // Store all items for local filtering
   const [localSearchResults, setLocalSearchResults] = useState<TableItem[]>([]); // Store local search results
   const [loading, setLoading] = useState(true);
@@ -156,27 +159,40 @@ export default function FolderDetailsPage() {
         desc: sortDesc
       });
       
-        setData(response);
-        // Store all items for local filtering (will be updated after data is set)
-        
-        // Fetch audit logs and favorite status for the folder
-        if (!isSearchRequest) {
-          await Promise.all([
-            fetchAuditLogs(parseInt(folderId)),
-            checkFolderFavoriteStatus(parseInt(folderId))
-          ]);
-        }
-      } catch (err) {
-        setError('Failed to load folder details');
-        console.error('Error fetching folder data:', err);
-      } finally {
-        if (isSearchRequest) {
-          setTableLoading(false);
-        } else {
-          setLoading(false);
+      setData(response);
+      // Extract folder from response (API includes it when showFolder=true)
+      if (response.folder) {
+        setFolder(response.folder);
+      } else {
+        // Fallback: fetch folder separately if not in response
+        try {
+          const folderData = await folderService.getFolderById(parseInt(folderId));
+          setFolder(folderData);
+        } catch (folderErr) {
+          console.error('Error fetching folder details:', folderErr);
+          // Don't set error here, just log it - folder might not be critical
         }
       }
-    };
+      // Store all items for local filtering (will be updated after data is set)
+      
+      // Fetch audit logs and favorite status for the folder
+      if (!isSearchRequest) {
+        await Promise.all([
+          fetchAuditLogs(parseInt(folderId)),
+          checkFolderFavoriteStatus(parseInt(folderId))
+        ]);
+      }
+    } catch (err) {
+      setError('Failed to load folder details');
+      console.error('Error fetching folder data:', err);
+    } finally {
+      if (isSearchRequest) {
+        setTableLoading(false);
+      } else {
+        setLoading(false);
+      }
+    }
+  };
 
   // Update allTableItems when data changes
   useEffect(() => {
@@ -186,11 +202,28 @@ export default function FolderDetailsPage() {
     }
   }, [data]);
 
+  // Track previous sort values to detect sort changes
+  const prevSortBy = useRef(sortBy);
+  const prevSortDesc = useRef(sortDesc);
+
   // Fetch folder data when dependencies change (excluding searchQuery)
   useEffect(() => {
     if (folderId) {
+      // Reset to page 1 only when sort changes (not when pagination changes)
+      const sortChanged = prevSortBy.current !== sortBy || prevSortDesc.current !== sortDesc;
+      if (sortChanged && currentPage !== 1) {
+        prevSortBy.current = sortBy;
+        prevSortDesc.current = sortDesc;
+        setCurrentPage(1);
+        return; // Will trigger another fetch when currentPage updates
+      }
+      
+      // Update refs
+      prevSortBy.current = sortBy;
+      prevSortDesc.current = sortDesc;
+      
       // Use full page loading for initial load, table loading for pagination and sorting
-      const isInitialLoad = currentPage === 1 && sortBy === 'name' && sortDesc === false;
+      const isInitialLoad = currentPage === 1 && sortBy === 'name' && sortDesc === false && !searchQuery;
       fetchFolderData(!isInitialLoad);
     }
   }, [folderId, currentPage, sortBy, sortDesc]);
@@ -198,14 +231,23 @@ export default function FolderDetailsPage() {
   // Handle search with local filtering first, then API fetch
   useEffect(() => {
     if (!searchQuery.trim()) {
-      // If no search query, show all items
-      if (data) {
-        const allItems = getTableItems();
-        setAllTableItems(allItems);
-        setLocalSearchResults([]);
-      }
+      // If search is cleared, refresh data from server
       setIsLocalFiltering(false);
+      setLocalSearchResults([]);
+      // Reset to first page if not already there
+      if (currentPage !== 1) {
+        setCurrentPage(1);
+        return; // Will trigger fetch when currentPage updates
+      }
+      // Use table loading instead of full page loading when clearing search
+      fetchFolderData(true);
       return;
+    }
+
+    // Reset to page 1 when starting a search
+    if (currentPage !== 1) {
+      setCurrentPage(1);
+      return; // Will trigger fetch when currentPage updates
     }
 
     // First, filter locally for immediate response
@@ -229,7 +271,31 @@ export default function FolderDetailsPage() {
     try {
       setIsLoadingAuditLogs(true);
       const response = await auditLogService.getAuditLogsByEntity('FOLDER', folderId, 0, 20);
-      setAuditLogs(response.content);
+      // Map service AuditLog to expected AuditLog type from @/types/api
+      const mappedLogs: AuditLog[] = response.content.map((log: ServiceAuditLog) => ({
+        id: log.id,
+        entityType: log.entityType,
+        entityId: log.entityId,
+        action: log.action,
+        description: log.details,
+        user: {
+          id: log.userId,
+          username: log.username,
+          email: '',
+          displayName: log.username,
+          enabled: true,
+          emailVerified: false,
+          createdTimestamp: '',
+          createdAt: '',
+          updatedAt: '',
+          status: 'ACTIVE',
+          roles: [],
+          groups: []
+        } as UserDto,
+        timestamp: log.timestamp,
+        ipAddress: log.ipAddress
+      }));
+      setAuditLogs(mappedLogs);
     } catch (error) {
       console.error('Error fetching audit logs:', error);
     } finally {
@@ -252,15 +318,18 @@ export default function FolderDetailsPage() {
 
   // Toggle folder favorite status
   const toggleFolderFavorite = async () => {
-    if (!data?.folder || isLoadingFavorite) return;
+    if (!folderId || isLoadingFavorite) return;
+    
+    const folderIdNum = parseInt(folderId, 10);
+    if (isNaN(folderIdNum)) return;
     
     try {
       setIsLoadingFavorite(true);
       if (isFolderFavorite) {
-        await favoriteService.removeFolderFromFavorites(data.folder.id);
+        await favoriteService.removeFolderFromFavorites(folderIdNum);
         setIsFolderFavorite(false);
       } else {
-        await favoriteService.addFolderToFavorites(data.folder.id);
+        await favoriteService.addFolderToFavorites(folderIdNum);
         setIsFolderFavorite(true);
       }
     } catch (error) {
@@ -331,6 +400,60 @@ export default function FolderDetailsPage() {
   const handleShowComments = (item: TableItem) => {
     setCommentsModalItem(item);
     setShowCommentsModal(true);
+  };
+
+  const handleView = (item: TableItem) => {
+    if (item.type === 'document') {
+      router.push(`/documents/${item.documentId}`);
+    }
+  };
+
+  const handleDownload = async (item: TableItem) => {
+    if (item.type === 'document') {
+      try {
+        const downloadUrl = await notificationApiClient.downloadDocument(item.documentId);
+        await notificationApiClient.fileDownloaded(item.documentId);
+        const link = window.document.createElement('a');
+        link.href = downloadUrl;
+        link.download = item.name;
+        link.target = '_blank';
+        window.document.body.appendChild(link);
+        link.click();
+        window.document.body.removeChild(link);
+      } catch (error) {
+        console.error('Error downloading document:', error);
+      }
+    }
+  };
+
+  const handleShare = (item: TableItem) => {
+    if (item.type === 'document') {
+      setSelectedDocument(item);
+      // You can open a share modal here or navigate to share page
+      // For now, we'll just open the edit permissions modal
+      setShowEditDocumentModal(true);
+    } else if (item.type === 'folder') {
+      setSelectedFolder(item);
+      setShowEditFolderModal(true);
+    }
+  };
+
+  const handleCopyLink = (item: TableItem) => {
+    const baseUrl = window.location.origin;
+    let link = '';
+    if (item.type === 'document') {
+      link = `${baseUrl}/documents/${item.documentId}`;
+    } else if (item.type === 'folder') {
+      link = `${baseUrl}/folders/${item.id}`;
+    }
+    if (link) {
+      navigator.clipboard.writeText(link).then(() => {
+        // You could show a toast notification here
+        console.log('Link copied to clipboard');
+      }).catch(err => {
+        console.error('Failed to copy link:', err);
+      });
+    }
   };
 
   const handleConfirmDelete = async () => {
@@ -409,24 +532,18 @@ export default function FolderDetailsPage() {
         } else if (updatedItem.action === 'move') {
           // Remove the item from the current list since it's moved to another location
           if (updatedItem.type === 'folder') {
-            const updatedFolders = prevData.folders.filter(folder => folder.id !== updatedItem.id);
+            const updatedFolders = prevData.folders.filter(f => f.id !== updatedItem.id);
             return { 
               ...prevData, 
               folders: updatedFolders,
-              page: {
-                ...prevData.page,
-                totalElements: prevData.page.totalElements - 1
-              }
+              totalElements: prevData.totalElements - 1
             };
           } else if (updatedItem.type === 'document') {
             const updatedDocuments = prevData.documents.filter(doc => doc.documentId !== updatedItem.id);
             return { 
               ...prevData, 
               documents: updatedDocuments,
-              page: {
-                ...prevData.page,
-                totalElements: prevData.page.totalElements - 1
-              }
+              totalElements: prevData.totalElements - 1
             };
           }
         }
@@ -485,7 +602,7 @@ export default function FolderDetailsPage() {
     return <FolderDetailsSkeleton />;
   }
 
-  if (error || !data) {
+  if (error || !data || !folder || !folder.ownedBy) {
     return (
       <div className="flex flex-col items-center justify-center py-12">
         <div className="text-error text-lg mb-4">{error || 'Folder not found'}</div>
@@ -499,7 +616,6 @@ export default function FolderDetailsPage() {
     );
   }
 
-  const { folder } = data;
   const tableItems = getDisplayItems();
 
   return (
@@ -507,10 +623,10 @@ export default function FolderDetailsPage() {
       {/* Breadcrumb Navigation */}
       <div className="bg-white border-b border-gray-200 px-6 py-3">
       <BreadcrumbNavigation 
-        folderPath={folder.path}
-        folderOwnerId={folder.ownedBy.id}
-        folderOwnerDisplayName={folder.ownedBy.displayName}
-        currentFolderName={folder.name}
+        folderPath={folder.path || ''}
+        folderOwnerId={folder.ownedBy?.id || ''}
+        folderOwnerDisplayName={folder.ownedBy?.displayName || ''}
+        currentFolderName={folder.name || ''}
         onNavigateToPath={navigateToPath}
       />
           </div>
@@ -559,6 +675,10 @@ export default function FolderDetailsPage() {
         onRename={handleRename}
         onDelete={handleDelete}
         onShowComments={handleShowComments}
+        onDownload={handleDownload}
+        onShare={handleShare}
+        onCopyLink={handleCopyLink}
+        onView={handleView}
         openDropdownId={openDropdownId}
         setOpenDropdownId={setOpenDropdownId}
         showLoadingRows={tableLoading}
@@ -573,40 +693,17 @@ export default function FolderDetailsPage() {
       )}
 
       {/* Pagination */}
-      {data.page && data.page.totalPages > 1 && (
-            <div className="flex justify-between items-center px-6 py-4 border-t border-gray-200 bg-gray-50">
-              <div className="text-sm text-gray-500">
-            Showing {tableItems.length} of {data.page.totalElements} items
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-              disabled={data.page.first}
-                  className="px-3 py-2 border border-gray-300 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-            >
-              Previous
-            </button>
-            {[...Array(data.page.totalPages)].map((_, i) => (
-              <button
-                key={i + 1}
-                onClick={() => setCurrentPage(i + 1)}
-                className={`px-3 py-2 border rounded text-sm ${
-                  currentPage === i + 1
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : 'border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                {i + 1}
-              </button>
-            ))}
-            <button
-              onClick={() => setCurrentPage(prev => Math.min(prev + 1, data.page.totalPages))}
-              disabled={data.page.last}
-                  className="px-3 py-2 border border-gray-300 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-            >
-              Next
-            </button>
-          </div>
+      {data && data.totalPages > 1 && (
+        <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
+          <Pagination
+            currentPage={currentPage - 1}
+            totalPages={data.totalPages}
+            totalElements={data.totalElements}
+            pageSize={data.pageable?.pageSize || 20}
+            onPageChange={(page) => {
+              setCurrentPage(page + 1);
+            }}
+          />
         </div>
       )}
         </div>
@@ -666,9 +763,9 @@ export default function FolderDetailsPage() {
           onClose={() => {
             setShowEditFolderModal(false);
             setSelectedFolder(null);
+            handleRefresh();
           }}
           folder={selectedFolder}
-          onSuccess={handleRefresh}
         />
       )}
 
@@ -678,9 +775,9 @@ export default function FolderDetailsPage() {
           onClose={() => {
             setShowEditDocumentModal(false);
             setSelectedDocument(null);
+            handleRefresh();
           }}
           document={selectedDocument}
-          onSuccess={handleRefresh}
         />
       )}
 
@@ -698,7 +795,7 @@ export default function FolderDetailsPage() {
       />
 
       <AdvancedSearchModal
-        isOpen={showAdvancedSearchModal}
+        open={showAdvancedSearchModal}
         onClose={() => setShowAdvancedSearchModal(false)}
         initialQuery={searchQuery}
       />
