@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { DocumentResponseDto, FolderResDto } from '@/types/api';
 import { ItemMenu } from './ItemMenu';
+import DocumentWorkflowBadge from './DocumentWorkflowBadge';
 
 // Unified interface for table items
 type TableItem = (FolderResDto & { type: 'folder' }) | (DocumentResponseDto & { type: 'document' });
@@ -75,10 +76,11 @@ export function TableRow({
             <div className="h-10 w-10 bg-primary-light rounded-lg flex items-center justify-center">
               <File className="h-5 w-5 text-primary" />
             </div>
-            <div>
+            <div className="flex-1">
               <div className="font-medium text-neutral-text-dark group-hover:underline group-hover:text-primary">{item.name}</div>
-              <div className="text-sm text-neutral-text-light group-hover:underline group-hover:text-primary">
-                {item.mimeType.split('/')[1].toUpperCase()} • v{item.versionNumber}
+              <div className="flex items-center gap-2 text-sm text-neutral-text-light group-hover:underline group-hover:text-primary">
+                <span>{item.mimeType.split('/')[1].toUpperCase()} • v{item.versionNumber}</span>
+                <DocumentWorkflowBadge documentId={item.documentId} compact />
               </div>
             </div>
           </Link>

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { DocumentResponseDto, FolderResDto } from '@/types/api';
 import { ItemMenu } from './ItemMenu';
+import DocumentWorkflowBadge from './DocumentWorkflowBadge';
 
 // Unified interface for table items
 type TableItem = (FolderResDto & { type: 'folder' }) | (DocumentResponseDto & { type: 'document' });
@@ -104,9 +105,16 @@ export function GridItem({
       </div>
       <div className="text-xs text-neutral-text-light">{formatDate(updatedAt)}</div>
 
+      {/* Workflow Status Badge for documents */}
+      {!isFolder && (
+        <div className="mt-2">
+          <DocumentWorkflowBadge documentId={item.documentId} compact />
+        </div>
+      )}
+
       {/* Metadata Tags for documents */}
       {!isFolder && item.metadata && item.metadata.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-3">
+        <div className="flex flex-wrap gap-1 mt-2">
           {item.metadata.slice(0, 2).map((tag: string, index: number) => (
             <span key={index} className="px-2 py-1 bg-neutral-background text-xs text-neutral-text-light rounded">
               {tag}

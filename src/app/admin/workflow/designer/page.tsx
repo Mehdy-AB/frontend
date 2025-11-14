@@ -1,302 +1,269 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 import { 
   Workflow, 
   Plus, 
-  Bell ,
+  Save,
+  ArrowLeft,
   Play,
-  Pause,
-  RotateCcw,
   Settings,
-  Eye,
-  EyeOff,
-  BarChart3,
-  Clock,
   Users,
-  Key,
-  Database,
+  GitBranch,
   CheckCircle,
   XCircle,
+  Clock,
   AlertCircle,
-  Calendar,
-  User,
-  Hash,
-  Fingerprint,
-  Server,
-  Globe,
-  Building,
-  Folder,
-  Tag,
-  Type,
-  List,
-  ToggleLeft,
-  ToggleRight,
-  ArrowRight,
-  ArrowLeft,
-  Copy,
-  ExternalLink,
-  Shield,
-  Lock,
-  Unlock,
-  Mail,
-  Phone,
-  MapPin,
-  Send,
-  MessageSquare,
-  Zap,
-  Volume2,
-  VolumeX,
-  FileText,
-  Edit,
   Trash2,
-  Search,
-  Filter,
-  MoreVertical,
-  ChevronDown,
-  ChevronRight
+  Edit,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useLanguage } from '../../../../contexts/LanguageContext';
-import { useAdminPagePermissions } from '@/hooks/useAdminPagePermissions';
 
 export default function WorkflowDesignerPage() {
   const { t } = useLanguage();
-  const router = useRouter();
-  const { canView } = useAdminPagePermissions();
-  
-  useEffect(() => {
-    if (!canView) {
-      router.push('/');
-    }
-  }, [canView, router]);
-
-  if (!canView) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <p className="text-destructive text-lg">You don't have permission to view this page</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="space-y-6">
+    <div className="h-[calc(100vh-4rem)] flex flex-col">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-semibold">Workflow Designer</h1>
-          <p className="text-muted-foreground">Design and manage document workflows (Coming Soon)</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" disabled>
-            <Copy className="h-4 w-4 mr-2" />
-            Import Workflow
+      <div className="bg-white border-b p-4 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => router.push('/admin/workflow')}
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back
           </Button>
-          <Button disabled>
+          <div>
+            <h1 className="text-xl font-semibold flex items-center gap-2">
+              <Workflow className="h-5 w-5" />
+              {workflowId ? 'Edit Workflow' : 'Create New Workflow'}
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Design your workflow visually
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge variant="default" className="bg-blue-500">
+            {nodes.length} Steps
+          </Badge>
+          <Badge variant="outline">
+            {edges.length} Connections
+          </Badge>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleAddStep}
+          >
             <Plus className="h-4 w-4 mr-2" />
-            Create Workflow
+            Add Step
+          </Button>
+          <Button
+            onClick={handleSave}
+            disabled={isSaving || !workflowName || nodes.length === 0}
+          >
+            <Save className="h-4 w-4 mr-2" />
+            {isSaving ? 'Saving...' : 'Save Workflow'}
           </Button>
         </div>
       </div>
 
-      {/* Coming Soon Card */}
-      <Card className="flex flex-col items-center justify-center py-16">
-        <CardContent className="text-center">
-          <div className="h-24 w-24 bg-primary/10 rounded-full flex items-center justify-center mb-6">
-            <Workflow className="h-12 w-12 text-primary" />
+      <div className="flex-1 flex">
+        {/* Sidebar - Workflow Properties */}
+        <Card className="w-80 border-r rounded-none">
+          <div className="p-4 space-y-4 h-full overflow-y-auto">
+            <div>
+              <h3 className="font-semibold mb-4">Workflow Properties</h3>
+              
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="workflow-name">Name *</Label>
+                  <Input
+                    id="workflow-name"
+                    value={workflowName}
+                    onChange={(e) => setWorkflowName(e.target.value)}
+                    placeholder="Workflow name..."
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="workflow-description">Description</Label>
+                  <Textarea
+                    id="workflow-description"
+                    value={workflowDescription}
+                    onChange={(e) => setWorkflowDescription(e.target.value)}
+                    placeholder="Workflow description..."
+                    rows={3}
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="conditional"
+                    checked={isConditional}
+                    onChange={(e) => setIsConditional(e.target.checked)}
+                    className="rounded"
+                  />
+                  <Label htmlFor="conditional" className="cursor-pointer">
+                    Conditional workflow
+                  </Label>
+                </div>
+              </div>
+            </div>
+
+            {/* Selected Node Editor */}
+            {selectedNode && (
+              <div className="border-t pt-4">
+                <h3 className="font-semibold mb-4">Edit Step</h3>
+                
+                <div className="space-y-4">
+                  <div>
+                    <Label>Step Name</Label>
+                    <Input
+                      value={selectedNode.data.label}
+                      onChange={(e) =>
+                        setSelectedNode({
+                          ...selectedNode,
+                          data: {
+                            ...selectedNode.data,
+                            label: e.target.value,
+                          },
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <Label>Approver Role</Label>
+                    <Select
+                      value={selectedNode.data.role}
+                      onValueChange={(value) =>
+                        setSelectedNode({
+                          ...selectedNode,
+                          data: {
+                            ...selectedNode.data,
+                            role: value,
+                          },
+                        })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select role" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {roles.map((role) => (
+                          <SelectItem key={role.name} value={role.name || ''}>
+                            {role.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Label>Description</Label>
+                    <Textarea
+                      value={selectedNode.data.description || ''}
+                      onChange={(e) =>
+                        setSelectedNode({
+                          ...selectedNode,
+                          data: {
+                            ...selectedNode.data,
+                            description: e.target.value,
+                          },
+                        })
+                      }
+                      rows={3}
+                    />
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={handleUpdateNode}
+                      className="flex-1"
+                    >
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Update
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={handleDeleteNode}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Workflow Stats */}
+            <div className="border-t pt-4">
+              <h3 className="font-semibold mb-4">Statistics</h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Total Steps:</span>
+                  <span className="font-medium">{nodes.length}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Connections:</span>
+                  <span className="font-medium">{edges.length}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Type:</span>
+                  <Badge variant={isConditional ? "default" : "secondary"}>
+                    {isConditional ? 'Conditional' : 'Linear'}
+                  </Badge>
+                </div>
+              </div>
+            </div>
           </div>
-          <h2 className="text-2xl font-semibold mb-4">Workflow Designer</h2>
-          <p className="text-muted-foreground mb-6 max-w-md">
-            The workflow designer is currently under development. This feature will allow you to create, 
-            modify, and manage document approval workflows with a visual drag-and-drop interface.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button disabled>
-              <Play className="h-4 w-4 mr-2" />
-              Start Designing
-            </Button>
-            <Button variant="outline" disabled>
-              <Settings className="h-4 w-4 mr-2" />
-              Configure
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Feature Preview */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              User Management
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground mb-4">
-              Assign users to workflow steps and manage their roles and permissions.
-            </p>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-sm">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <span>User assignment</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <span>Role-based access</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <span>Permission management</span>
-              </div>
-            </div>
-          </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5" />
-              Document Processing
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground mb-4">
-              Define how documents move through different stages of approval and processing.
-            </p>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-sm">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <span>Document routing</span>
+        {/* Main Canvas */}
+        <div className="flex-1 bg-gray-50">
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            nodeTypes={nodeTypes}
+            fitView
+            proOptions={proOptions}
+          >
+            <Controls />
+            <MiniMap />
+            <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
+            <Panel position="top-center" className="bg-white rounded-lg shadow-md p-3">
+              <div className="flex items-center gap-4 text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="h-3 w-3 rounded-full bg-blue-500"></div>
+                  <span>Default</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="h-3 w-3 rounded-full bg-green-500"></div>
+                  <span>Completed</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="h-3 w-3 rounded-full bg-yellow-500"></div>
+                  <span>Active</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="h-3 w-3 rounded-full bg-red-500"></div>
+                  <span>Rejected</span>
+                </div>
               </div>
-              <div className="flex items-center gap-2 text-sm">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <span>Approval chains</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <span>Conditional logic</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="h-5 w-5" />
-              Time Management
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground mb-4">
-              Set deadlines, escalation rules, and time-based workflow triggers.
-            </p>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-sm">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <span>Deadline management</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <span>Escalation rules</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <span>Time triggers</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Bell className="h-5 w-5" />
-              Notifications
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground mb-4">
-              Configure automated notifications for workflow events and status changes.
-            </p>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-sm">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <span>Email notifications</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <span>Status updates</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <span>Custom templates</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <BarChart3 className="h-5 w-5" />
-              Analytics
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground mb-4">
-              Track workflow performance, bottlenecks, and completion metrics.
-            </p>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-sm">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <span>Performance metrics</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <span>Bottleneck analysis</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <span>Completion reports</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Settings className="h-5 w-5" />
-              Integration
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground mb-4">
-              Connect workflows with external systems and third-party applications.
-            </p>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-sm">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <span>API integrations</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <span>Webhook support</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <span>Custom actions</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </Panel>
+          </ReactFlow>
+        </div>
       </div>
     </div>
   );
