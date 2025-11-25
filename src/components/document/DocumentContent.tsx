@@ -26,6 +26,7 @@ interface DocumentContentProps {
   onUpdateMetadata: (metadata: string[]) => void;
   onUpdateDocument?: (updatedDocument: DocumentViewDto) => void;
   onRefreshMetadata?: () => Promise<void>;
+  onRefreshDocument?: () => void;
 }
 
 export default function DocumentContent({
@@ -42,7 +43,8 @@ export default function DocumentContent({
   onToggleFavorite,
   onUpdateMetadata,
   onUpdateDocument,
-  onRefreshMetadata
+  onRefreshMetadata,
+  onRefreshDocument
 }: DocumentContentProps) {
   if (!document) {
     return (
@@ -78,6 +80,7 @@ export default function DocumentContent({
         <DocumentWorkflowTab
           documentId={document.documentId}
           documentName={document.name}
+          onRefreshDocument={onRefreshDocument}
         />
       )}
       

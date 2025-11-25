@@ -9,7 +9,7 @@ import NotificationApiProvider from "@/components/providers/NotificationApiProvi
 import TokenManagerInitializer from "@/components/providers/TokenManagerInitializer";
 
 export const metadata: Metadata = {
-  title: 'AeB DMS - Document Management System',
+  title: 'Gi doc - Document Management System',
   description: 'Modern document management system for efficient file organization',
 };
 

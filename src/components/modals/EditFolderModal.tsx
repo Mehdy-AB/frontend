@@ -2,12 +2,12 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
-import { 
-  Folder, 
-  Plus, 
-  Trash2, 
-  Users, 
-  Shield, 
+import {
+  Folder,
+  Plus,
+  Trash2,
+  Users,
+  Shield,
   X,
   Save,
   Search,
@@ -23,11 +23,11 @@ import {
 } from 'lucide-react';
 import { notificationApiClient } from '@/api/notificationClient';
 import { useNotifications } from '@/hooks/useNotifications';
-import { 
-  FolderResDto, 
-  FolderPermissionReq, 
-  UserDto, 
-  RoleDto, 
+import {
+  FolderResDto,
+  FolderPermissionReq,
+  UserDto,
+  RoleDto,
   GroupDto,
   TypeShareAccessRes,
   TypeShareAccessWithTypeReq,
@@ -129,16 +129,16 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
   const { data: session } = useSession();
   const currentUserId = session?.user?.id;
   const { showError } = useNotifications();
-  
+
   // Client-side only check
   const [isClient, setIsClient] = useState(false);
-  
+
   useEffect(() => {
     setIsClient(true);
   }, []);
-  
+
   const pageSize = 20;
-  
+
   // Use server-side search for permissions
   const {
     displayData: allGrants,
@@ -157,11 +157,11 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
   } = useServerSideSearch<TypeShareAccessRes>({
     fetchFunction: async (currentPage, searchTerm) => {
       const response = await notificationApiClient.getFolderShared(
-        folder.id, 
-        { 
-          page: currentPage, 
+        folder.id,
+        {
+          page: currentPage,
           size: pageSize,
-          search: searchTerm 
+          search: searchTerm
         },
         { silent: true }
       );
@@ -187,29 +187,29 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
     debounceMs: 300,
     fetchOnMount: false
   });
-  
+
   // Available entities for adding new grants
   const [users, setUsers] = useState<UserDto[]>([]);
   const [groups, setGroups] = useState<GroupDto[]>([]);
   const [roles, setRoles] = useState<RoleDto[]>([]);
-  
+
   // Search dropdown states for adding entities
   const [availableEntities, setAvailableEntities] = useState<(UserDto | GroupDto | RoleDto)[]>([]);
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [searching, setSearching] = useState(false);
   const [selectedEntityType, setSelectedEntityType] = useState<'user' | 'group' | 'role' | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  
+
   // Other states
   const [loading, setLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [collapsedPermissions, setCollapsedPermissions] = useState<Record<string, boolean>>({});
-  
+
   // Permission modal state
   const [showPermissionModal, setShowPermissionModal] = useState(false);
   const [editingGrant, setEditingGrant] = useState<{ grantee: UserDto | GroupDto | RoleDto; permission: FolderPermissionReq; type: GranteeType; isNew: boolean } | null>(null);
   const [tempPermission, setTempPermission] = useState<FolderPermissionReq>(PERMISSION_PRESETS.viewer);
-  
+
 
   // Load permissions when modal opens
   useEffect(() => {
@@ -222,8 +222,8 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
   const loadAvailableUsers = async (search?: string) => {
     try {
       const response = await notificationApiClient.getAvailableUsersForFolder(
-        folder.id, 
-        { page: 0, size: 100, search }, 
+        folder.id,
+        { page: 0, size: 100, search },
         { silent: true }
       );
       setUsers(response.content || []);
@@ -236,8 +236,8 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
   const loadAvailableGroups = async (search?: string) => {
     try {
       const response = await notificationApiClient.getAvailableGroupsForFolder(
-        folder.id, 
-        { page: 0, size: 100, search }, 
+        folder.id,
+        { page: 0, size: 100, search },
         { silent: true }
       );
       setGroups(response.content || []);
@@ -250,8 +250,8 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
   const loadAvailableRoles = async (search?: string) => {
     try {
       const response = await notificationApiClient.getAvailableRolesForFolder(
-        folder.id, 
-        { page: 0, size: 100, search }, 
+        folder.id,
+        { page: 0, size: 100, search },
         { silent: true }
       );
       setRoles(response.content || []);
@@ -263,9 +263,9 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
   // Set available entities based on selected type and filter out those in allGrants
   useEffect(() => {
     if (!selectedEntityType) return;
-    
+
     let entities: (UserDto | GroupDto | RoleDto)[] = [];
-    
+
     // Select entities based on type
     switch (selectedEntityType) {
       case 'user':
@@ -278,12 +278,12 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
         entities = roles || [];
         break;
     }
-    
+
     // Ensure entities is always an array
     if (!Array.isArray(entities)) {
       entities = [];
     }
-    
+
     // Filter out entities that are already in allGrants (including pending additions)
     const granteeIds = new Set(
       allGrants
@@ -291,40 +291,40 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
         .map(g => g.grantee.id)
     );
     const filtered = entities.filter(entity => !granteeIds.has(entity.id));
-    
+
     setAvailableEntities(filtered);
   }, [users, groups, roles, selectedEntityType, allGrants]);
 
   // Debounced API search for available entities using optimized endpoints
   useEffect(() => {
     if (!selectedEntityType) return;
-    
-      const performSearch = async () => {
-        try {
-          setSearching(true);
-        
+
+    const performSearch = async () => {
+      try {
+        setSearching(true);
+
         const searchTerm = searchQuery.trim() || undefined;
-          
-          switch (selectedEntityType) {
-            case 'user':
+
+        switch (selectedEntityType) {
+          case 'user':
             await loadAvailableUsers(searchTerm);
-              break;
-            case 'group':
+            break;
+          case 'group':
             await loadAvailableGroups(searchTerm);
-              break;
-            case 'role':
+            break;
+          case 'role':
             await loadAvailableRoles(searchTerm);
-              break;
-          }
-        } catch (error) {
-          console.error('Error searching entities:', error);
-        } finally {
-          setSearching(false);
+            break;
         }
-      };
-      
+      } catch (error) {
+        console.error('Error searching entities:', error);
+      } finally {
+        setSearching(false);
+      }
+    };
+
     const timeoutId = setTimeout(performSearch, 300);
-      return () => clearTimeout(timeoutId);
+    return () => clearTimeout(timeoutId);
   }, [searchQuery, selectedEntityType]);
 
   // Maintain focus after API calls
@@ -344,7 +344,7 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
   useEffect(() => {
     // Only run when modal is open and we're on the client side
     if (!isOpen || !isClient || typeof window === 'undefined' || typeof document === 'undefined') return;
-    
+
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Element;
       if (!target.closest('.searchable-select-container')) {
@@ -475,10 +475,10 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
     try {
       // Optimistic removal
       removeGrantFromList(granteeToDelete.id, (g) => g.grantee?.id);
-      
+
       // Delete from backend
       await notificationApiClient.deleteFolderShared(folder.id, granteeToDelete.id, granteeToDelete.inherits);
-      
+
       // Close confirmation modal
       setShowDeleteConfirmation(false);
       setGranteeToDelete(null);
@@ -565,7 +565,7 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
 
   // Simple close handler - no unsaved changes to worry about
   const handleClose = () => {
-        onClose();
+    onClose();
   };
 
   // Add Entity Buttons Component - removed useCallback to prevent re-renders
@@ -622,7 +622,7 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
               <X className="h-4 w-4 text-neutral-text-light" />
             </button>
           </div>
-          
+
           {showSearchDropdown && availableEntities.length > 0 && (
             <div className="absolute z-50 w-full mt-1 bg-surface border border-ui rounded-lg shadow-lg max-h-60 overflow-y-auto">
               {availableEntities.map((entity: any) => (
@@ -651,7 +651,7 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
                         </div>
                       </>
                     )}
-                    
+
                     {/* Group - Show Icon */}
                     {'userCount' in entity && (
                       <>
@@ -664,7 +664,7 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
                         </div>
                       </>
                     )}
-                    
+
                     {/* Role - Show Icon */}
                     {!('username' in entity) && !('userCount' in entity) && (
                       <>
@@ -719,14 +719,14 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
               {totalElements} grant{totalElements !== 1 ? 's' : ''} with access
             </div>
           </div>
-          
+
           <ServerSearchInput
             value={searchQuery}
             onChange={setSearchQuery}
             placeholder="Search by name, email, or role..."
             className="mb-4"
           />
-          
+
           <div className="space-y-3">
             <AddEntityButtons />
             <SearchableSelect />
@@ -757,19 +757,19 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
             <div className="space-y-3">
               {allGrants.map((grant, index) => {
                 const grantee = grant.grantee;
-                
+
                 // Skip grants with null grantee (defensive programming)
                 if (!grantee) return null;
-                
+
                 const panelKey = `grant-${index}`;
                 const isCollapsed = collapsedPermissions[panelKey];
-                
+
                 // Determine grantee type and icon - use type from response if available
                 let granteeType: GranteeType = grant.type;
                 let IconComponent: React.ComponentType<{ className?: string }> = User;
                 let displayName: string = '';
                 let displaySubtitle: string = '';
-                
+
                 // If type not in response, determine from grantee
                 if (!granteeType) {
                   if (isUser(grantee)) {
@@ -780,7 +780,7 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
                     granteeType = GranteeType.ROLE;
                   }
                 }
-                
+
                 // Set icon and display info based on type
                 if (granteeType === GranteeType.USER && isUser(grantee)) {
                   const user = grantee as UserDto;
@@ -798,7 +798,7 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
                   displayName = role.name;
                   displaySubtitle = role.description || 'Role';
                 }
-                
+
                 // Get active permissions for display
                 const activePerms = [];
                 if (grant.permission?.canView) activePerms.push('View');
@@ -812,7 +812,7 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
                 if (grant.permission?.canDeleteDoc) activePerms.push('Delete Docs');
                 if (grant.permission?.canShareDoc) activePerms.push('Share Docs');
                 if (grant.permission?.canManagePermissionsDoc) activePerms.push('Manage Doc Permissions');
-                
+
                 return (
                   <div key={grantee.id} className="border border-ui rounded-lg">
                     <div className="p-4 flex justify-between items-center">
@@ -820,7 +820,7 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
                         {isUser(grantee) ? (
                           <UserAvatar user={grantee} size="sm" />
                         ) : (
-                        <IconComponent className="h-5 w-5 text-neutral-text-light" />
+                          <IconComponent className="h-5 w-5 text-neutral-text-light" />
                         )}
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
@@ -844,8 +844,8 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
                               </span>
                             )}
                           </div>
-                          </div>
                         </div>
+                      </div>
                       <div className="flex items-center gap-2">
                         <button
                           onClick={(e) => {
@@ -857,24 +857,24 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
                         >
                           <Edit className="h-4 w-4 text-neutral-text-light hover:text-blue-600" />
                         </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const granteeName = isUser(grantee) 
-                            ? (() => {
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const granteeName = isUser(grantee)
+                              ? (() => {
                                 const user = grantee as UserDto;
                                 return `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username;
                               })()
-                            : grantee.name;
-                          removePermission(grantee.id, granteeName, grant.permission.inherits);
-                        }}
-                        className="p-2 text-error hover:bg-error/10 rounded transition-colors"
-                        disabled={loading}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
+                              : grantee.name;
+                            removePermission(grantee.id, granteeName, grant.permission.inherits);
+                          }}
+                          className="p-2 text-error hover:bg-error/10 rounded transition-colors"
+                          disabled={loading}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       </div>
+                    </div>
                   </div>
                 );
               })}
@@ -892,18 +892,18 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
               itemsPerPage={pageSize}
               onPageChange={setPage}
             />
-              </div>
-            )}
+          </div>
+        )}
 
         {/* Footer */}
         <div className="flex justify-end p-6 border-t border-ui">
-            <button
-              onClick={handleClose}
+          <button
+            onClick={handleClose}
             disabled={loading}
             className="px-6 py-2 text-sm font-medium bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
+          >
             Close
-            </button>
+          </button>
         </div>
       </div>
 
@@ -917,13 +917,13 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
                 <h3 className="text-lg font-semibold text-neutral-text-dark">
                   {editingGrant.isNew ? 'Set Permissions' : 'Edit Permissions'}
                 </h3>
-              <button
+                <button
                   onClick={() => setShowPermissionModal(false)}
                   className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              >
+                >
                   <X className="h-5 w-5" />
-              </button>
-            </div>
+                </button>
+              </div>
 
               {/* Grantee Info */}
               <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-lg mb-6">
@@ -940,48 +940,47 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
                     <Shield className="h-6 w-6 text-purple-700" />
                   </div>
                 )}
-              <div>
+                <div>
                   <div className="font-medium text-neutral-text-dark">
-                    {isUser(editingGrant.grantee) 
+                    {isUser(editingGrant.grantee)
                       ? (() => {
-                          const user = editingGrant.grantee as UserDto;
-                          return `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username;
-                        })()
+                        const user = editingGrant.grantee as UserDto;
+                        return `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username;
+                      })()
                       : editingGrant.grantee.name
                     }
                   </div>
                   <div className="text-sm text-neutral-text-light">
-                    {isUser(editingGrant.grantee) 
+                    {isUser(editingGrant.grantee)
                       ? editingGrant.grantee.email || editingGrant.grantee.username
                       : isGroup(editingGrant.grantee)
-                      ? `${editingGrant.grantee.userCount || 0} members`
-                      : editingGrant.grantee.description || 'Role'
+                        ? `${editingGrant.grantee.userCount || 0} members`
+                        : editingGrant.grantee.description || 'Role'
                     }
                   </div>
                 </div>
               </div>
-              
+
               {/* Permission Presets */}
               <div className="mb-6">
                 <label className="text-sm font-medium mb-3 block text-neutral-text-dark">Quick Presets</label>
                 <div className="grid grid-cols-2 gap-2">
                   {Object.entries(PRESET_LABELS).map(([key, { label, color }]) => {
                     const isActive = JSON.stringify(tempPermission) === JSON.stringify(PERMISSION_PRESETS[key as keyof typeof PERMISSION_PRESETS]);
-                    
+
                     // Get icon based on preset
-                    const Icon = key === 'viewer' ? Eye : 
-                                key === 'contributor' ? Upload :
-                                key === 'editor' ? Edit :
-                                Shield;
-                    
+                    const Icon = key === 'viewer' ? Eye :
+                      key === 'contributor' ? Upload :
+                        key === 'editor' ? Edit :
+                          Shield;
+
                     return (
                       <button
                         key={key}
                         type="button"
                         onClick={() => setTempPermission(PERMISSION_PRESETS[key as keyof typeof PERMISSION_PRESETS])}
-                        className={`flex items-center gap-2 px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
-                          isActive ? color : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                        }`}
+                        className={`flex items-center gap-2 px-4 py-3 text-sm font-medium rounded-lg transition-colors ${isActive ? color : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                          }`}
                       >
                         <Icon className="h-4 w-4" />
                         {label}
@@ -1000,150 +999,150 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
                     <input
                       type="checkbox"
                       checked={tempPermission.canView}
-                      onChange={(e) => setTempPermission({...tempPermission, canView: e.target.checked})}
+                      onChange={(e) => setTempPermission({ ...tempPermission, canView: e.target.checked })}
                       className="rounded"
                     />
                     <Eye className="h-4 w-4 text-gray-600" />
                     <span className="text-sm">View</span>
                   </label>
-                  
+
                   <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={tempPermission.canUpload}
-                      onChange={(e) => setTempPermission({...tempPermission, canUpload: e.target.checked})}
+                      onChange={(e) => setTempPermission({ ...tempPermission, canUpload: e.target.checked })}
                       className="rounded"
                     />
                     <Upload className="h-4 w-4 text-gray-600" />
                     <span className="text-sm">Upload</span>
                   </label>
-                  
+
                   <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={tempPermission.canEdit}
-                      onChange={(e) => setTempPermission({...tempPermission, canEdit: e.target.checked})}
+                      onChange={(e) => setTempPermission({ ...tempPermission, canEdit: e.target.checked })}
                       className="rounded"
                     />
                     <Edit className="h-4 w-4 text-gray-600" />
                     <span className="text-sm">Edit Folder</span>
                   </label>
-                  
+
                   <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={tempPermission.canDelete}
-                      onChange={(e) => setTempPermission({...tempPermission, canDelete: e.target.checked})}
+                      onChange={(e) => setTempPermission({ ...tempPermission, canDelete: e.target.checked })}
                       className="rounded"
                     />
                     <Trash2 className="h-4 w-4 text-gray-600" />
                     <span className="text-sm">Delete Folder</span>
                   </label>
-                  
+
                   <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={tempPermission.canShare}
-                      onChange={(e) => setTempPermission({...tempPermission, canShare: e.target.checked})}
+                      onChange={(e) => setTempPermission({ ...tempPermission, canShare: e.target.checked })}
                       className="rounded"
                     />
                     <Share2 className="h-4 w-4 text-gray-600" />
                     <span className="text-sm">Share</span>
                   </label>
-                  
+
                   <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={tempPermission.canManagePermissions}
-                      onChange={(e) => setTempPermission({...tempPermission, canManagePermissions: e.target.checked})}
+                      onChange={(e) => setTempPermission({ ...tempPermission, canManagePermissions: e.target.checked })}
                       className="rounded"
                     />
                     <Settings className="h-4 w-4 text-gray-600" />
                     <span className="text-sm">Manage Permissions</span>
                   </label>
-                  
+
                   <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={tempPermission.canCreateSubFolders}
-                      onChange={(e) => setTempPermission({...tempPermission, canCreateSubFolders: e.target.checked})}
+                      onChange={(e) => setTempPermission({ ...tempPermission, canCreateSubFolders: e.target.checked })}
                       className="rounded"
                     />
                     <Folder className="h-4 w-4 text-gray-600" />
                     <span className="text-sm">Create Subfolders</span>
                   </label>
-                  
+
                   <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={tempPermission.canEditDoc}
-                      onChange={(e) => setTempPermission({...tempPermission, canEditDoc: e.target.checked})}
+                      onChange={(e) => setTempPermission({ ...tempPermission, canEditDoc: e.target.checked })}
                       className="rounded"
                     />
                     <Edit className="h-4 w-4 text-gray-600" />
                     <span className="text-sm">Edit Documents</span>
                   </label>
-                  
+
                   <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={tempPermission.canDeleteDoc}
-                      onChange={(e) => setTempPermission({...tempPermission, canDeleteDoc: e.target.checked})}
+                      onChange={(e) => setTempPermission({ ...tempPermission, canDeleteDoc: e.target.checked })}
                       className="rounded"
                     />
                     <Trash2 className="h-4 w-4 text-gray-600" />
                     <span className="text-sm">Delete Documents</span>
                   </label>
-                  
+
                   <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={tempPermission.canShareDoc}
-                      onChange={(e) => setTempPermission({...tempPermission, canShareDoc: e.target.checked})}
+                      onChange={(e) => setTempPermission({ ...tempPermission, canShareDoc: e.target.checked })}
                       className="rounded"
                     />
                     <Share2 className="h-4 w-4 text-gray-600" />
                     <span className="text-sm">Share Documents</span>
                   </label>
-                  
+
                   <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={tempPermission.canManagePermissionsDoc}
-                      onChange={(e) => setTempPermission({...tempPermission, canManagePermissionsDoc: e.target.checked})}
+                      onChange={(e) => setTempPermission({ ...tempPermission, canManagePermissionsDoc: e.target.checked })}
                       className="rounded"
                     />
                     <Settings className="h-4 w-4 text-gray-600" />
                     <span className="text-sm">Manage Doc Permissions</span>
                   </label>
-                  
+
                   <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={tempPermission.inherits}
-                      onChange={(e) => setTempPermission({...tempPermission, inherits: e.target.checked})}
+                      onChange={(e) => setTempPermission({ ...tempPermission, inherits: e.target.checked })}
                       className="rounded"
                     />
                     <ChevronDown className="h-4 w-4 text-gray-600" />
                     <span className="text-sm">Inherit to Subfolders</span>
                   </label>
+                </div>
               </div>
-            </div>
 
               {/* Modal Footer */}
               <div className="flex justify-end gap-3">
-              <button
+                <button
                   onClick={() => setShowPermissionModal(false)}
                   className="px-6 py-2 text-sm font-medium bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSavePermission}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSavePermission}
                   className="px-6 py-2 text-sm font-medium bg-primary text-white hover:bg-primary/90 rounded-lg transition-colors"
                 >
                   {editingGrant.isNew ? 'Add Permission' : 'Update Permission'}
-              </button>
+                </button>
               </div>
             </div>
           </div>

@@ -2,12 +2,12 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import {
-  Upload, 
-  X, 
-  File, 
-  FileText, 
-  Image, 
-  Video, 
+  Upload,
+  X,
+  File,
+  FileText,
+  Image,
+  Video,
   Music,
   Folder,
   Check,
@@ -26,8 +26,8 @@ import { tagService } from '@/api/services/tagService';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SearchSelect } from '@/components/main/SearchSelect';
 import {
-  FilingCategoryResponseDto, 
-  FilingCategoryDocDto, 
+  FilingCategoryResponseDto,
+  FilingCategoryDocDto,
   ExtractorLanguage,
   MetaDataDto,
   CategoryMetadataDefinitionDto,
@@ -96,12 +96,6 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
   const [isLoadingTags, setIsLoadingTags] = useState(false);
   const [isCreateTagModalOpen, setIsCreateTagModalOpen] = useState(false);
 
-  // Search states for filing categories
-  const [categorySearch, setCategorySearch] = useState('');
-  const [filteredCategories, setFilteredCategories] = useState<FilingCategoryResponseDto[]>([]);
-  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
-  const [searchingCategories, setSearchingCategories] = useState(false);
-  const categorySearchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load filing categories and tags
@@ -137,75 +131,6 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
     }
   }, [isOpen]);
 
-  // Debounced search function for filing categories
-  const performCategorySearch = async (query: string) => {
-    if (query.trim().length < 2) return;
-    
-    try {
-      setSearchingCategories(true);
-      const response = await notificationApiClient.getAllFilingCategories(
-        { size: 100, search: query }, 
-        { silent: true }
-      );
-      setFilingCategories(prev => {
-        // Merge with existing categories, avoiding duplicates
-        const existingIds = new Set(prev.map(cat => cat.id));
-        const newCategories = response.content.filter(cat => !existingIds.has(cat.id));
-        return [...prev, ...newCategories];
-      });
-    } catch (error) {
-      console.error('Error searching filing categories:', error);
-    } finally {
-      setSearchingCategories(false);
-    }
-  };
-
-  // Filter categories locally
-  useEffect(() => {
-    const filtered = filingCategories.filter(category => 
-      category.name?.toLowerCase().includes(categorySearch.toLowerCase()) ||
-      category.description?.toLowerCase().includes(categorySearch.toLowerCase())
-    );
-    setFilteredCategories(filtered);
-  }, [categorySearch, filingCategories]);
-
-  // Debounced API search for categories
-  useEffect(() => {
-    // Clear existing timeout
-    if (categorySearchTimeoutRef.current) {
-      clearTimeout(categorySearchTimeoutRef.current);
-    }
-    
-    // Set new timeout for API search
-    if (categorySearch.trim().length >= 2) {
-      categorySearchTimeoutRef.current = setTimeout(() => {
-        performCategorySearch(categorySearch);
-      }, 500);
-    }
-    
-    // Cleanup function
-    return () => {
-      if (categorySearchTimeoutRef.current) {
-        clearTimeout(categorySearchTimeoutRef.current);
-      }
-    };
-  }, [categorySearch]);
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Element;
-      if (!target.closest('.searchable-select-container')) {
-        setShowCategoryDropdown(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
-
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -220,7 +145,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    
+
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       handleFiles(e.dataTransfer.files);
     }
@@ -246,7 +171,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
         tags: [],
         isValid: false
       }));
-      
+
       setFiles(prev => [...prev, ...newFiles]);
       setCurrentFileIndex(0); // Start with the first file
       setShowConfiguration(true);
@@ -256,7 +181,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
   const removeFile = (index?: number) => {
     const targetIndex = index !== undefined ? index : currentFileIndex;
     setFiles(prev => prev.filter((_, i) => i !== targetIndex));
-    
+
     if (files.length <= 1) {
       setShowConfiguration(false);
       setCurrentFileIndex(0);
@@ -267,61 +192,58 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
 
   const setAsMain = (index: number) => {
     if (index === 0) return; // Already main
-    
+
     setFiles(prev => {
       const newFiles = [...prev];
       const mainFile = newFiles[0];
       const targetFile = newFiles[index];
-      
+
       // Swap the files
       newFiles[0] = targetFile;
       newFiles[index] = mainFile;
-      
+
       return newFiles;
     });
-    
+
     setCurrentFileIndex(0); // Always show main file configuration
   };
 
   const getCurrentFile = () => files[currentFileIndex] || null;
-  
+
   const updateCurrentFile = (updates: Partial<FileWithMetadata>) => {
     if (files[currentFileIndex]) {
-      setFiles(prev => prev.map((file, index) => 
+      setFiles(prev => prev.map((file, index) =>
         index === currentFileIndex ? { ...file, ...updates } : file
       ));
     }
   };
 
   const updateFile = (updates: Partial<FileWithMetadata>) => {
-    setFiles(prev => prev.map((file, index) => 
+    setFiles(prev => prev.map((file, index) =>
       index === 0 ? { ...file, ...updates } : file
     ));
   };
 
   // Category selection handler
   const onCategorySelect = (category: FilingCategoryResponseDto) => {
-    updateFile({ 
+    updateFile({
       filingCategory: category,
       metadata: {},
       metadataErrors: {}
     });
-    
-    setCategorySearch('');
-    setShowCategoryDropdown(false);
   };
 
   // Tag selection handler
   const handleTagSelect = (tag: TagResponseDto) => {
     const mainFile = files[0];
     if (!mainFile) return;
-    
+
     // Check if tag is already added
     if (mainFile.tags.some(t => t.id === tag.id)) {
       showWarning('Tag already added', 'This tag is already added to the document');
       return;
     }
-    
+
     updateFile({
       tags: [...mainFile.tags, tag]
     });
@@ -331,7 +253,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
   const handleTagRemove = (tagId: number) => {
     const mainFile = files[0];
     if (!mainFile) return;
-    
+
     updateFile({
       tags: mainFile.tags.filter(tag => tag.id !== tagId)
     });
@@ -341,10 +263,10 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
   const handleCreateTag = async (tagData: { name: string; description?: string; color?: string }) => {
     try {
       const newTag = await tagService.createTag(tagData);
-      
+
       // Add the new tag to available tags
       setAvailableTags(prev => [...prev, newTag]);
-      
+
       // Add the new tag to the current file
       const mainFile = files[0];
       if (mainFile) {
@@ -352,7 +274,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
           tags: [...mainFile.tags, newTag]
         });
       }
-      
+
       showSuccess('Tag created', `Tag "${newTag.name}" created and added successfully`);
     } catch (error) {
       console.error('Error creating tag:', error);
@@ -360,65 +282,10 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
     }
   };
 
-  // SearchableSelect component
-  const SearchableSelect = useCallback(({ 
-    search,
-    setSearch, 
-    showDropdown, 
-    setShowDropdown,
-    searching, 
-    items, 
-    onSelect, 
-    placeholder 
-  }: any) => (
-    <div className="relative searchable-select-container">
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-neutral-text-light h-4 w-4" />
-        <input
-          type="text"
-          placeholder={placeholder}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          onFocus={() => setShowDropdown(true)}
-          className="w-full pl-10 pr-4 py-2 border border-ui rounded-lg text-sm bg-surface text-neutral-text-dark placeholder-neutral-text-light focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-        />
-        {searching && (
-          <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
-          </div>
-        )}
-      </div>
-      
-      {showDropdown && (
-        <div className="absolute z-10 w-full mt-1 bg-surface border border-ui rounded-lg shadow-lg max-h-60 overflow-y-auto">
-          {items.length > 0 ? (
-            items.map((item: FilingCategoryResponseDto) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={(e) => {e.preventDefault();e.stopPropagation(); onSelect(item)}}
-                className="w-full px-4 py-2 text-left text-sm text-neutral-text-dark hover:bg-neutral-background focus:bg-neutral-background focus:outline-none"
-              >
-                <div className="font-medium">{item.name}</div>
-                {item.description && (
-                  <div className="text-xs text-neutral-text-light">{item.description}</div>
-                )}
-              </button>
-            ))
-          ) : (
-            <div className="px-4 py-2 text-sm text-neutral-text-light text-center">
-              No document models found
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  ), []);
-
   const validateMetadata = (): boolean => {
     const mainFile = files[0];
     if (!mainFile) return false;
-    
+
     // Title is required
     if (!mainFile.title || mainFile.title.trim() === '') {
       updateFile({ isValid: false });
@@ -468,13 +335,13 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
 
     try {
       setUploading(true);
-      
+
       const mainFile = files[0];
       const hasCategory = mainFile.filingCategory !== null;
       const totalFiles = files.length;
       let successCount = 0;
       const filesToRemove: number[] = []; // Track indices of successfully uploaded files
-      
+
       // Prepare filing category DTO with metadata if category is selected
       const filingCategoryDto = mainFile.filingCategory ? {
         id: mainFile.filingCategory.id,
@@ -532,9 +399,9 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
 
         if (successCount > 0) {
           showSuccess(
-            'Upload successful', 
-            successCount === 1 
-              ? 'Document uploaded successfully to repository' 
+            'Upload successful',
+            successCount === 1
+              ? 'Document uploaded successfully to repository'
               : `${successCount} file${successCount !== 1 ? 's' : ''} uploaded successfully`
           );
         }
@@ -564,17 +431,17 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
 
         if (successCount > 0) {
           showSuccess(
-            'Upload successful', 
+            'Upload successful',
             `${successCount} file${successCount !== 1 ? 's' : ''} uploaded successfully to repository`
           );
         }
       }
-      
+
       // Remove successfully uploaded files
       if (filesToRemove.length > 0) {
         setFiles(prevFiles => prevFiles.filter((_, index) => !filesToRemove.includes(index)));
         setCurrentFileIndex(0);
-        
+
         // If all files uploaded successfully, close the modal
         if (filesToRemove.length === totalFiles) {
           setShowConfiguration(false);
@@ -582,7 +449,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
           onClose();
         }
       }
-      
+
       setUploadProgress({ current: 0, total: 0, fileName: '' });
     } catch (error: any) {
       console.error('Error uploading files:', error);
@@ -621,10 +488,10 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
     };
 
     if (definition.dataType === MetadataType.LIST && definition.list) {
-      const allowCustomValue = definition.list.mandatory ?? false; // When list.mandatory=true, allow custom values
+      const allowCustomValue = definition.list.mandatory ?? false;
       const isCustomValue = value && definition.list.option && !definition.list.option.includes(value);
       const showCustomInput = isCustomValue || value === "__custom__";
-      
+
       return (
         <div key={definition.key}>
           <label className="block text-sm font-medium text-neutral-text-dark mb-2">
@@ -634,7 +501,6 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
             value={showCustomInput ? "__custom__" : value}
             onValueChange={(newValue) => {
               if (newValue === "__custom__") {
-                // Set a special value to trigger custom input display
                 updateFile({
                   metadata: { ...mainFile.metadata, [definition.key]: "__custom__" }
                 });
@@ -648,13 +514,12 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
             <SelectTrigger className={`w-full ${error ? 'border-error' : ''}`}>
               <SelectValue placeholder={`Select ${definition.key}`} />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent position="popper" className="w-[var(--radix-select-trigger-width)]">
               {(definition.list.option || []).map((option: string) => (
                 <SelectItem key={option} value={option}>
                   {option}
                 </SelectItem>
               ))}
-              {/* Only show custom input option if list.mandatory is true */}
               {allowCustomValue && (
                 <SelectItem value="__custom__">
                   <div className="flex items-center gap-2">
@@ -665,8 +530,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
               )}
             </SelectContent>
           </Select>
-          
-          {/* Show custom input field */}
+
           {showCustomInput && (
             <input
               type="text"
@@ -678,7 +542,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
               className="w-full mt-2 p-2 border border-ui rounded text-sm bg-surface text-neutral-text-dark"
             />
           )}
-          
+
           {error && <p className="text-error text-xs mt-1">{error}</p>}
         </div>
       );
@@ -713,9 +577,8 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
           onChange={(e) => updateFile({
             metadata: { ...mainFile.metadata, [definition.key]: e.target.value }
           })}
-          className={`w-full p-2 border rounded text-sm bg-surface text-neutral-text-dark ${
-            error ? 'border-error' : 'border-ui'
-          }`}
+          className={`w-full p-2 border rounded text-sm bg-surface text-neutral-text-dark ${error ? 'border-error' : 'border-ui'
+            }`}
           placeholder={`Enter ${definition.key}`}
           required={definition.mandatory}
           step={definition.dataType === MetadataType.NUMBER ? '1' : definition.dataType === MetadataType.FLOAT ? 'any' : undefined}
@@ -740,7 +603,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
               {folderName ? `Uploading to: ${folderName}` : `Folder ID: ${folderId}`}
             </p>
           </div>
-          <button 
+          <button
             onClick={handleClose}
             className="p-2 rounded-lg hover:bg-neutral-background transition-colors text-neutral-text-light"
             disabled={uploading}
@@ -755,9 +618,8 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
             {/* File Drop Area - Only show when no file is selected */}
             {files.length === 0 && (
               <div
-                className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-                  dragActive ? 'border-primary bg-primary-light' : 'border-ui'
-                }`}
+                className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${dragActive ? 'border-primary bg-primary-light' : 'border-ui'
+                  }`}
                 onDragEnter={handleDrag}
                 onDragLeave={handleDrag}
                 onDragOver={handleDrag}
@@ -779,8 +641,8 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                   id="file-upload"
                   disabled={uploading}
                 />
-                <label 
-                  htmlFor="file-upload" 
+                <label
+                  htmlFor="file-upload"
                   className="inline-flex items-center gap-2 bg-primary text-surface px-4 py-2 rounded-lg hover:bg-primary-dark transition-colors cursor-pointer disabled:opacity-50"
                 >
                   <Upload className="h-4 w-4" />
@@ -797,7 +659,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                     <Settings className="h-5 w-5" />
                     File Configuration ({files.length} files)
                   </h3>
-                  <button 
+                  <button
                     onClick={() => removeFile(currentFileIndex)}
                     className="p-2 text-error hover:bg-error/10 rounded transition-colors"
                     disabled={uploading}
@@ -818,14 +680,14 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                           input.type = 'file';
                           input.multiple = true;
                           input.style.display = 'none';
-                          
+
                           input.onchange = (e) => {
                             const target = e.target as HTMLInputElement;
                             if (target.files) {
                               handleFiles(target.files);
                             }
                           };
-                          
+
                           document.body.appendChild(input);
                           input.click();
                           document.body.removeChild(input);
@@ -837,24 +699,23 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                         Add More
                       </button>
                     </div>
-                    
+
                     <div className="max-h-48 overflow-y-auto space-y-1">
                       {files.map((file, index) => {
                         const isUploading = uploading && uploadProgress.current === index + 1;
                         const isUploaded = uploading && uploadProgress.current > index + 1;
-                        
+
                         return (
                           <div
                             key={index}
-                            className={`flex items-center gap-2 px-2 py-1.5 rounded border text-sm transition-all ${
-                              isUploading
-                                ? 'bg-blue-50 border-blue-300 ring-2 ring-blue-200'
-                                : isUploaded
+                            className={`flex items-center gap-2 px-2 py-1.5 rounded border text-sm transition-all ${isUploading
+                              ? 'bg-blue-50 border-blue-300 ring-2 ring-blue-200'
+                              : isUploaded
                                 ? 'bg-green-50 border-green-200 opacity-60'
                                 : index === 0
-                                ? 'bg-green-50 border-green-200'
-                                : 'bg-white border-gray-300'
-                            }`}
+                                  ? 'bg-green-50 border-green-200'
+                                  : 'bg-white border-gray-300'
+                              }`}
                           >
                             {isUploading ? (
                               <div className="h-3 w-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
@@ -873,7 +734,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                                 {isUploaded && <span className="ml-1 text-green-600">- ✓ Done</span>}
                               </div>
                             </div>
-                            
+
                             <div className="flex items-center gap-1">
                               {index === 0 ? (
                                 <span className="px-1.5 py-0.5 text-xs bg-green-100 text-green-800 rounded">
@@ -888,7 +749,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                                   Set Main
                                 </button>
                               )}
-                              
+
                               <button
                                 onClick={() => removeFile(index)}
                                 className="p-0.5 text-red-500 hover:bg-red-50 rounded transition-colors"
@@ -919,7 +780,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                             Main File
                           </span>
                           <span className="text-xs text-gray-500">
-                            {files[0]?.filingCategory 
+                            {files[0]?.filingCategory
                               ? `→ Repository${files.length > 1 ? ` (${files.length - 1} others → Unclassified)` : ''}`
                               : `→ Repository${files.length > 1 ? ` (all ${files.length} files)` : ''}`
                             }
@@ -940,7 +801,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                           Main File
                         </span>
                       </h4>
-                      
+
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                           <label className="block text-sm font-medium text-neutral-text-dark mb-2">
@@ -954,7 +815,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                             disabled={uploading}
                           />
                         </div>
-                        
+
                         <div>
                           <label className="block text-sm font-medium text-neutral-text-dark mb-2">
                             Title <span className="text-error">*</span>
@@ -968,7 +829,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                             disabled={uploading}
                           />
                         </div>
-                        
+
                         <div>
                           <label className="block text-sm font-medium text-neutral-text-dark mb-2">
                             File Name (Optional)
@@ -985,23 +846,27 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                             Leave empty to use original filename
                           </p>
                         </div>
-                        
+
                         <div>
                           <label className="block text-sm font-medium text-neutral-text-dark mb-2">
                             Document Language
                           </label>
-                          <select 
+                          <Select
                             value={language}
-                            onChange={(e) => setLanguage(e.target.value as ExtractorLanguage)}
-                            className="w-full p-2 border border-ui rounded text-sm bg-surface text-neutral-text-dark"
+                            onValueChange={(value) => setLanguage(value as ExtractorLanguage)}
                             disabled={uploading}
                           >
-                            {SUPPORTED_LANGUAGES.map(lang => (
-                              <option key={lang.value} value={lang.value}>{lang.label}</option>
-                            ))}
-                          </select>
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Select language" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {SUPPORTED_LANGUAGES.map(lang => (
+                                <SelectItem key={lang.value} value={lang.value}>{lang.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
-                        
+
                         <div className="md:col-span-2">
                           <label className="block text-sm font-medium text-neutral-text-dark mb-2">
                             Description
@@ -1027,7 +892,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                             <Settings className="h-4 w-4" />
                             Document Model
                           </h4>
-                          
+
                           <div>
                             <label className="block text-sm font-medium text-neutral-text-dark mb-2">
                               Document Model
@@ -1053,116 +918,120 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                                 </button>
                               </div>
                             ) : (
-                              <SearchableSelect
-                                search={categorySearch}
-                                setSearch={setCategorySearch}
-                                showDropdown={showCategoryDropdown}
-                                setShowDropdown={setShowCategoryDropdown}
-                                searching={searchingCategories}
-                                items={filteredCategories}
+                              <SearchSelect
+                                items={filingCategories}
+                                fetchFunction={async (query: string) => {
+                                  const response = await notificationApiClient.getAllFilingCategories(
+                                    { size: 100, search: query },
+                                    { silent: true }
+                                  );
+                                  return response.content;
+                                }}
                                 onSelect={onCategorySelect}
                                 placeholder="Search document models..."
+                                displayField="name"
+                                descriptionField="description"
                               />
                             )}
                           </div>
                         </div>
 
-                    {/* Tags Section */}
-                    <div className="border-t border-ui pt-4">
-                      <h4 className="font-medium text-neutral-text-dark mb-3 flex items-center gap-2">
-                        <Tag className="h-4 w-4" />
-                        Tags
-                      </h4>
-                      
-                      {/* Search and Add Tag Interface */}
-                      <div className="space-y-2 mb-4">
-                        <SearchSelect
-                          items={availableTags}
-                          fetchFunction={async (query: string) => {
-                            const response = await tagService.searchTags(query, 0, 20);
-                            return response.content || [];
-                          }}
-                          onSelect={handleTagSelect}
-                          placeholder="Search and select tags..."
-                          displayField="name"
-                          descriptionField="description"
-                          debounceMs={300}
-                        />
-                        
-                        {/* Create New Tag Option */}
-                        <div className="text-xs text-neutral-text-light">
-                          Can't find the tag you're looking for?{' '}
-                          <button
-                            onClick={() => setIsCreateTagModalOpen(true)}
-                            className="text-primary hover:text-primary-dark underline hover:no-underline transition-colors"
-                            disabled={uploading}
-                          >
-                            Create a new tag
-                          </button>
-                        </div>
-                      </div>
+                        {/* Tags Section */}
+                        <div className="border-t border-ui pt-4">
+                          <h4 className="font-medium text-neutral-text-dark mb-3 flex items-center gap-2">
+                            <Tag className="h-4 w-4" />
+                            Tags
+                          </h4>
 
-                      {/* Tags Display */}
-                      <div className="flex flex-wrap gap-2 min-h-[32px]">
-                        {isLoadingTags ? (
-                          <div className="text-sm text-neutral-text-light">Loading tags...</div>
-                        ) : files[0]?.tags.length ? (
-                          files[0]?.tags.map((tag) => (
-                            <div 
-                              key={tag.id} 
-                              className="group flex items-center gap-1 px-3 py-1.5 rounded-lg border transition-all hover:opacity-80"
-                              style={{ 
-                                backgroundColor: tag.color ? `${tag.color}20` : '#EFF6FF',
-                                borderColor: tag.color ? `${tag.color}40` : '#DBEAFE',
-                                color: tag.color || '#1D4ED8'
+                          {/* Search and Add Tag Interface */}
+                          <div className="space-y-2 mb-4">
+                            <SearchSelect
+                              items={availableTags}
+                              fetchFunction={async (query: string) => {
+                                const response = await tagService.searchTags(query, 0, 20);
+                                return response.content || [];
                               }}
-                            >
-                              <span className="text-sm font-medium">{tag.name}</span>
-                              {tag.color && (
-                                <div 
-                                  className="w-3 h-3 rounded-full border"
-                                  style={{ 
-                                    backgroundColor: tag.color,
-                                    borderColor: tag.color
-                                  }}
-                                />
-                              )}
-                              <button 
-                                onClick={() => handleTagRemove(tag.id)}
-                                className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-black hover:bg-opacity-10"
-                                style={{ color: tag.color || '#1D4ED8' }}
+                              onSelect={handleTagSelect}
+                              placeholder="Search and select tags..."
+                              displayField="name"
+                              descriptionField="description"
+                              debounceMs={300}
+                            />
+
+                            {/* Create New Tag Option */}
+                            <div className="text-xs text-neutral-text-light">
+                              Can't find the tag you're looking for?{' '}
+                              <button
+                                onClick={() => setIsCreateTagModalOpen(true)}
+                                className="text-primary hover:text-primary-dark underline hover:no-underline transition-colors"
                                 disabled={uploading}
                               >
-                                <X className="h-4 w-4" />
+                                Create a new tag
                               </button>
                             </div>
-                          ))
-                        ) : (
-                          <div className="text-sm text-neutral-text-light italic">
-                            No tags added yet
+                          </div>
+
+                          {/* Tags Display */}
+                          <div className="flex flex-wrap gap-2 min-h-[32px]">
+                            {isLoadingTags ? (
+                              <div className="text-sm text-neutral-text-light">Loading tags...</div>
+                            ) : files[0]?.tags.length ? (
+                              files[0]?.tags.map((tag) => (
+                                <div
+                                  key={tag.id}
+                                  className="group flex items-center gap-1 px-3 py-1.5 rounded-lg border transition-all hover:opacity-80"
+                                  style={{
+                                    backgroundColor: tag.color ? `${tag.color}20` : '#EFF6FF',
+                                    borderColor: tag.color ? `${tag.color}40` : '#DBEAFE',
+                                    color: tag.color || '#1D4ED8'
+                                  }}
+                                >
+                                  <span className="text-sm font-medium">{tag.name}</span>
+                                  {tag.color && (
+                                    <div
+                                      className="w-3 h-3 rounded-full border"
+                                      style={{
+                                        backgroundColor: tag.color,
+                                        borderColor: tag.color
+                                      }}
+                                    />
+                                  )}
+                                  <button
+                                    onClick={() => handleTagRemove(tag.id)}
+                                    className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-black hover:bg-opacity-10"
+                                    style={{ color: tag.color || '#1D4ED8' }}
+                                    disabled={uploading}
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="text-sm text-neutral-text-light italic">
+                                No tags added yet
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Metadata Fields */}
+                        {files[0]?.filingCategory && (
+                          <div className="border-t border-ui pt-4">
+                            <h4 className="font-medium text-neutral-text-dark mb-3 flex items-center gap-2">
+                              <FileText className="h-4 w-4" />
+                              {files[0]?.filingCategory?.name} Metadata
+                              <span className="text-xs text-neutral-text-light">
+                                ({(files[0]?.filingCategory?.metadataDefinitions || []).filter(d => d.mandatory).length} required)
+                              </span>
+                            </h4>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {(files[0]?.filingCategory?.metadataDefinitions || []).map(definition =>
+                                renderMetadataField(definition)
+                              )}
+                            </div>
                           </div>
                         )}
-                      </div>
-                    </div>
-
-                    {/* Metadata Fields */}
-                    {files[0]?.filingCategory && (
-                      <div className="border-t border-ui pt-4">
-                        <h4 className="font-medium text-neutral-text-dark mb-3 flex items-center gap-2">
-                          <FileText className="h-4 w-4" />
-                          {files[0]?.filingCategory?.name} Metadata
-                          <span className="text-xs text-neutral-text-light">
-                            ({(files[0]?.filingCategory?.metadataDefinitions || []).filter(d => d.mandatory).length} required)
-                          </span>
-                        </h4>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {(files[0]?.filingCategory?.metadataDefinitions || []).map(definition =>
-                            renderMetadataField(definition)
-                          )}
-                        </div>
-                      </div>
-                    )}
                       </>
                     )}
                   </div>
@@ -1187,7 +1056,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                   </span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-                  <div 
+                  <div
                     className="bg-primary h-full rounded-full transition-all duration-300 ease-out"
                     style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
                   />
@@ -1203,7 +1072,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
               </div>
             </div>
           )}
-          
+
           <div className="flex justify-between items-center p-6">
             <div className="text-sm text-neutral-text-light">
               {files.length > 0 ? `${files.length} file${files.length !== 1 ? 's' : ''} selected` : 'No files selected'}
@@ -1217,14 +1086,14 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                 Cancel
               </button>
               <button
-                onClick={handleUpload} 
+                onClick={handleUpload}
                 disabled={files.length === 0 || uploading}
                 className="flex items-center gap-2 bg-primary text-surface px-4 py-2 rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {uploading ? (
                   <>
                     <div className="h-4 w-4 border-2 border-surface border-t-transparent rounded-full animate-spin"></div>
-                    {uploadProgress.current > 0 
+                    {uploadProgress.current > 0
                       ? `Uploading ${uploadProgress.current} of ${uploadProgress.total}...`
                       : 'Uploading...'
                     }
@@ -1240,7 +1109,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
           </div>
         </div>
       </div>
-      
+
       {/* Create Tag Modal */}
       <CreateTagModal
         isOpen={isCreateTagModalOpen}
@@ -1252,14 +1121,14 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
 }
 
 // Simple CreateTagModal component
-function CreateTagModal({ 
-  isOpen, 
-  onClose, 
-  onCreateTag 
-}: { 
-  isOpen: boolean; 
-  onClose: () => void; 
-  onCreateTag: (data: { name: string; description?: string; color?: string }) => void; 
+function CreateTagModal({
+  isOpen,
+  onClose,
+  onCreateTag
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onCreateTag: (data: { name: string; description?: string; color?: string }) => void;
 }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -1268,7 +1137,7 @@ function CreateTagModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (name.trim()) {
-      onCreateTag({ name: name.trim(), description: description.trim() || undefined, color });
+      onCreateTag({ name, description, color });
       setName('');
       setDescription('');
       setColor('#1D4ED8');
@@ -1279,72 +1148,63 @@ function CreateTagModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-60 p-4">
-      <div className="bg-surface rounded-lg border border-ui w-full max-w-md">
-        <div className="flex justify-between items-center p-6 border-b border-ui">
-          <h3 className="text-lg font-semibold text-neutral-text-dark">Create New Tag</h3>
-          <button 
-            onClick={onClose}
-            className="p-2 rounded-lg hover:bg-neutral-background transition-colors text-neutral-text-light"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-        
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+      <div className="bg-surface rounded-lg border border-ui w-full max-w-md p-6">
+        <h3 className="text-lg font-semibold text-neutral-text-dark mb-4">Create New Tag</h3>
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-neutral-text-dark mb-2">
+            <label className="block text-sm font-medium text-neutral-text-dark mb-1">
               Tag Name <span className="text-error">*</span>
             </label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full p-2 border border-ui rounded text-sm bg-surface text-neutral-text-dark"
-              placeholder="Enter tag name"
+              className="w-full p-2 border border-ui rounded text-sm"
+              placeholder="e.g., Important, Review"
               required
             />
           </div>
-          
           <div>
-            <label className="block text-sm font-medium text-neutral-text-dark mb-2">
+            <label className="block text-sm font-medium text-neutral-text-dark mb-1">
               Description
             </label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full p-2 border border-ui rounded text-sm bg-surface text-neutral-text-dark resize-none"
+              className="w-full p-2 border border-ui rounded text-sm resize-none"
               placeholder="Optional description"
-              rows={2}
+              rows={3}
             />
           </div>
-          
           <div>
-            <label className="block text-sm font-medium text-neutral-text-dark mb-2">
+            <label className="block text-sm font-medium text-neutral-text-dark mb-1">
               Color
             </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="color"
-                value={color}
-                onChange={(e) => setColor(e.target.value)}
-                className="w-8 h-8 border border-ui rounded cursor-pointer"
-              />
-              <span className="text-sm text-neutral-text-light">{color}</span>
+            <div className="flex gap-2 flex-wrap">
+              {['#1D4ED8', '#059669', '#D97706', '#DC2626', '#7C3AED', '#DB2777'].map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setColor(c)}
+                  className={`w-8 h-8 rounded-full border-2 transition-all ${color === c ? 'border-neutral-text-dark scale-110' : 'border-transparent'}`}
+                  style={{ backgroundColor: c }}
+                />
+              ))}
             </div>
           </div>
-          
-          <div className="flex justify-end gap-3 pt-4">
+          <div className="flex justify-end gap-3 mt-6">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 border border-ui rounded-lg text-neutral-text-dark hover:bg-surface transition-colors"
+              className="px-4 py-2 text-sm text-neutral-text-light hover:bg-neutral-background rounded"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-primary text-surface rounded-lg hover:bg-primary-dark transition-colors"
+              className="px-4 py-2 text-sm bg-primary text-surface rounded hover:bg-primary-dark"
+              disabled={!name.trim()}
             >
               Create Tag
             </button>

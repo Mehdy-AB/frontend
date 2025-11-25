@@ -1,14 +1,14 @@
 import React, { useRef } from 'react';
 import Link from 'next/link';
-import { 
-  Folder, 
-  File, 
-  MoreVertical, 
-  Lock, 
-  Globe 
+import {
+  Folder,
+  File,
+  MoreVertical,
+  Lock,
+  Globe
 } from 'lucide-react';
 import { DocumentResponseDto, FolderResDto } from '@/types/api';
-import { ItemMenu } from './ItemMenu';
+import { TableActionMenu } from './TableActionMenu';
 import DocumentWorkflowBadge from './DocumentWorkflowBadge';
 
 // Unified interface for table items
@@ -33,27 +33,24 @@ interface TableRowProps {
   setOpenDropdownId: (id: string | null) => void;
 }
 
-export function TableRow({ 
-  item, 
-  formatFileSize, 
-  formatDate, 
-  currentFolderId, 
-  onEditPermissions, 
-  onEditFolderPermissions, 
-  onMove, 
-  onRename, 
-  onDelete, 
+export function TableRow({
+  item,
+  formatFileSize,
+  formatDate,
+  currentFolderId,
+  onEditPermissions,
+  onEditFolderPermissions,
+  onMove,
+  onRename,
+  onDelete,
   onShowComments,
   onDownload,
   onShare,
   onCopyLink,
   onView,
-  openDropdownId, 
-  setOpenDropdownId 
+  // openDropdownId and setOpenDropdownId are no longer needed for this row's menu
+  // but kept in props if UnifiedTableView passes them (though we can ignore them)
 }: TableRowProps) {
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const itemId = item.type === 'folder' ? `folder-${item.id}` : `document-${item.documentId}`;
-  const showMenu = openDropdownId === itemId;
   const isFolder = item.type === 'folder';
   const size = isFolder ? item.size : item.sizeBytes;
   const updatedAt = isFolder ? item.updatedAt : item.updatedAt;
@@ -80,7 +77,11 @@ export function TableRow({
               <div className="font-medium text-neutral-text-dark group-hover:underline group-hover:text-primary">{item.name}</div>
               <div className="flex items-center gap-2 text-sm text-neutral-text-light group-hover:underline group-hover:text-primary">
                 <span>{item.mimeType.split('/')[1].toUpperCase()} • v{item.versionNumber}</span>
-                <DocumentWorkflowBadge documentId={item.documentId} compact />
+                <DocumentWorkflowBadge
+                  documentId={item.documentId}
+                  workflowInstance={item.workflowInstance}
+                  compact
+                />
               </div>
             </div>
           </Link>
@@ -117,31 +118,19 @@ export function TableRow({
       </td>
       <td className="p-4">
         <div className="relative" style={{ zIndex: 10 }}>
-          <button 
-            ref={buttonRef}
-            onClick={() => setOpenDropdownId(showMenu ? null : itemId)}
-            className="p-1 item-menu-dropdown rounded hover:bg-ui cu transition-opacity"
-          >
-            <MoreVertical className="h-4 w-4 text-neutral-text-light" />
-          </button>
-          
-          {showMenu && (
-            <ItemMenu 
-              item={item} 
-              onEditPermissions={onEditPermissions}
-              onEditFolderPermissions={onEditFolderPermissions}
-              onMove={onMove}
-              onRename={onRename}
-              onDelete={onDelete}
-              onShowComments={onShowComments}
-              onDownload={onDownload}
-              onShare={onShare}
-              onCopyLink={onCopyLink}
-              onView={onView}
-              onClose={() => setOpenDropdownId(null)}
-              buttonRef={buttonRef}
-            />
-          )}
+          <TableActionMenu
+            item={item}
+            onEditPermissions={onEditPermissions}
+            onEditFolderPermissions={onEditFolderPermissions}
+            onMove={onMove}
+            onRename={onRename}
+            onDelete={onDelete}
+            onShowComments={onShowComments}
+            onDownload={onDownload}
+            onShare={onShare}
+            onCopyLink={onCopyLink}
+            onView={onView}
+          />
         </div>
       </td>
     </tr>

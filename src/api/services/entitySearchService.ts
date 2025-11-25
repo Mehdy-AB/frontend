@@ -17,10 +17,9 @@ class EntitySearchService {
     page: number = 0,
     size: number = 20
   ): Promise<PageResponse<EntitySearchResult>> {
-    const response = await apiClient.get<PageResponse<EntitySearchResult>>(`${this.baseUrl}/users`, {
+    return apiClient.get<PageResponse<EntitySearchResult>>(`${this.baseUrl}/users`, {
       params: { query, page, size },
     });
-    return response.data;
   }
 
   /**
@@ -31,10 +30,9 @@ class EntitySearchService {
     page: number = 0,
     size: number = 20
   ): Promise<PageResponse<EntitySearchResult>> {
-    const response = await apiClient.get<PageResponse<EntitySearchResult>>(`${this.baseUrl}/roles`, {
+    return apiClient.get<PageResponse<EntitySearchResult>>(`${this.baseUrl}/roles`, {
       params: { query, page, size },
     });
-    return response.data;
   }
 
   /**
@@ -45,20 +43,18 @@ class EntitySearchService {
     page: number = 0,
     size: number = 20
   ): Promise<PageResponse<EntitySearchResult>> {
-    const response = await apiClient.get<PageResponse<EntitySearchResult>>(`${this.baseUrl}/groups`, {
+    return apiClient.get<PageResponse<EntitySearchResult>>(`${this.baseUrl}/groups`, {
       params: { query, page, size },
     });
-    return response.data;
   }
 
   /**
    * Search all entity types at once
    */
   async searchAll(query: string, limit: number = 30): Promise<EntitySearchResult[]> {
-    const response = await apiClient.get<EntitySearchResult[]>(`${this.baseUrl}/all`, {
+    return apiClient.get<EntitySearchResult[]>(`${this.baseUrl}/all`, {
       params: { query, limit },
     });
-    return response.data;
   }
 
   /**

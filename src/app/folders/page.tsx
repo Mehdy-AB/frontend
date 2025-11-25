@@ -5,11 +5,11 @@ import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import FolderActionModal from '@/components/modals/FolderActionModal';
 import ConfirmationModal from '@/components/modals/ConfirmationModal';
-import { 
-  Folder, 
-  MoreVertical, 
-  Lock, 
-  Globe, 
+import {
+  Folder,
+  MoreVertical,
+  Lock,
+  Globe,
   Calendar,
   Download,
   Share2,
@@ -37,7 +37,7 @@ import {
 import { notificationApiClient } from '@/api/notificationClient';
 import { FolderResDto, SortFields } from '@/types/api';
 import { useLanguage } from '../../contexts/LanguageContext';
-import  CommentCountBadge  from '../../components/comments/CommentCountBadge';
+import CommentCountBadge from '../../components/comments/CommentCountBadge';
 import CreateFolderModal from '@/components/modals/CreateFolderModal';
 import FolderCommentModal from '@/components/modals/FolderCommentModal';
 import EditFolderModal from '@/components/modals/EditFolderModal';
@@ -46,6 +46,7 @@ import { useServerSideSearch } from '@/components/main/useServerSideSearch';
 import SearchPagination from '@/components/search/SearchPagination';
 import UserAvatar from '@/components/main/UserAvatar';
 import ServerSearchInput from '@/components/main/ServerSearchInput';
+import { TableActionMenu } from '@/components/folder/TableActionMenu';
 
 // Types from API
 type SortOption = 'name' | 'createdAt' | 'updatedAt' | 'size';
@@ -56,7 +57,7 @@ export default function FoldersPage() {
   const [sortBy, setSortBy] = useState<SortOption>('name');
   const [sortDesc, setSortDesc] = useState(false);
   const pageSize = 12;
-  
+
   // Use optimized server-side search hook
   const {
     displayData: folders,
@@ -201,18 +202,18 @@ export default function FoldersPage() {
 
   const handleConfirmDelete = async () => {
     if (!deleteFolder) return;
-    
+
     setIsDeleting(true);
     try {
       await notificationApiClient.deleteFolder(deleteFolder.id);
-      
+
       // Use optimistic update from hook
       removeItem(deleteFolder.id);
-      
+
       // Close the modal
       setShowDeleteModal(false);
       setDeleteFolder(null);
-      
+
     } catch (error) {
       console.error('Error deleting folder:', error);
       // Refresh on error to get accurate state
@@ -251,7 +252,7 @@ export default function FoldersPage() {
         <CardContent className="text-center">
           <div className="text-destructive text-lg mb-4">{error}</div>
           <Button onClick={() => window.location.reload()}>
-          Retry
+            Retry
           </Button>
         </CardContent>
       </Card>
@@ -278,7 +279,7 @@ export default function FoldersPage() {
                 </p>
               </div>
             </div>
-            
+
             {/* Stats */}
             <div className="flex items-center gap-6 text-sm">
               <div className="flex items-center gap-2 px-3 py-1.5 bg-primary/5 rounded-lg">
@@ -300,7 +301,7 @@ export default function FoldersPage() {
               )}
             </div>
           </div>
-          
+
           {/* Action Buttons */}
           <div className="flex items-center gap-3">
             {/* Refresh Button */}
@@ -314,7 +315,7 @@ export default function FoldersPage() {
               <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
-            
+
             {/* Create Folder Button */}
             <Button
               onClick={() => setShowCreateModal(true)}
@@ -338,155 +339,155 @@ export default function FoldersPage() {
             />
           </div>
 
-            {/* Sort Controls */}
-            <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-muted-foreground" />
-              <Select value={`${sortBy}-${sortDesc ? 'desc' : 'asc'}`} onValueChange={(value) => {
-                const [field, direction] = value.split('-');
-                setSortBy(field as SortOption);
-                setSortDesc(direction === 'desc');
-              }}>
-                <SelectTrigger className="w-48 h-10">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="name-asc">Name A-Z</SelectItem>
-                  <SelectItem value="name-desc">Name Z-A</SelectItem>
-                  <SelectItem value="updatedAt-desc">Newest</SelectItem>
-                  <SelectItem value="updatedAt-asc">Oldest</SelectItem>
-                  <SelectItem value="size-desc">Size (Large)</SelectItem>
-                  <SelectItem value="size-asc">Size (Small)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          {/* Sort Controls */}
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            <Select value={`${sortBy}-${sortDesc ? 'desc' : 'asc'}`} onValueChange={(value) => {
+              const [field, direction] = value.split('-');
+              setSortBy(field as SortOption);
+              setSortDesc(direction === 'desc');
+            }}>
+              <SelectTrigger className="w-48 h-10">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="name-asc">Name A-Z</SelectItem>
+                <SelectItem value="name-desc">Name Z-A</SelectItem>
+                <SelectItem value="updatedAt-desc">Newest</SelectItem>
+                <SelectItem value="updatedAt-asc">Oldest</SelectItem>
+                <SelectItem value="size-desc">Size (Large)</SelectItem>
+                <SelectItem value="size-asc">Size (Small)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 
       {/* Folders Table */}
       <Card>
-          <div>
-            <table className="w-full relative" style={{ zIndex: 1 }}>
-              <thead className="bg-gradient-to-r from-muted/30 to-muted/50 border-b">
-                <tr>
-                  <th className="text-left p-4 text-sm font-semibold text-foreground">Name</th>
-                  <th className="text-left p-4 text-sm font-semibold text-foreground">Owner</th>
-                  <th className="text-left p-4 text-sm font-semibold text-foreground">Size</th>
-                  <th className="text-left p-4 text-sm font-semibold text-foreground">Last Modified</th>
-                  <th className="text-left p-4 text-sm font-semibold text-foreground">Visibility</th>
-                  <th className="text-left p-4 text-sm font-semibold text-foreground">Actions</th>
+        <div>
+          <table className="w-full relative" style={{ zIndex: 1 }}>
+            <thead className="bg-gradient-to-r from-muted/30 to-muted/50 border-b">
+              <tr>
+                <th className="text-left p-4 text-sm font-semibold text-foreground">Name</th>
+                <th className="text-left p-4 text-sm font-semibold text-foreground">Owner</th>
+                <th className="text-left p-4 text-sm font-semibold text-foreground">Size</th>
+                <th className="text-left p-4 text-sm font-semibold text-foreground">Last Modified</th>
+                <th className="text-left p-4 text-sm font-semibold text-foreground">Visibility</th>
+                <th className="text-left p-4 text-sm font-semibold text-foreground">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {/* Show skeleton rows when initially loading */}
+              {showSkeletonRows && [...Array(5)].map((_, i) => (
+                <tr key={`skeleton-${i}`} className="border-b last:border-b-0">
+                  <td className="p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 bg-muted rounded-lg animate-pulse"></div>
+                      <div className="space-y-2">
+                        <div className="h-4 bg-muted rounded w-32 animate-pulse"></div>
+                        <div className="h-3 bg-muted rounded w-24 animate-pulse"></div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="p-4">
+                    <div className="h-4 bg-muted rounded w-20 animate-pulse"></div>
+                  </td>
+                  <td className="p-4">
+                    <div className="h-4 bg-muted rounded w-16 animate-pulse"></div>
+                  </td>
+                  <td className="p-4">
+                    <div className="h-4 bg-muted rounded w-20 animate-pulse"></div>
+                  </td>
+                  <td className="p-4">
+                    <div className="h-6 bg-muted rounded w-16 animate-pulse"></div>
+                  </td>
+                  <td className="p-4">
+                    <div className="h-4 bg-muted rounded w-4 animate-pulse"></div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {/* Show skeleton rows when initially loading */}
-                {showSkeletonRows && [...Array(5)].map((_, i) => (
-                  <tr key={`skeleton-${i}`} className="border-b last:border-b-0">
-                    <td className="p-4">
-                      <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 bg-muted rounded-lg animate-pulse"></div>
-                        <div className="space-y-2">
-                          <div className="h-4 bg-muted rounded w-32 animate-pulse"></div>
-                          <div className="h-3 bg-muted rounded w-24 animate-pulse"></div>
-                        </div>
+              ))}
+
+              {/* Show actual folder rows */}
+              {!showSkeletonRows && folders.map((folder) => (
+                <FolderRow
+                  key={folder.id}
+                  folder={folder}
+                  formatFileSize={formatFileSize}
+                  formatDate={formatDate}
+                  onRename={(id, name) => handleRenameFolder(id, name)}
+                  onDelete={handleDeleteWrapper}
+                  onDownload={handleDownloadFolder}
+                  onShare={handleShareFolder}
+                  onEditPermissions={handleEditFolderPermissions}
+                  onMove={handleMove}
+                  openDropdownId={openDropdownId}
+                  setOpenDropdownId={setOpenDropdownId}
+                  router={router}
+                />
+              ))}
+
+              {/* Show empty state when no folders */}
+              {!showSkeletonRows && !loading && folders.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="p-12 text-center">
+                    <div className="flex flex-col items-center gap-4">
+                      <div className="h-16 w-16 bg-muted rounded-full flex items-center justify-center">
+                        <Folder className="h-8 w-8 text-muted-foreground" />
                       </div>
-                    </td>
-                    <td className="p-4">
-                      <div className="h-4 bg-muted rounded w-20 animate-pulse"></div>
-                    </td>
-                    <td className="p-4">
-                      <div className="h-4 bg-muted rounded w-16 animate-pulse"></div>
-                    </td>
-                    <td className="p-4">
-                      <div className="h-4 bg-muted rounded w-20 animate-pulse"></div>
-                    </td>
-                    <td className="p-4">
-                      <div className="h-6 bg-muted rounded w-16 animate-pulse"></div>
-                    </td>
-                    <td className="p-4">
-                      <div className="h-4 bg-muted rounded w-4 animate-pulse"></div>
-                    </td>
-                  </tr>
-                ))}
-                
-                {/* Show actual folder rows */}
-                {!showSkeletonRows && folders.map((folder) => (
-                  <FolderRow 
-                    key={folder.id} 
-                    folder={folder} 
-                    formatFileSize={formatFileSize} 
-                    formatDate={formatDate}
-                    onRename={(id, name) => handleRenameFolder(id, name)}
-                    onDelete={handleDeleteWrapper}
-                    onDownload={handleDownloadFolder}
-                    onShare={handleShareFolder}
-                    onEditPermissions={handleEditFolderPermissions}
-                    onMove={handleMove}
-                    openDropdownId={openDropdownId}
-                    setOpenDropdownId={setOpenDropdownId}
-                    router={router}
-                  />
-                ))}
-                
-                {/* Show empty state when no folders */}
-                {!showSkeletonRows && !loading && folders.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="p-12 text-center">
-                      <div className="flex flex-col items-center gap-4">
-                        <div className="h-16 w-16 bg-muted rounded-full flex items-center justify-center">
-                          <Folder className="h-8 w-8 text-muted-foreground" />
-                        </div>
-                        <div>
-                          <h3 className="text-lg font-medium text-foreground mb-2">No folders yet</h3>
-                          <p className="text-muted-foreground mb-4">
-                            {searchQuery ? `No folders found matching "${searchQuery}"` : "Create your first folder to get started"}
-                          </p>
-                          {!searchQuery && (
-                            <Button
-                              onClick={() => setShowCreateModal(true)}
-                              className="bg-primary hover:bg-primary/90"
-                            >
-                              <Plus className="h-4 w-4 mr-2" />
-                              Create Folder
-                            </Button>
-                          )}
-                        </div>
+                      <div>
+                        <h3 className="text-lg font-medium text-foreground mb-2">No folders yet</h3>
+                        <p className="text-muted-foreground mb-4">
+                          {searchQuery ? `No folders found matching "${searchQuery}"` : "Create your first folder to get started"}
+                        </p>
+                        {!searchQuery && (
+                          <Button
+                            onClick={() => setShowCreateModal(true)}
+                            className="bg-primary hover:bg-primary/90"
+                          >
+                            <Plus className="h-4 w-4 mr-2" />
+                            Create Folder
+                          </Button>
+                        )}
                       </div>
-                    </td>
-                  </tr>
-                )}
-                
-                {/* Loading skeleton rows - for search and filter changes */}
-                {tableLoading && [...Array(3)].map((_, i) => (
-                  <tr key={`loading-${i}`} className="border-b last:border-b-0">
-                    <td className="p-4">
-                      <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 bg-muted rounded-lg animate-pulse"></div>
-                        <div className="space-y-2">
-                          <div className="h-4 bg-muted rounded w-32 animate-pulse"></div>
-                          <div className="h-3 bg-muted rounded w-24 animate-pulse"></div>
-                        </div>
+                    </div>
+                  </td>
+                </tr>
+              )}
+
+              {/* Loading skeleton rows - for search and filter changes */}
+              {tableLoading && [...Array(3)].map((_, i) => (
+                <tr key={`loading-${i}`} className="border-b last:border-b-0">
+                  <td className="p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 bg-muted rounded-lg animate-pulse"></div>
+                      <div className="space-y-2">
+                        <div className="h-4 bg-muted rounded w-32 animate-pulse"></div>
+                        <div className="h-3 bg-muted rounded w-24 animate-pulse"></div>
                       </div>
-                    </td>
-                    <td className="p-4">
-                      <div className="h-4 bg-muted rounded w-20 animate-pulse"></div>
-                    </td>
-                    <td className="p-4">
-                      <div className="h-4 bg-muted rounded w-16 animate-pulse"></div>
-                    </td>
-                    <td className="p-4">
-                      <div className="h-4 bg-muted rounded w-20 animate-pulse"></div>
-                    </td>
-                    <td className="p-4">
-                      <div className="h-6 bg-muted rounded w-16 animate-pulse"></div>
-                    </td>
-                    <td className="p-4">
-                      <div className="h-4 bg-muted rounded w-4 animate-pulse"></div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+                    </div>
+                  </td>
+                  <td className="p-4">
+                    <div className="h-4 bg-muted rounded w-20 animate-pulse"></div>
+                  </td>
+                  <td className="p-4">
+                    <div className="h-4 bg-muted rounded w-16 animate-pulse"></div>
+                  </td>
+                  <td className="p-4">
+                    <div className="h-4 bg-muted rounded w-20 animate-pulse"></div>
+                  </td>
+                  <td className="p-4">
+                    <div className="h-6 bg-muted rounded w-16 animate-pulse"></div>
+                  </td>
+                  <td className="p-4">
+                    <div className="h-4 bg-muted rounded w-4 animate-pulse"></div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
 
       {/* Loading indicator */}
       {tableLoading && (
@@ -495,7 +496,7 @@ export default function FoldersPage() {
           Loading comprehensive results...
         </div>
       )}
-      
+
       {/* Search results indicator */}
       {searchQuery && !tableLoading && (
         <div className="flex items-center justify-center py-2 text-sm text-muted-foreground">
@@ -515,17 +516,17 @@ export default function FoldersPage() {
         itemsPerPage={pageSize}
         onPageChange={setPage}
       />
-      
+
       {/* Modals */}
-      <CreateFolderModal 
+      <CreateFolderModal
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
         parentId={null}
         onSuccess={() => fetchData(true)}
       />
-      
 
-      
+
+
       {showEditFolderModal && selectedFolder && (
         <EditFolderModal
           isOpen={showEditFolderModal}
@@ -565,7 +566,7 @@ export default function FoldersPage() {
       />
 
       {/* Comment Modal */}
-      <FolderCommentModal 
+      <FolderCommentModal
         folder={commentingFolder}
         isOpen={showCommentModal}
         onClose={() => {
@@ -577,148 +578,10 @@ export default function FoldersPage() {
   );
 }
 
-// Folder Menu Component
-function FolderMenu({ 
-  folder, 
-  onEditPermissions, 
-  onMove,
-  onRename,
-  onDelete,
-  onComment,
-  onClose,
-  buttonRef
-}: { 
-  folder: FolderResDto; 
-  onEditPermissions?: (folder: FolderResDto) => void;
-  onMove?: (folder: FolderResDto) => void;
-  onRename?: (folderId: number, currentName: string) => void;
-  onDelete?: (folder: FolderResDto) => void;
-  onComment?: (folder: FolderResDto) => void;
-  onClose: () => void;
-  buttonRef?: React.RefObject<HTMLButtonElement | null>;
-}) {
-  const [position, setPosition] = useState({ top: 0, left: 0 });
-
-  useEffect(() => {
-    if (buttonRef?.current) {
-      const rect = buttonRef.current.getBoundingClientRect();
-      setPosition({
-        top: rect.bottom + window.scrollY + 4,
-        left: rect.right - 192 + window.scrollX // 192px is the width of the dropdown
-      });
-    }
-  }, [buttonRef]);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Element;
-      if (!target.closest('.folder-menu-dropdown')) {
-        onClose();
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [onClose]);
-
-  const menuContent = (
-    <div className="folder-menu-dropdown fixed w-48 bg-white border border-gray-300 rounded-lg shadow-lg" style={{ zIndex: 9999, top: position.top, left: position.left }}>
-      <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100">
-        <Eye className="h-4 w-4" />
-        Preview
-      </button>
-      <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100">
-        <Download className="h-4 w-4" />
-        Download
-      </button>
-      <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100">
-        <Share2 className="h-4 w-4" />
-        Share
-      </button>
-      <button 
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (onComment) {
-            onComment(folder);
-            onClose();
-          }
-        }}
-        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100"
-      >
-        <MessageSquare className="h-4 w-4" />
-        Comments
-      </button>
-      <button 
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (onRename) {
-            onRename(folder.id, folder.name);
-            onClose();
-          }
-        }}
-        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100"
-      >
-        <Edit className="h-4 w-4" />
-        Rename
-      </button>
-      <button 
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          console.log('Move clicked for folder:', folder.name);
-          if (onMove) {
-            onMove(folder);
-            onClose();
-          }
-        }}
-        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100"
-      >
-        <Folder className="h-4 w-4" />
-        Move
-      </button>
-      {onEditPermissions && (
-        <button 
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            console.log('Edit Permissions clicked for folder:', folder.name);
-            onEditPermissions(folder);
-            onClose();
-          }}
-          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100"
-        >
-          <Settings className="h-4 w-4" />
-          Edit Permissions
-        </button>
-      )}
-      <hr className="border-gray-200" />
-      <button 
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          console.log('Delete clicked for folder:', folder.name);
-          if (onDelete) {
-            onDelete(folder);
-            onClose();
-          }
-        }}
-        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
-      >
-        <Trash2 className="h-4 w-4" />
-        Move to Trash
-      </button>
-    </div>
-  );
-
-  return typeof window !== 'undefined' ? createPortal(menuContent, document.body) : null;
-}
-
 // Folder Row Component for Table View
-function FolderRow({ 
-  folder, 
-  formatFileSize, 
+function FolderRow({
+  folder,
+  formatFileSize,
   formatDate,
   onRename,
   onDelete,
@@ -730,8 +593,8 @@ function FolderRow({
   openDropdownId,
   setOpenDropdownId,
   router
-}: { 
-  folder: FolderResDto; 
+}: {
+  folder: FolderResDto;
   formatFileSize: (bytes: number) => string;
   formatDate: (dateString: string) => string;
   onRename: (id: number, name: string) => void;
@@ -748,7 +611,7 @@ function FolderRow({
   const folderId = `folder-${folder.id}`;
   const showMenu = openDropdownId === folderId;
   const buttonRef = useRef<HTMLButtonElement>(null);
-  
+
   return (
     <tr className="border-b last:border-b-0 hover:bg-gradient-to-r hover:from-muted/30 hover:to-muted/50 group transition-all duration-200" style={{ position: 'relative', zIndex: 1 }}>
       <td className="p-4">
@@ -788,40 +651,18 @@ function FolderRow({
       </td>
       <td className="p-4">
         <div className="flex items-center gap-2">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (onEditPermissions) {
-                onEditPermissions(folder);
-              }
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary bg-primary/10 hover:bg-primary/20 rounded-md transition-colors"
-            title="Manage Permissions"
-          >
-            <Settings className="h-3.5 w-3.5" />
-            Permissions
-          </button>
-          <div className="relative" style={{ zIndex: 10 }}>
-            <button 
-              ref={buttonRef}
-              onClick={() => setOpenDropdownId(showMenu ? null : folderId)}
-              className="p-1 rounded hover:bg-gray-100 transition-opacity"
-            >
-              <MoreVertical className="h-4 w-4" />
-            </button>
-            
-            {showMenu && (
-              <FolderMenu 
-                folder={folder}
-                onEditPermissions={onEditPermissions}
-                onMove={onMove}
-                onRename={onRename}
-                onDelete={(folder) => onDelete(folder.id, folder.name)}
-                onComment={onComment}
-                onClose={() => setOpenDropdownId(null)}
-                buttonRef={buttonRef}
-              />
-            )}
+          <div className="flex items-center gap-2">
+            <TableActionMenu
+              item={{ ...folder, type: 'folder' }}
+              onEditFolderPermissions={() => onEditPermissions && onEditPermissions(folder)}
+              onMove={onMove ? () => onMove(folder) : undefined}
+              onRename={onRename ? () => onRename(folder.id, folder.name) : undefined}
+              onDelete={onDelete ? () => onDelete(folder.id, folder.name) : undefined}
+              onShowComments={onComment ? () => onComment(folder) : undefined}
+              onDownload={onDownload ? () => onDownload(folder.id) : undefined}
+              onShare={onShare ? () => onShare(folder.id) : undefined}
+              onView={() => router.push(`/folders/${folder.id}`)}
+            />
           </div>
         </div>
       </td>

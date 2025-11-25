@@ -46,6 +46,16 @@ export interface PageResponse<T> {
   empty: boolean;
 }
 
+export interface BatchOperationResult {
+  totalRequested: number;
+  successCount: number;
+  failureCount: number;
+  errors: Array<{
+    itemId: number;
+    errorMessage: string;
+  }>;
+}
+
 // Enums
 export const GranteeType = {
   USER: 'USER',
@@ -262,6 +272,22 @@ export interface DocumentFilingCategoryResponseDto {
   metadataDefinitions?: CategoryMetadataDefinitionDto[];
 }
 
+export interface DocumentWorkflowInstanceDto {
+  instanceId: number;
+  workflowId: number;
+  workflowName: string;
+  workflowStatus: string; // ACTIVE, COMPLETED, CANCELLED, etc.
+  currentStepId?: number;
+  currentStepName?: string;
+  currentStepOrder?: number;
+  currentStepStatus?: string; // ACTIVE, PENDING, COMPLETED, etc.
+  workflowStartedAt?: string;
+  workflowCompletedAt?: string;
+  currentStepDueDate?: string;
+  assignedUsers: UserDto[];
+  currentStepInstanceId?: number;
+}
+
 export interface DocumentResponseDto {
   documentId: number;
   versionId: number;
@@ -282,6 +308,7 @@ export interface DocumentResponseDto {
   metadata: string[]; // Keep for backward compatibility
   filingCategory?: DocumentFilingCategoryResponseDto;
   userPermissions: DocumentPermissionResDto;
+  workflowInstance?: DocumentWorkflowInstanceDto;
 }
 
 export interface DocumentVersionResponseDto {
@@ -1352,6 +1379,194 @@ export interface TypeShareAccessRes {
 // ==================== UPDATE DOCUMENT TYPES ====================
 
 // Already defined above: UpdateDocumentDescriptionRequestDto
+
+// ==================== WORKFLOW TYPES ====================
+
+export interface WorkflowResponse {
+  id: number;
+  name: string;
+  description?: string;
+  isActive: boolean;
+  createdBy?: UserDto;
+  createdAt: string;
+  updatedAt: string;
+  stepCount: number;
+  activeInstancesCount: number;
+  admins?: WorkflowAdminResponse[];
+}
+
+export interface WorkflowDetailResponse extends WorkflowResponse {
+  steps: WorkflowStepResponse[];
+}
+
+export interface WorkflowStepResponse {
+  id: number;
+  name: string;
+  description?: string;
+  stepOrder: number;
+  expirationDays?: number;
+  onCompleteAction?: string;
+  targetFolderId?: number;
+  targetFolderName?: string;
+  isRequired: boolean;
+  allowParallelApproval: boolean;
+  minApprovalsNeeded?: number;
+  priority?: 'LOW' | 'MEDIUM' | 'HIGH';
+  assignments: StepAssignmentResponse[];
+}
+
+export interface StepAssignmentResponse {
+  id: number;
+  assigneeType: 'USER' | 'ROLE' | 'GROUP';
+  user?: UserDto;
+  role?: RoleDto;
+  group?: GroupDto;
+  canEdit: boolean;
+}
+
+export interface WorkflowInstanceResponse {
+  id: number;
+  workflow: WorkflowResponse;
+  document: DocumentResponseDto;
+  status: 'ACTIVE' | 'COMPLETED' | 'CANCELLED' | 'FAILED' | 'EXPIRED';
+  startedBy?: UserDto;
+  startedAt: string;
+  completedAt?: string;
+  cancelledAt?: string;
+  cancelledBy?: UserDto;
+  cancellationReason?: string;
+  currentStep?: WorkflowStepResponse;
+  notes?: string;
+  updatedAt: string;
+  stepInstances: WorkflowStepInstanceResponse[];
+  completedStepsCount: number;
+  totalStepsCount: number;
+}
+
+export interface WorkflowStepInstanceResponse {
+  id: number;
+  workflowStep: WorkflowStepResponse;
+  status: 'PENDING' | 'ACTIVE' | 'COMPLETED' | 'REJECTED' | 'EXPIRED' | 'SKIPPED' | 'CANCELLED';
+  assignedToUser?: UserDto;
+  assignedToRoleName?: string;
+  assignedToGroupName?: string;
+  startedAt: string;
+  dueDate?: string;
+  completedAt?: string;
+  completedBy?: UserDto;
+  comment?: string;
+  rejectionReason?: string;
+  approvalsCount: number;
+  isOverdue: boolean;
+  isActionable: boolean;
+  documentId?: number;
+  workflowInstanceId?: number;
+  workflowId?: number;
+  documentName?: string;
+  workflowName?: string;
+  updatedAt: string;
+  assignments: StepAssignmentResponse[];
+}
+
+export interface WorkflowHistoryResponse {
+  id: number;
+  action: string;
+  fromStatus?: string;
+  toStatus?: string;
+  performedBy?: UserDto;
+  performedAt: string;
+  comment?: string;
+  step?: WorkflowStepResponse;
+}
+
+export interface WorkflowAdminResponse {
+  id: number;
+  user: UserDto;
+  createdAt: string;
+}
+
+// Request DTOs
+export interface CreateWorkflowRequest {
+  name: string;
+  description?: string;
+  steps: CreateWorkflowStepRequest[];
+  isActive?: boolean;
+  admins?: AddWorkflowAdminRequest[];
+  trigger: AddWorkflowTriggerRequest;
+}
+
+export interface CreateWorkflowStepRequest {
+  name: string;
+  description?: string;
+  stepOrder: number;
+  expirationDays?: number;
+  onCompleteAction?: 'NONE' | 'MOVE_TO_FOLDER' | 'NOTIFY_USERS' | 'COMPLETE_WORKFLOW';
+  targetFolderId?: number;
+  isRequired?: boolean;
+  allowParallelApproval?: boolean;
+  minApprovalsNeeded?: number;
+  assignments: CreateStepAssignmentRequest[];
+}
+
+export interface CreateStepAssignmentRequest {
+  assigneeType: 'USER' | 'ROLE' | 'GROUP';
+  assigneeId: string;
+  canEdit?: boolean;
+}
+
+export interface UpdateWorkflowRequest {
+  name: string;
+  description?: string;
+  isActive?: boolean;
+  steps?: CreateWorkflowStepRequest[];
+  admins?: AddWorkflowAdminRequest[];
+  trigger: AddWorkflowTriggerRequest;
+}
+
+export interface WorkflowTriggerResponse {
+  id: number;
+  workflowId: number;
+  workflowName: string;
+  triggerType: 'FOLDER' | 'MODEL';
+  folderId?: number;
+  folderName?: string;
+  categoryId?: number;
+  categoryName?: string;
+  isActive: boolean;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AddWorkflowTriggerRequest {
+  workflowId?: number; // Optional when used in CreateWorkflowRequest/UpdateWorkflowRequest, set by backend
+  triggerType: 'FOLDER' | 'MODEL';
+  folderId?: number;
+  categoryId?: number;
+}
+
+export interface UpdateWorkflowTriggerRequest {
+  isActive?: boolean;
+}
+
+export interface StartWorkflowInstanceRequest {
+  workflowId: number;
+  documentId: number;
+  notes?: string;
+}
+
+export interface CompleteStepRequest {
+  comment?: string;
+}
+
+export interface RejectStepRequest {
+  rejectionReason: string;
+  comment?: string;
+}
+
+export interface AddWorkflowAdminRequest {
+  userId: string;
+}
 
 // ==================== COMMON TYPES ====================
 

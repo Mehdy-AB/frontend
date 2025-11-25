@@ -2,12 +2,12 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
-import { 
-  FileText, 
-  Plus, 
-  Trash2, 
-  Users, 
-  Shield, 
+import {
+  FileText,
+  Plus,
+  Trash2,
+  Users,
+  Shield,
   X,
   Save,
   Search,
@@ -21,10 +21,10 @@ import {
 } from 'lucide-react';
 import { documentService } from '@/api/services/documentService';
 import { notificationApiClient } from '@/api/notificationClient';
-import { 
-  DocumentPermissionReq, 
-  UserDto, 
-  RoleDto, 
+import {
+  DocumentPermissionReq,
+  UserDto,
+  RoleDto,
   GroupDto,
   TypeShareAccessRes,
   TypeShareAccessWithTypeReq,
@@ -91,16 +91,16 @@ function isRole(grantee: UserDto | GroupDto | RoleDto | null | undefined): grant
 export default function EditDocumentModal({ isOpen, onClose, document }: EditDocumentModalProps) {
   const { data: session } = useSession();
   const currentUserId = session?.user?.id;
-  
+
   // Client-side only check
   const [isClient, setIsClient] = useState(false);
-  
+
   useEffect(() => {
     setIsClient(true);
   }, []);
-  
+
   const pageSize = 20;
-  
+
   // Use server-side search for permissions
   const {
     displayData: allGrants,
@@ -119,11 +119,11 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
   } = useServerSideSearch<TypeShareAccessRes>({
     fetchFunction: async (currentPage, searchTerm) => {
       const response = await documentService.getDocumentShared(
-        document.documentId, 
-        { 
-          page: currentPage, 
+        document.documentId,
+        {
+          page: currentPage,
           size: pageSize,
-          search: searchTerm 
+          search: searchTerm
         }
       );
       return response;
@@ -148,33 +148,33 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
     debounceMs: 300,
     fetchOnMount: false
   });
-  
+
   // Available entities for adding new grants
   const [users, setUsers] = useState<UserDto[]>([]);
   const [groups, setGroups] = useState<GroupDto[]>([]);
   const [roles, setRoles] = useState<RoleDto[]>([]);
-  
+
   // Search dropdown states for adding entities
   const [availableEntities, setAvailableEntities] = useState<(UserDto | GroupDto | RoleDto)[]>([]);
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [searching, setSearching] = useState(false);
   const [selectedEntityType, setSelectedEntityType] = useState<'user' | 'group' | 'role' | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  
+
   // Other states
   const [loading, setLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [collapsedPermissions, setCollapsedPermissions] = useState<Record<string, boolean>>({});
-  
+
   // Permission modal state
   const [showPermissionModal, setShowPermissionModal] = useState(false);
   const [editingGrant, setEditingGrant] = useState<{ grantee: UserDto | GroupDto | RoleDto; permission: DocumentPermissionReq; type: GranteeType; isNew: boolean } | null>(null);
   const [tempPermission, setTempPermission] = useState<DocumentPermissionReq>(PERMISSION_PRESETS.viewer);
-  
+
   // Delete confirmation modal state
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   const [granteeToDelete, setGranteeToDelete] = useState<{ id: string; name: string } | null>(null);
-  
+
 
   // Load permissions when modal opens
   useEffect(() => {
@@ -187,7 +187,7 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
   const loadAvailableUsers = async (search?: string) => {
     try {
       const response = await documentService.getAvailableUsersForDocument(
-        document.documentId, 
+        document.documentId,
         { page: 0, size: 100, search }
       );
       setUsers(response.content || []);
@@ -200,7 +200,7 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
   const loadAvailableGroups = async (search?: string) => {
     try {
       const response = await documentService.getAvailableGroupsForDocument(
-        document.documentId, 
+        document.documentId,
         { page: 0, size: 100, search }
       );
       setGroups(response.content || []);
@@ -213,7 +213,7 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
   const loadAvailableRoles = async (search?: string) => {
     try {
       const response = await documentService.getAvailableRolesForDocument(
-        document.documentId, 
+        document.documentId,
         { page: 0, size: 100, search }
       );
       setRoles(response.content || []);
@@ -225,9 +225,9 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
   // Set available entities based on selected type and filter out those in allGrants
   useEffect(() => {
     if (!selectedEntityType) return;
-    
+
     let entities: (UserDto | GroupDto | RoleDto)[] = [];
-    
+
     // Select entities based on type
     switch (selectedEntityType) {
       case 'user':
@@ -240,12 +240,12 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
         entities = roles || [];
         break;
     }
-    
+
     // Ensure entities is always an array
     if (!Array.isArray(entities)) {
       entities = [];
     }
-    
+
     // Filter out entities that are already in allGrants (including pending additions)
     const granteeIds = new Set(
       allGrants
@@ -253,40 +253,40 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
         .map(g => g.grantee.id)
     );
     const filtered = entities.filter(entity => !granteeIds.has(entity.id));
-    
+
     setAvailableEntities(filtered);
   }, [users, groups, roles, selectedEntityType, allGrants]);
 
   // Debounced API search for available entities using optimized endpoints
   useEffect(() => {
     if (!selectedEntityType) return;
-    
-      const performSearch = async () => {
-        try {
-          setSearching(true);
-        
+
+    const performSearch = async () => {
+      try {
+        setSearching(true);
+
         const searchTerm = searchQuery.trim() || undefined;
-          
-          switch (selectedEntityType) {
-            case 'user':
+
+        switch (selectedEntityType) {
+          case 'user':
             await loadAvailableUsers(searchTerm);
-              break;
-            case 'group':
+            break;
+          case 'group':
             await loadAvailableGroups(searchTerm);
-              break;
-            case 'role':
+            break;
+          case 'role':
             await loadAvailableRoles(searchTerm);
-              break;
-          }
-        } catch (error) {
-          console.error('Error searching entities:', error);
-        } finally {
-          setSearching(false);
+            break;
         }
-      };
-      
+      } catch (error) {
+        console.error('Error searching entities:', error);
+      } finally {
+        setSearching(false);
+      }
+    };
+
     const timeoutId = setTimeout(performSearch, 300);
-      return () => clearTimeout(timeoutId);
+    return () => clearTimeout(timeoutId);
   }, [searchQuery, selectedEntityType]);
 
   // Maintain focus after API calls
@@ -306,7 +306,7 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
   useEffect(() => {
     // Only run when modal is open and we're on the client side
     if (!isOpen || !isClient || typeof window === 'undefined' || typeof document === 'undefined') return;
-    
+
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Element;
       if (!target.closest('.searchable-select-container')) {
@@ -438,13 +438,13 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
 
     try {
       setLoading(true);
-      
+
       // Optimistic removal
       removeGrantFromList(granteeToDelete.id, (g) => g.grantee?.id);
-      
+
       // Delete from backend
       await documentService.deleteDocumentShared(document.documentId, granteeToDelete.id);
-      
+
       // Close confirmation modal
       setShowDeleteConfirmation(false);
       setGranteeToDelete(null);
@@ -471,7 +471,7 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
         granteeType = GranteeType.USER;
       } else if (isGroup(grant.grantee)) {
         granteeType = GranteeType.GROUP;
-        } else {
+      } else {
         granteeType = GranteeType.ROLE;
       }
 
@@ -528,7 +528,7 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
 
   // Simple close handler - no unsaved changes to worry about
   const handleClose = () => {
-        onClose();
+    onClose();
   };
 
   // Add Entity Buttons Component - removed useCallback to prevent re-renders
@@ -585,7 +585,7 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
               <X className="h-4 w-4 text-neutral-text-light" />
             </button>
           </div>
-          
+
           {showSearchDropdown && availableEntities.length > 0 && (
             <div className="absolute z-50 w-full mt-1 bg-surface border border-ui rounded-lg shadow-lg max-h-60 overflow-y-auto">
               {availableEntities.map((entity: any) => (
@@ -614,7 +614,7 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
                         </div>
                       </>
                     )}
-                    
+
                     {/* Group - Show Icon */}
                     {'userCount' in entity && (
                       <>
@@ -627,7 +627,7 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
                         </div>
                       </>
                     )}
-                    
+
                     {/* Role - Show Icon */}
                     {!('username' in entity) && !('userCount' in entity) && (
                       <>
@@ -682,14 +682,14 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
               {totalElements} grant{totalElements !== 1 ? 's' : ''} with access
             </div>
           </div>
-          
+
           <ServerSearchInput
             value={searchQuery}
             onChange={setSearchQuery}
             placeholder="Search by name, email, or role..."
             className="mb-4"
           />
-          
+
           <div className="space-y-3">
             <AddEntityButtons />
             <SearchableSelect />
@@ -720,19 +720,19 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
             <div className="space-y-3">
               {allGrants.map((grant, index) => {
                 const grantee = grant.grantee;
-                
+
                 // Skip grants with null grantee (defensive programming)
                 if (!grantee) return null;
-                
+
                 const panelKey = `grant-${index}`;
                 const isCollapsed = collapsedPermissions[panelKey];
-                
+
                 // Determine grantee type and icon
                 let granteeType: GranteeType;
                 let IconComponent;
                 let displayName;
                 let displaySubtitle;
-                
+
                 if (isUser(grantee)) {
                   // User
                   const user = grantee as UserDto;
@@ -753,7 +753,7 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
                   displayName = grantee.name;
                   displaySubtitle = grantee.description || 'Role';
                 }
-                
+
                 // Get active permissions for display
                 const perm = grant.permission as any;
                 const activePerms = [];
@@ -762,7 +762,7 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
                 if (perm?.canDelete) activePerms.push('Delete');
                 if (perm?.canShare) activePerms.push('Share');
                 if (perm?.canManagePermissions) activePerms.push('Manage Permissions');
-                
+
                 return (
                   <div key={grantee.id} className="border border-ui rounded-lg">
                     <div className="p-4 flex justify-between items-center">
@@ -770,7 +770,7 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
                         {isUser(grantee) ? (
                           <UserAvatar user={grantee} size="sm" />
                         ) : (
-                        <IconComponent className="h-5 w-5 text-neutral-text-light" />
+                          <IconComponent className="h-5 w-5 text-neutral-text-light" />
                         )}
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
@@ -794,8 +794,8 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
                               </span>
                             )}
                           </div>
-                          </div>
                         </div>
+                      </div>
                       <div className="flex items-center gap-2">
                         <button
                           onClick={(e) => {
@@ -807,18 +807,18 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
                         >
                           <Edit className="h-4 w-4 text-neutral-text-light hover:text-blue-600" />
                         </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleRemovePermissionClick(grantee.id, displayName);
-                        }}
-                        className="p-2 text-error hover:bg-error/10 rounded transition-colors"
-                        disabled={loading}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemovePermissionClick(grantee.id, displayName);
+                          }}
+                          className="p-2 text-error hover:bg-error/10 rounded transition-colors"
+                          disabled={loading}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       </div>
+                    </div>
                   </div>
                 );
               })}
@@ -836,18 +836,18 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
               itemsPerPage={pageSize}
               onPageChange={setPage}
             />
-              </div>
-            )}
+          </div>
+        )}
 
         {/* Footer */}
         <div className="flex justify-end p-6 border-t border-ui">
-            <button
-              onClick={handleClose}
+          <button
+            onClick={handleClose}
             disabled={loading}
             className="px-6 py-2 text-sm font-medium bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
+          >
             Close
-            </button>
+          </button>
         </div>
       </div>
 
@@ -861,13 +861,13 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
                 <h3 className="text-lg font-semibold text-neutral-text-dark">
                   {editingGrant.isNew ? 'Set Permissions' : 'Edit Permissions'}
                 </h3>
-              <button
+                <button
                   onClick={() => setShowPermissionModal(false)}
                   className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              >
+                >
                   <X className="h-5 w-5" />
-              </button>
-            </div>
+                </button>
+              </div>
 
               {/* Grantee Info */}
               <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-lg mb-6">
@@ -884,47 +884,46 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
                     <Shield className="h-6 w-6 text-purple-700" />
                   </div>
                 )}
-              <div>
+                <div>
                   <div className="font-medium text-neutral-text-dark">
-                    {isUser(editingGrant.grantee) 
+                    {isUser(editingGrant.grantee)
                       ? (() => {
-                          const user = editingGrant.grantee as UserDto;
-                          return `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username;
-                        })()
+                        const user = editingGrant.grantee as UserDto;
+                        return `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username;
+                      })()
                       : editingGrant.grantee.name
                     }
                   </div>
                   <div className="text-sm text-neutral-text-light">
-                    {isUser(editingGrant.grantee) 
+                    {isUser(editingGrant.grantee)
                       ? editingGrant.grantee.email || editingGrant.grantee.username
                       : isGroup(editingGrant.grantee)
-                      ? `${editingGrant.grantee.userCount || 0} members`
-                      : editingGrant.grantee.description || 'Role'
+                        ? `${editingGrant.grantee.userCount || 0} members`
+                        : editingGrant.grantee.description || 'Role'
                     }
                   </div>
                 </div>
               </div>
-              
+
               {/* Permission Presets */}
               <div className="mb-6">
                 <label className="text-sm font-medium mb-3 block text-neutral-text-dark">Quick Presets</label>
                 <div className="grid grid-cols-2 gap-2">
                   {Object.entries(PRESET_LABELS).map(([key, { label, color }]) => {
                     const isActive = JSON.stringify(tempPermission) === JSON.stringify(PERMISSION_PRESETS[key as keyof typeof PERMISSION_PRESETS]);
-                    
+
                     // Get icon based on preset
-                    const Icon = key === 'viewer' ? Eye : 
-                                key === 'editor' ? Edit :
-                                Shield;
-                    
+                    const Icon = key === 'viewer' ? Eye :
+                      key === 'editor' ? Edit :
+                        Shield;
+
                     return (
                       <button
                         key={key}
                         type="button"
                         onClick={() => setTempPermission(PERMISSION_PRESETS[key as keyof typeof PERMISSION_PRESETS])}
-                        className={`flex items-center gap-2 px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
-                          isActive ? color : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                        }`}
+                        className={`flex items-center gap-2 px-4 py-3 text-sm font-medium rounded-lg transition-colors ${isActive ? color : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                          }`}
                       >
                         <Icon className="h-4 w-4" />
                         {label}
@@ -943,73 +942,73 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
                     <input
                       type="checkbox"
                       checked={tempPermission.canView}
-                      onChange={(e) => setTempPermission({...tempPermission, canView: e.target.checked})}
+                      onChange={(e) => setTempPermission({ ...tempPermission, canView: e.target.checked })}
                       className="rounded"
                     />
                     <Eye className="h-4 w-4 text-gray-600" />
                     <span className="text-sm">View</span>
                   </label>
-                  
+
                   <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={tempPermission.canEdit}
-                      onChange={(e) => setTempPermission({...tempPermission, canEdit: e.target.checked})}
+                      onChange={(e) => setTempPermission({ ...tempPermission, canEdit: e.target.checked })}
                       className="rounded"
                     />
                     <Edit className="h-4 w-4 text-gray-600" />
                     <span className="text-sm">Edit</span>
                   </label>
-                  
+
                   <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={tempPermission.canDelete}
-                      onChange={(e) => setTempPermission({...tempPermission, canDelete: e.target.checked})}
+                      onChange={(e) => setTempPermission({ ...tempPermission, canDelete: e.target.checked })}
                       className="rounded"
                     />
                     <Trash2 className="h-4 w-4 text-gray-600" />
                     <span className="text-sm">Delete</span>
                   </label>
-                  
+
                   <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={tempPermission.canShare}
-                      onChange={(e) => setTempPermission({...tempPermission, canShare: e.target.checked})}
+                      onChange={(e) => setTempPermission({ ...tempPermission, canShare: e.target.checked })}
                       className="rounded"
                     />
                     <Share2 className="h-4 w-4 text-gray-600" />
                     <span className="text-sm">Share</span>
                   </label>
-                  
+
                   <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={tempPermission.canManagePermissions}
-                      onChange={(e) => setTempPermission({...tempPermission, canManagePermissions: e.target.checked})}
+                      onChange={(e) => setTempPermission({ ...tempPermission, canManagePermissions: e.target.checked })}
                       className="rounded"
                     />
                     <Settings className="h-4 w-4 text-gray-600" />
                     <span className="text-sm">Manage Permissions</span>
                   </label>
+                </div>
               </div>
-            </div>
 
               {/* Modal Footer */}
               <div className="flex justify-end gap-3">
-              <button
+                <button
                   onClick={() => setShowPermissionModal(false)}
                   className="px-6 py-2 text-sm font-medium bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSavePermission}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSavePermission}
                   className="px-6 py-2 text-sm font-medium bg-primary text-white hover:bg-primary/90 rounded-lg transition-colors"
                 >
                   {editingGrant.isNew ? 'Add Permission' : 'Update Permission'}
-              </button>
+                </button>
               </div>
             </div>
           </div>

@@ -27,13 +27,15 @@ interface ServerSearchInputProps {
   onChange: (value: string) => void;
   placeholder?: string;
   className?: string;
+  onFocus?: () => void;
 }
 
 export default function ServerSearchInput({
   value,
   onChange,
   placeholder = 'Search...',
-  className = ''
+  className = '',
+  onFocus
 }: ServerSearchInputProps) {
   return (
     <div className={`relative ${className}`}>
@@ -43,6 +45,7 @@ export default function ServerSearchInput({
         placeholder={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onFocus={onFocus}
         className="pl-10"
       />
       {value && (

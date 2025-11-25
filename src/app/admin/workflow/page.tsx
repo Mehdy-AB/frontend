@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  Workflow, 
-  Plus, 
+import {
+  Workflow,
+  Plus,
   Edit,
   Trash2,
   Eye,
@@ -30,20 +30,17 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { workflowService } from '@/api/services/workflowService';
-import { WorkflowResponse } from '@/types/workflow';
+import { WorkflowResponse } from '@/types/api';
 import Pagination from '@/components/main/Pagination';
 import ServerSearchInput from '@/components/main/ServerSearchInput';
 import { useServerSideSearch } from '@/components/main/useServerSideSearch';
 import { useRouter } from 'next/navigation';
 import ConfirmationModal from '@/components/modals/ConfirmationModal';
-import CreateWorkflowModal from '@/components/modals/CreateWorkflowModal';
-import { notificationApiClient } from '@/api/notificationClient';
-import { RoleDto } from '@/types/api';
 
 export default function WorkflowManagementPage() {
   const router = useRouter();
   const pageSize = 20;
-  
+
   // Use the server-side search hook
   const {
     displayData: displayWorkflows,
@@ -64,52 +61,19 @@ export default function WorkflowManagementPage() {
     removeItem
   } = useServerSideSearch<WorkflowResponse>({
     fetchFunction: async (page, searchTerm) => {
-      const workflows = await workflowService.getAllWorkflows();
-      // Simple client-side pagination and search for now
-      const filtered = searchTerm 
-        ? workflows.filter(w => w.name.toLowerCase().includes(searchTerm.toLowerCase()))
-        : workflows;
-      
-      const start = page * pageSize;
-      const end = start + pageSize;
-      
-      return {
-        content: filtered.slice(start, end),
-        totalElements: filtered.length,
-        totalPages: Math.ceil(filtered.length / pageSize),
-        number: page,
-        size: pageSize
-      };
+      const response = await workflowService.getAllWorkflows(page, pageSize, searchTerm || undefined, true);
+      return response;
     },
     searchFields: (workflow) => [workflow.name],
     debounceMs: 500
   });
 
   const [selectedItems, setSelectedItems] = useState<number[]>([]);
-  const [roles, setRoles] = useState<RoleDto[]>([]);
-  
+
   // Modal states
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [isCreateLoading, setIsCreateLoading] = useState(false);
   const [workflowToDelete, setWorkflowToDelete] = useState<WorkflowResponse | null>(null);
 
-  // Fetch roles on mount
-  useEffect(() => {
-    const fetchRoles = async () => {
-      try {
-        const rolesResponse = await notificationApiClient.getAllRoles({
-          page: 0,
-          size: 1000,
-          desc: false
-        });
-        setRoles(rolesResponse.content || []);
-      } catch (err) {
-        console.error('Error fetching roles:', err);
-      }
-    };
-    fetchRoles();
-  }, []);
 
   const handlePageChange = useCallback((newPage: number) => {
     if (newPage === page) return;
@@ -124,18 +88,8 @@ export default function WorkflowManagementPage() {
     );
   };
 
-  const handleCreateWorkflow = async (data: any) => {
-    try {
-      setIsCreateLoading(true);
-      // This would need a backend endpoint to create workflows
-      // For now, we'll just refresh the list
-      await fetchData();
-      setIsCreateModalOpen(false);
-    } catch (error) {
-      console.error('Error creating workflow:', error);
-    } finally {
-      setIsCreateLoading(false);
-    }
+  const handleCreateWorkflow = () => {
+    router.push('/admin/workflow/designer');
   };
 
   const handleDeleteClick = (workflow: WorkflowResponse) => {
@@ -147,11 +101,11 @@ export default function WorkflowManagementPage() {
     if (!workflowToDelete) return;
 
     try {
-      // This would need a backend endpoint to delete workflows
-      // For now, we'll just close the modal
+      await workflowService.deleteWorkflow(workflowToDelete.id);
       removeItem(workflowToDelete);
       setIsDeleteModalOpen(false);
       setWorkflowToDelete(null);
+      await fetchData();
     } catch (error) {
       console.error('Error deleting workflow:', error);
     }
@@ -174,14 +128,14 @@ export default function WorkflowManagementPage() {
           <p className="text-muted-foreground">Create and manage document workflows</p>
         </div>
         <div className="flex gap-2">
-          <Button 
+          <Button
             variant="outline"
             onClick={() => router.push('/admin/workflow/designer')}
           >
             <GitBranch className="h-4 w-4 mr-2" />
             Workflow Designer
           </Button>
-          <Button onClick={() => setIsCreateModalOpen(true)}>
+          <Button onClick={handleCreateWorkflow}>
             <Plus className="h-4 w-4 mr-2" />
             Create Workflow
           </Button>
@@ -195,8 +149,6 @@ export default function WorkflowManagementPage() {
             value={searchQuery}
             onChange={setSearchQuery}
             placeholder="Search workflows..."
-            isLoading={tableLoading}
-            isLocalFiltering={isLocalFiltering}
             className="max-w-md"
           />
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
@@ -248,7 +200,6 @@ export default function WorkflowManagementPage() {
                 </th>
                 <th className="text-left p-4 font-medium">Name</th>
                 <th className="text-left p-4 font-medium">Steps</th>
-                <th className="text-left p-4 font-medium">Type</th>
                 <th className="text-left p-4 font-medium">Status</th>
                 <th className="text-right p-4 font-medium">Actions</th>
               </tr>
@@ -256,7 +207,7 @@ export default function WorkflowManagementPage() {
             <tbody>
               {loading && displayWorkflows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center p-8 text-muted-foreground">
+                  <td colSpan={5} className="text-center p-8 text-muted-foreground">
                     <div className="flex items-center justify-center gap-2">
                       <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary"></div>
                       Loading workflows...
@@ -265,14 +216,14 @@ export default function WorkflowManagementPage() {
                 </tr>
               ) : displayWorkflows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center p-8 text-muted-foreground">
+                  <td colSpan={5} className="text-center p-8 text-muted-foreground">
                     No workflows found
                   </td>
                 </tr>
               ) : (
                 displayWorkflows.map((workflow) => (
-                  <tr 
-                    key={workflow.id} 
+                  <tr
+                    key={workflow.id}
                     className="border-b hover:bg-muted/50 transition-colors"
                   >
                     <td className="p-4">
@@ -292,18 +243,22 @@ export default function WorkflowManagementPage() {
                     <td className="p-4">
                       <div className="flex items-center gap-2">
                         <GitBranch className="h-4 w-4 text-muted-foreground" />
-                        <span>{workflow.steps.length} steps</span>
+                        <span>{workflow.stepCount || 0} steps</span>
                       </div>
                     </td>
                     <td className="p-4">
-                      <Badge variant={workflow.conditional ? "default" : "secondary"}>
-                        {workflow.conditional ? "Conditional" : "Linear"}
-                      </Badge>
-                    </td>
-                    <td className="p-4">
-                      <Badge variant="default" className="bg-green-500">
-                        <Play className="h-3 w-3 mr-1" />
-                        Active
+                      <Badge variant={workflow.isActive ? "default" : "secondary"}>
+                        {workflow.isActive ? (
+                          <>
+                            <Play className="h-3 w-3 mr-1" />
+                            Active
+                          </>
+                        ) : (
+                          <>
+                            <Pause className="h-3 w-3 mr-1" />
+                            Inactive
+                          </>
+                        )}
                       </Badge>
                     </td>
                     <td className="p-4">
@@ -347,7 +302,7 @@ export default function WorkflowManagementPage() {
                               Settings
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem 
+                            <DropdownMenuItem
                               onClick={() => handleDeleteClick(workflow)}
                               className="text-destructive"
                             >
@@ -371,6 +326,7 @@ export default function WorkflowManagementPage() {
             <Pagination
               currentPage={page}
               totalPages={totalPages}
+              pageSize={pageSize}
               onPageChange={handlePageChange}
             />
           </div>
@@ -420,7 +376,7 @@ export default function WorkflowManagementPage() {
             <div>
               <p className="text-sm text-muted-foreground">Total Steps</p>
               <p className="text-2xl font-semibold">
-                {displayWorkflows.reduce((acc, w) => acc + w.steps.length, 0)}
+                {displayWorkflows.reduce((acc, w) => acc + (w.stepCount || 0), 0)}
               </p>
             </div>
           </div>
@@ -428,14 +384,6 @@ export default function WorkflowManagementPage() {
       </div>
 
       {/* Modals */}
-      <CreateWorkflowModal
-        isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
-        onSubmit={handleCreateWorkflow}
-        isLoading={isCreateLoading}
-        roles={roles}
-      />
-
       <ConfirmationModal
         isOpen={isDeleteModalOpen}
         onClose={() => {
@@ -444,7 +392,7 @@ export default function WorkflowManagementPage() {
         }}
         onConfirm={handleDeleteConfirm}
         title="Delete Workflow"
-        description={`Are you sure you want to delete the workflow "${workflowToDelete?.name}"? This action cannot be undone.`}
+        message={`Are you sure you want to delete the workflow "${workflowToDelete?.name}"? This action cannot be undone.`}
         confirmText="Delete"
         cancelText="Cancel"
         variant="destructive"

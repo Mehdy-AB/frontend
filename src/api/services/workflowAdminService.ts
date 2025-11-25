@@ -17,10 +17,9 @@ class WorkflowAdminService {
    * Get all workflows with pagination
    */
   async getAllWorkflows(page: number = 0, size: number = 20): Promise<PageResponse<WorkflowDetail>> {
-    const response = await apiClient.get<PageResponse<WorkflowDetail>>(`${this.baseUrl}/all`, {
+    return apiClient.get<PageResponse<WorkflowDetail>>(`${this.baseUrl}/all`, {
       params: { page, size },
     });
-    return response.data;
   }
 
   /**
@@ -31,34 +30,30 @@ class WorkflowAdminService {
     page: number = 0,
     size: number = 20
   ): Promise<PageResponse<WorkflowDetail>> {
-    const response = await apiClient.get<PageResponse<WorkflowDetail>>(`${this.baseUrl}/search`, {
+    return apiClient.get<PageResponse<WorkflowDetail>>(`${this.baseUrl}/search`, {
       params: { query, page, size },
     });
-    return response.data;
   }
 
   /**
    * Get workflow by ID with full details
    */
   async getWorkflowById(id: number): Promise<WorkflowDetail> {
-    const response = await apiClient.get<WorkflowDetail>(`${this.baseUrl}/${id}/details`);
-    return response.data;
+    return apiClient.get<WorkflowDetail>(`${this.baseUrl}/${id}/details`);
   }
 
   /**
    * Create a new workflow
    */
   async createWorkflow(data: CreateWorkflowRequest): Promise<WorkflowDetail> {
-    const response = await apiClient.post<WorkflowDetail>(this.baseUrl, data);
-    return response.data;
+    return apiClient.post<WorkflowDetail>(this.baseUrl, data);
   }
 
   /**
    * Update an existing workflow
    */
   async updateWorkflow(id: number, data: UpdateWorkflowRequest): Promise<WorkflowDetail> {
-    const response = await apiClient.put<WorkflowDetail>(`${this.baseUrl}/${id}`, data);
-    return response.data;
+    return apiClient.put<WorkflowDetail>(`${this.baseUrl}/${id}`, data);
   }
 
   /**

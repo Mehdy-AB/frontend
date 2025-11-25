@@ -23,7 +23,7 @@ export default function SignInContent() {
   })
   const router = useRouter()
   const searchParams = useSearchParams()
-  
+
   // Safe translation hook with fallback
   let t: (key: string) => string
   try {
@@ -53,13 +53,13 @@ export default function SignInContent() {
     const checkSession = async () => {
       try {
         // Add timeout to prevent hanging
-        const timeoutPromise = new Promise((_, reject) => 
+        const timeoutPromise = new Promise((_, reject) =>
           setTimeout(() => reject(new Error('Session check timeout')), 3000)
         )
-        
+
         const sessionPromise = getSession()
         const session = await Promise.race([sessionPromise, timeoutPromise]) as any
-        
+
         if (session) {
           // Use replace to avoid adding to history stack
           router.replace('/')
@@ -77,7 +77,7 @@ export default function SignInContent() {
         setIsCheckingSession(false)
       }
     }
-    
+
     // Only check session if we're on the sign-in page
     if (typeof window !== 'undefined' && window.location.pathname === '/auth/signin') {
       checkSession()
@@ -100,21 +100,21 @@ export default function SignInContent() {
     e.preventDefault()
     setIsLoading(true)
     setError('')
-    
+
     try {
-      const result = await signIn('credentials', { 
+      const result = await signIn('credentials', {
         username: formData.username,
         password: formData.password,
-        redirect: false 
+        redirect: false
       })
-      
+
       if (result?.error) {
         setError(t('signInFailed'))
       } else if (result?.ok) {
         // Get callback URL from query params, fallback to home
         const callbackUrl = searchParams.get('callbackUrl') || '/'
         const redirectUrl = callbackUrl.startsWith('/') ? callbackUrl : '/'
-        
+
         // Use replace to avoid adding to history stack
         router.replace(redirectUrl)
         // Also use window.location for immediate redirect
@@ -152,21 +152,21 @@ export default function SignInContent() {
 
       {/* Background Pattern */}
       <div className="absolute inset-0 bg-grid-pattern opacity-5"></div>
-      
+
       <div className="w-full max-w-6xl grid lg:grid-cols-2 gap-8 items-center">
         {/* Left Side - Branding */}
         <div className="hidden lg:block space-y-8">
           <div className="space-y-4">
             <div className="flex items-center space-x-3">
               <div className="flex items-center justify-center">
-                <img 
-                  src="/logo.svg" 
-                  alt="Logo" 
+                <img
+                  src="/logo.svg"
+                  alt="Logo"
                   className="h-40 w-40"
                 />
               </div>
               <div>
-                <h1 className="text-3xl font-bold text-foreground">DATAVEX</h1>
+                <h1 className="text-3xl font-bold text-foreground">Gi doc</h1>
                 <p className="text-muted-foreground">Fast. Secure. Reliable DMS.</p>
               </div>
             </div>
@@ -220,7 +220,7 @@ export default function SignInContent() {
                 {t('signInDescription')}
               </CardDescription>
             </CardHeader>
-            
+
             <CardContent className="space-y-6">
               {error && (
                 <Alert variant="destructive">

@@ -108,7 +108,11 @@ export function GridItem({
       {/* Workflow Status Badge for documents */}
       {!isFolder && (
         <div className="mt-2">
-          <DocumentWorkflowBadge documentId={item.documentId} compact />
+          <DocumentWorkflowBadge 
+            documentId={item.documentId} 
+            workflowInstance={item.workflowInstance}
+            compact 
+          />
         </div>
       )}
 

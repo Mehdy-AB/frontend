@@ -1,7 +1,7 @@
 // app/documents/[documentId]/page.tsx
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { notificationApiClient } from '../../../api/notificationClient';
@@ -18,8 +18,11 @@ import {
   DocumentModals,
   DocumentViewSkeleton
 } from '../../../components/document';
+import WorkflowStepAction from '../../../components/document/WorkflowStepAction';
 import ConfirmationModal from '../../../components/modals/ConfirmationModal';
 import FolderActionModal from '../../../components/modals/FolderActionModal';
+import { workflowService } from '../../../api/services';
+import { WorkflowStepInstanceResponse } from '../../../types/api';
 
 export default function DocumentViewPage() {
   const { t } = useLanguage();
@@ -47,6 +50,7 @@ export default function DocumentViewPage() {
   const [currentVersion, setCurrentVersion] = useState<number | null>(null);
   const [fileViewerKey, setFileViewerKey] = useState<number>(0);
   const fileViewerRefreshRef = useRef<(() => void) | null>(null);
+  const [pendingStep, setPendingStep] = useState<WorkflowStepInstanceResponse | null>(null);
 
   // Use custom hook for document operations
   const {
@@ -66,113 +70,31 @@ export default function DocumentViewPage() {
     downloadDocument
   } = useDocumentOperations(parseInt(documentId));
 
-  // Fetch document from API
+  // Fetch pending workflow steps
   useEffect(() => {
-    const fetchDocument = async () => {
+    const fetchPendingSteps = async () => {
       try {
-        setLoading(true);
-        setError(null);
-        
-        // Fetch document data and download URL in parallel
-        const versionToFetch = versionParam ? parseInt(versionParam) : null;
-        
-        // If no version param, just fetch without version (backend returns active version automatically)
-        // If version param exists, fetch that specific version
-        const [docData, downloadUrl] = await Promise.all([
-          notificationApiClient.getDocument(parseInt(documentId), { silent: true }),
-          notificationApiClient.downloadDocument(
-            parseInt(documentId), 
-            versionToFetch || undefined, 
-            { silent: true }
-          )
-        ]);
-        
-        // Set current version from URL param or from the document's active version
-        setCurrentVersion(versionToFetch || docData.activeVersion || null);
-        
-        // Extend the document with viewing-specific data
-        const documentView: DocumentViewDto = {
-          ...docData,
-          contentUrl: downloadUrl,
-          thumbnailUrl: `${process.env.NEXT_PUBLIC_API_URL}/api/v1/document/${docData.documentId}/thumbnail`,
-          modelConfigurations: [
-            {
-              id: 1,
-              name: 'Text Extraction',
-              type: 'extraction',
-              status: 'active',
-              confidence: 0.95,
-              lastRun: new Date().toISOString(),
-              parameters: { language: 'auto' }
-            },
-            {
-              id: 2,
-              name: 'Document Classification',
-              type: 'classification',
-              status: 'active',
-              confidence: 0.87,
-              lastRun: new Date().toISOString(),
-              parameters: { category: 'business' }
-            }
-          ],
-          aiModels: [
-            {
-              id: 1,
-              name: 'GPT-4',
-              provider: 'OpenAI',
-              version: '4.0',
-              purpose: 'Text Analysis',
-              accuracy: 0.92,
-              lastUsed: new Date().toISOString()
-            }
-          ],
-          relatedDocuments: [
-            {
-              documentId: 123,
-              name: 'Related Document.pdf',
-              similarity: 0.85,
-              reason: 'Similar content and keywords'
-            }
-          ],
-          accessLogs: [
-            {
-              id: 1,
-              user: docData.createdBy,
-              action: 'viewed',
-              timestamp: new Date().toISOString(),
-              ipAddress: '127.0.0.1'
-            }
-          ]
-        };
-        
-        setDocument(documentView);
-        
-        // Fetch additional data in background (don't block main loading)
-        fetchAuditLogs(parseInt(documentId));
-        fetchComments(parseInt(documentId));
-        checkFavoriteStatus(parseInt(documentId));
-        fetchVersions();
-        fetchMetadata(parseInt(documentId));
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Failed to load document';
-        setError(errorMessage);
-        console.error('Error fetching document:', err);
-      } finally {
-        setLoading(false);
+        const steps = await workflowService.getDocumentSteps(parseInt(documentId));
+        // Get the first actionable step
+        const actionableStep = steps.find(step => step.isActionable);
+        setPendingStep(actionableStep || null);
+      } catch (error) {
+        // Silently fail - workflow steps are optional
+        console.debug('No workflow steps found for document:', error);
       }
     };
 
     if (documentId) {
-      fetchDocument();
+      fetchPendingSteps();
     }
-  }, [documentId, versionParam, fetchAuditLogs, fetchComments, checkFavoriteStatus]);
+  }, [documentId]);
 
   // Fetch document versions
-  const fetchVersions = async () => {
-    if (!document) return;
+  const fetchVersions = useCallback(async () => {
+    if (!documentId) return;
     
     try {
-      const versions = await notificationApiClient.getDocumentVersionsList(document.documentId) as unknown as DocumentVersionResponseDto[];
+      const versions = await notificationApiClient.getDocumentVersionsList(parseInt(documentId)) as unknown as DocumentVersionResponseDto[];
       // Sort versions by version number
       const sortedVersions = versions.sort((a, b) => a.versionNumber - b.versionNumber);
       
@@ -190,7 +112,109 @@ export default function DocumentViewPage() {
     } catch (error) {
       console.error('Error fetching versions:', error);
     }
-  };
+  }, [documentId]);
+
+  // Fetch document from API
+  const fetchDocument = useCallback(async () => {
+    if (!documentId) return;
+    
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Fetch document data and download URL in parallel
+      const versionToFetch = versionParam ? parseInt(versionParam) : null;
+      
+      // If no version param, just fetch without version (backend returns active version automatically)
+      // If version param exists, fetch that specific version
+      const [docData, downloadUrl] = await Promise.all([
+        notificationApiClient.getDocument(parseInt(documentId), { silent: true }),
+        notificationApiClient.downloadDocument(
+          parseInt(documentId), 
+          versionToFetch || undefined, 
+          { silent: true }
+        )
+      ]);
+      
+      // Set current version from URL param or from the document's active version
+      setCurrentVersion(versionToFetch || docData.activeVersion || null);
+      
+      // Extend the document with viewing-specific data
+      const documentView: DocumentViewDto = {
+        ...docData,
+        contentUrl: downloadUrl,
+        thumbnailUrl: `${process.env.NEXT_PUBLIC_API_URL}/api/v1/document/${docData.documentId}/thumbnail`,
+        modelConfigurations: [
+          {
+            id: 1,
+            name: 'Text Extraction',
+            type: 'extraction',
+            status: 'active',
+            confidence: 0.95,
+            lastRun: new Date().toISOString(),
+            parameters: { language: 'auto' }
+          },
+          {
+            id: 2,
+            name: 'Document Classification',
+            type: 'classification',
+            status: 'active',
+            confidence: 0.87,
+            lastRun: new Date().toISOString(),
+            parameters: { category: 'business' }
+          }
+        ],
+        aiModels: [
+          {
+            id: 1,
+            name: 'GPT-4',
+            provider: 'OpenAI',
+            version: '4.0',
+            purpose: 'Text Analysis',
+            accuracy: 0.92,
+            lastUsed: new Date().toISOString()
+          }
+        ],
+        relatedDocuments: [
+          {
+            documentId: 123,
+            name: 'Related Document.pdf',
+            similarity: 0.85,
+            reason: 'Similar content and keywords'
+          }
+        ],
+        accessLogs: [
+          {
+            id: 1,
+            user: docData.createdBy,
+            action: 'viewed',
+            timestamp: new Date().toISOString(),
+            ipAddress: '127.0.0.1'
+          }
+        ]
+      };
+      
+      setDocument(documentView);
+      
+      // Fetch additional data in background (don't block main loading)
+      fetchAuditLogs(parseInt(documentId));
+      fetchComments(parseInt(documentId));
+      checkFavoriteStatus(parseInt(documentId));
+      fetchVersions();
+      fetchMetadata(parseInt(documentId));
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load document';
+      setError(errorMessage);
+      console.error('Error fetching document:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [documentId, versionParam, fetchAuditLogs, fetchComments, checkFavoriteStatus, fetchMetadata, fetchVersions]);
+
+  // Fetch document on mount and when dependencies change
+  useEffect(() => {
+    fetchDocument();
+  }, [fetchDocument]);
 
   // Handle rename document
   const handleRenameDocument = () => {
@@ -404,7 +428,7 @@ export default function DocumentViewPage() {
   }
 
   return (
-    <div className="flex h-full bg-neutral-background">
+    <div className={`flex h-full bg-neutral-background ${pendingStep ? 'pb-24' : ''}`}>
       {/* Main Document Viewer */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
@@ -482,6 +506,7 @@ export default function DocumentViewPage() {
               setDocument(updatedDocument as DocumentViewDto);
             }
           }}
+          onRefreshDocument={fetchDocument}
         />
       </div>
 
@@ -557,6 +582,22 @@ export default function DocumentViewPage() {
           document={document}
           action="rename"
           onSuccess={handleRenameSuccess}
+        />
+      )}
+
+      {/* Workflow Step Action - Fixed at bottom */}
+      {pendingStep && (
+        <WorkflowStepAction
+          stepInstance={pendingStep}
+          onComplete={() => {
+            // Refresh pending steps after completion
+            workflowService.getDocumentSteps(parseInt(documentId))
+              .then(steps => {
+                const actionableStep = steps.find(step => step.isActionable);
+                setPendingStep(actionableStep || null);
+              })
+              .catch(() => setPendingStep(null));
+          }}
         />
       )}
     </div>

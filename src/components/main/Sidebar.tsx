@@ -1,11 +1,11 @@
 // components/Sidebar.tsx (Updated Version)
 'use client';
 
-import { 
-  Home, 
-  Tag, 
-  Users, 
-  Trash2, 
+import {
+  Home,
+  Tag,
+  Users,
+  Trash2,
   Folder,
   FolderTree,
   Settings,
@@ -18,7 +18,7 @@ import {
   FileCheck,
   Archive
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -26,6 +26,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { isAdmin } from '../../utils/adminUtils';
+import { workflowService } from '@/api/services/workflowService';
 
 interface SidebarItem {
   id: string;
@@ -37,11 +38,28 @@ interface SidebarItem {
 
 export default function Sidebar() {
   const [expandedItems, setExpandedItems] = useState<string[]>(['files']);
+  const [pendingTasksCount, setPendingTasksCount] = useState(0);
   const pathname = usePathname();
   const { t } = useLanguage();
-  
+
   // Check if user is admin
   const userIsAdmin = isAdmin();
+
+  useEffect(() => {
+    const fetchTaskCount = async () => {
+      try {
+        const response = await workflowService.getActiveSteps(0, 1, '', 'all');
+        setPendingTasksCount(response.totalElements);
+      } catch (error) {
+        console.error('Failed to fetch task count', error);
+      }
+    };
+
+    fetchTaskCount();
+    // Poll every minute
+    const interval = setInterval(fetchTaskCount, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Base navigation items for all users
   const baseItems: SidebarItem[] = [
@@ -50,6 +68,12 @@ export default function Sidebar() {
       label: t('common.dashboard'),
       icon: Home,
       href: '/',
+    },
+    {
+      id: 'tasks',
+      label: 'My Tasks',
+      icon: FileCheck,
+      href: '/admin/tasks',
     },
     {
       id: 'myrepo',
@@ -106,19 +130,24 @@ export default function Sidebar() {
     return (
       <div key={item.id}>
         <Link href={item.href}>
-      <div
-        className={`flex items-center justify-between p-3 rounded-lg transition-colors group ${
-          active
-            ? 'bg-accent text-accent-foreground'
-            : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
-        }`}
-        style={{ paddingLeft: `${level * 16 + 16}px` }}
-      >
+          <div
+            className={`flex items-center justify-between p-3 rounded-lg transition-colors group ${active
+              ? 'bg-accent text-accent-foreground'
+              : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+              }`}
+            style={{ paddingLeft: `${level * 16 + 16}px` }}
+          >
             <div className="flex items-center gap-3 flex-1">
               <item.icon className="h-4 w-4 flex-shrink-0" />
               <span className="text-sm font-medium truncate">{item.label}</span>
             </div>
-            
+
+            {item.id === 'tasks' && pendingTasksCount > 0 && (
+              <Badge variant="destructive" className="ml-auto h-5 w-5 flex items-center justify-center rounded-full p-0 text-[10px]">
+                {pendingTasksCount > 99 ? '99+' : pendingTasksCount}
+              </Badge>
+            )}
+
             <div className="flex items-center gap-1">
               {hasChildren && (
                 <Button
@@ -158,14 +187,14 @@ export default function Sidebar() {
       <div className="p-6 border-b">
         <div className="flex items-center gap-3">
           <div className=" flex items-center justify-center">
-            <img 
-              src="/logo.svg" 
-              alt="Logo" 
+            <img
+              src="/logo.svg"
+              alt="Logo"
               className="h-16 w-16"
             />
           </div>
           <div>
-            <h1 className="text-xl font-semibold">DATAVEX</h1>
+            <h1 className="text-xl font-semibold">Gi doc</h1>
             <p className="text-xs text-muted-foreground"> Fast. Secure. Reliable DMS.</p>
           </div>
         </div>
