@@ -2,8 +2,8 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  Plus, 
+import {
+  Plus,
   Edit,
   Trash2,
   Users as UsersIcon,
@@ -11,6 +11,8 @@ import {
   ChevronRight,
   MoreVertical,
   UserPlus,
+  Download,
+  Upload,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -35,19 +37,20 @@ import AssignGroupModal from '@/components/modals/AssignGroupModal';
 import ViewGroupUsersModal from '@/components/modals/ViewGroupUsersModal';
 import ConfirmationModal from '@/components/modals/ConfirmationModal';
 import { useAdminPagePermissions } from '@/hooks/useAdminPagePermissions';
+import { exportToCSV, exportSelected, GROUP_EXPORT_COLUMNS } from '@/lib/exportUtils';
 
 export default function GroupsPage() {
   const router = useRouter();
-  const pageSize = 20;
+  const [pageSize, setPageSize] = useState(20);
   const { canView, canCreate, canUpdate, canDelete, canAssign } = useAdminPagePermissions();
-  
+
   // Redirect if user doesn't have view permission
   useEffect(() => {
     if (!canView) {
       router.push('/');
     }
   }, [canView, router]);
-  
+
   // Use the server-side search hook
   const {
     displayData: displayGroups,
@@ -81,19 +84,19 @@ export default function GroupsPage() {
 
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
-  
+
   // Modal states
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [isViewUsersModalOpen, setIsViewUsersModalOpen] = useState(false);
-  
+
   // Loading states
   const [isCreateLoading, setIsCreateLoading] = useState(false);
   const [isEditLoading, setIsEditLoading] = useState(false);
   const [isAssignLoading, setIsAssignLoading] = useState(false);
-  
+
   // Selected items for modals
   const [groupToEdit, setGroupToEdit] = useState<GroupDto | null>(null);
   const [groupToDelete, setGroupToDelete] = useState<GroupDto | null>(null);
@@ -104,6 +107,26 @@ export default function GroupsPage() {
     if (newPage === page) return;
     setPage(newPage);
   }, [page, setPage]);
+
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize);
+    setPage(0);
+  };
+
+  const handleExportAll = () => {
+    exportToCSV(displayGroups, {
+      filename: `groups_export_${new Date().toISOString().split('T')[0]}`,
+      columns: GROUP_EXPORT_COLUMNS
+    });
+  };
+
+  const handleExportSelected = () => {
+    if (selectedItems.length === 0) return;
+    exportSelected(displayGroups, selectedItems, {
+      filename: `groups_selected_${new Date().toISOString().split('T')[0]}`,
+      columns: GROUP_EXPORT_COLUMNS
+    });
+  };
 
   const toggleGroupExpansion = (groupId: string) => {
     setExpandedGroups(prev =>
@@ -142,7 +165,7 @@ export default function GroupsPage() {
 
   const handleEditConfirm = async (data: EditGroupData) => {
     if (!groupToEdit) return;
-    
+
     try {
       setIsEditLoading(true);
       await notificationApiClient.updateGroup(groupToEdit.id, data);
@@ -168,7 +191,7 @@ export default function GroupsPage() {
 
   const handleDeleteConfirm = async () => {
     if (!groupToDelete) return;
-    
+
     try {
       await notificationApiClient.deleteGroup(groupToDelete.id);
       // Remove from local state
@@ -187,7 +210,7 @@ export default function GroupsPage() {
 
   const handleAssignConfirm = async (userIds: string[]) => {
     if (!groupToAssign) return;
-    
+
     try {
       setIsAssignLoading(true);
       await notificationApiClient.assignUsersToGroup(groupToAssign.id, userIds);
@@ -231,28 +254,54 @@ export default function GroupsPage() {
   return (
     <div className="space-y-6 p-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold">Group Management</h1>
           <p className="text-muted-foreground">Manage user groups and their members</p>
         </div>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button 
-              className="gap-2" 
-              onClick={() => setIsCreateModalOpen(true)}
-              disabled={!canCreate}
-            >
-              <Plus className="h-4 w-4" />
-              Add Group
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex bg-muted/50 p-1 rounded-lg gap-1 border">
+            <Button variant="ghost" size="sm" className="h-8 gap-2" onClick={handleExportAll}>
+              <Download className="h-4 w-4" />
+              <span className="hidden sm:inline">Export All</span>
             </Button>
-          </TooltipTrigger>
-          {!canCreate && (
-            <TooltipContent>
-              <p>You don't have permission to create groups</p>
-            </TooltipContent>
-          )}
-        </Tooltip>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-2"
+              onClick={handleExportSelected}
+              disabled={selectedItems.length === 0}
+            >
+              <Download className="h-4 w-4" />
+              <span className="hidden sm:inline">Selected ({selectedItems.length})</span>
+            </Button>
+            <Button variant="ghost" size="sm" className="h-8 gap-2" disabled>
+              <Upload className="h-4 w-4" />
+              <span className="hidden sm:inline">Import</span>
+            </Button>
+          </div>
+
+          <div className="h-8 w-px bg-border mx-1 hidden sm:block"></div>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                className="gap-2"
+                onClick={() => setIsCreateModalOpen(true)}
+                disabled={!canCreate}
+              >
+                <Plus className="h-4 w-4" />
+                Add Group
+              </Button>
+            </TooltipTrigger>
+            {!canCreate && (
+              <TooltipContent>
+                <p>You don't have permission to create groups</p>
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </div>
       </div>
 
       {/* Error Display */}
@@ -302,8 +351,8 @@ export default function GroupsPage() {
               <thead className="bg-muted">
                 <tr>
                   <th className="text-left p-4">
-                    <input 
-                      type="checkbox" 
+                    <input
+                      type="checkbox"
                       className="rounded border-ui"
                       checked={selectedItems.length === displayGroups.length && displayGroups.length > 0}
                       onChange={(e) => {
@@ -329,8 +378,8 @@ export default function GroupsPage() {
                     <React.Fragment key={group.id}>
                       <tr className="border-b hover:bg-muted/50">
                         <td className="p-4">
-                          <input 
-                            type="checkbox" 
+                          <input
+                            type="checkbox"
                             className="rounded border-ui"
                             checked={selectedItems.includes(group.id)}
                             onChange={() => toggleSelectGroup(group.id)}
@@ -338,7 +387,7 @@ export default function GroupsPage() {
                         </td>
                         <td className="p-4">
                           <div className="flex items-center gap-3">
-                            <button 
+                            <button
                               onClick={() => toggleGroupExpansion(group.id)}
                               className="p-1 rounded hover:bg-muted transition-colors"
                             >
@@ -379,7 +428,7 @@ export default function GroupsPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem 
+                              <DropdownMenuItem
                                 onClick={() => canUpdate && handleEditClick(group)}
                                 disabled={!canUpdate}
                                 className={!canUpdate ? 'opacity-50 cursor-not-allowed' : ''}
@@ -388,8 +437,8 @@ export default function GroupsPage() {
                                 <Edit className="h-4 w-4 mr-2" />
                                 Edit Group
                               </DropdownMenuItem>
-                              
-                              <DropdownMenuItem 
+
+                              <DropdownMenuItem
                                 onClick={() => canAssign && handleAssignClick(group)}
                                 disabled={!canAssign}
                                 className={!canAssign ? 'opacity-50 cursor-not-allowed' : ''}
@@ -398,16 +447,16 @@ export default function GroupsPage() {
                                 <UserPlus className="h-4 w-4 mr-2" />
                                 Assign Users
                               </DropdownMenuItem>
-                              
+
                               <DropdownMenuItem onClick={() => handleViewUsersClick(group)}>
                                 <UsersIcon className="h-4 w-4 mr-2" />
                                 View Users
                               </DropdownMenuItem>
-                              
+
                               {canDelete && <DropdownMenuSeparator />}
-                              
-                              <DropdownMenuItem 
-                                onClick={() => canDelete && handleDeleteClick(group)} 
+
+                              <DropdownMenuItem
+                                onClick={() => canDelete && handleDeleteClick(group)}
                                 disabled={!canDelete}
                                 className={`${!canDelete ? 'opacity-50 cursor-not-allowed' : 'text-destructive'}`}
                                 title={!canDelete ? "You don't have permission to delete groups" : undefined}
@@ -419,7 +468,7 @@ export default function GroupsPage() {
                           </DropdownMenu>
                         </td>
                       </tr>
-                      
+
                       {isExpanded && (
                         <tr className="bg-muted/30">
                           <td colSpan={5} className="p-4 pl-20">
@@ -452,7 +501,7 @@ export default function GroupsPage() {
                 })}
               </tbody>
             </table>
-            
+
             {displayGroups.length === 0 && !tableLoading && (
               <div className="text-center py-12">
                 <UsersIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
@@ -479,6 +528,7 @@ export default function GroupsPage() {
         totalElements={totalElements}
         pageSize={pageSize}
         onPageChange={handlePageChange}
+        onPageSizeChange={handlePageSizeChange}
       />
 
       {/* Modals */}

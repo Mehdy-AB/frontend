@@ -105,15 +105,15 @@ export class TokenManager {
 
   private isExpired(): boolean {
     if (!this.accessToken) return true;
-    // consider token expired if within 60s of expiry
+    // consider token expired if within 2 minutes of expiry (buffer for network latency)
     const now = Date.now();
-    return this.accessTokenExpires - now < 60 * 1000;
+    return this.accessTokenExpires - now < 120 * 1000;
   }
 
   // main entry for ApiClient interceptor
   public async getValidAccessToken(): Promise<string | null> {
     const startTime = performance.now();
-    
+
     if (!this.isExpired()) {
       const duration = performance.now() - startTime;
       if (duration > 10) { // Log if it takes more than 10ms
@@ -121,7 +121,7 @@ export class TokenManager {
       }
       return this.accessToken;
     }
-    
+
     // if already refreshing, wait
     if (this.isRefreshing) {
       console.log('TokenManager: Token expired, waiting for refresh...');
@@ -138,7 +138,7 @@ export class TokenManager {
       await this.handleAuthFailure();
       return null;
     }
-    
+
     const duration = performance.now() - startTime;
     console.log(`TokenManager: getValidAccessToken took ${duration.toFixed(2)}ms (refreshed)`);
     return this.accessToken;
@@ -158,7 +158,7 @@ export class TokenManager {
       if (!refreshToken) throw new Error('No refresh token');
 
       const response = await authService.refreshToken(refreshToken);
-      
+
       // update memory
       this.accessToken = response.accessToken;
       this.refreshToken = response.refreshToken ?? this.refreshToken;

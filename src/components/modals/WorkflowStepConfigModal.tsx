@@ -35,6 +35,7 @@ interface WorkflowStepConfigModalProps {
     allowParallelApproval?: boolean;
     minApprovalsNeeded?: number;
     priority?: 'LOW' | 'MEDIUM' | 'HIGH';
+    expirationAction?: 'DENY' | 'CONTINUE';
   };
   onSave: (stepData: {
     label: string;
@@ -53,6 +54,7 @@ interface WorkflowStepConfigModalProps {
     allowParallelApproval?: boolean;
     minApprovalsNeeded?: number;
     priority?: 'LOW' | 'MEDIUM' | 'HIGH';
+    expirationAction?: 'DENY' | 'CONTINUE';
   }) => void;
 }
 
@@ -96,6 +98,7 @@ export default function WorkflowStepConfigModal({
   const [allowParallelApproval, setAllowParallelApproval] = useState(stepData.allowParallelApproval ?? false);
   const [minApprovalsNeeded, setMinApprovalsNeeded] = useState<number>(stepData.minApprovalsNeeded || 1);
   const [priority, setPriority] = useState<'LOW' | 'MEDIUM' | 'HIGH'>(stepData.priority || 'MEDIUM');
+  const [expirationAction, setExpirationAction] = useState<'DENY' | 'CONTINUE'>(stepData.expirationAction || 'DENY');
 
   const [assignments, setAssignments] = useState<StepAssignment[]>([]);
   const [showFolderPicker, setShowFolderPicker] = useState(false);
@@ -443,9 +446,7 @@ export default function WorkflowStepConfigModal({
       assignments: assignmentRequests,
       assignmentEntities,
       expirationDays: expirationDays > 0 ? expirationDays : undefined,
-      onCompleteAction: onCompleteAction !== 'NONE' ? onCompleteAction : undefined,
-      targetFolderId: onCompleteAction === 'MOVE_TO_FOLDER' ? targetFolderId : undefined,
-      isRequired,
+      expirationAction: expirationDays > 0 ? expirationAction : undefined,
       allowParallelApproval,
       minApprovalsNeeded: allowParallelApproval ? minApprovalsNeeded : undefined,
       priority,
@@ -691,69 +692,34 @@ export default function WorkflowStepConfigModal({
                 <p className="text-xs text-gray-500 mt-1">Days until step expires (0 = no expiration)</p>
               </div>
 
-              <div>
-                <Label htmlFor="on-complete-action">On Complete Action</Label>
-                <Select value={onCompleteAction} onValueChange={(value: any) => setOnCompleteAction(value)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="NONE">None</SelectItem>
-                    <SelectItem value="MOVE_TO_FOLDER">Move to Folder</SelectItem>
-                    <SelectItem value="NOTIFY_USERS">Notify Users</SelectItem>
-                    <SelectItem value="COMPLETE_WORKFLOW">Complete Workflow</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              {expirationDays > 0 && (
+                <div>
+                  <Label htmlFor="expiration-action">On Expiration</Label>
+                  <Select value={expirationAction} onValueChange={(value: 'DENY' | 'CONTINUE') => setExpirationAction(value)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="DENY">Mark as Denied</SelectItem>
+                      <SelectItem value="CONTINUE">Continue to next step</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-gray-500 mt-1">What happens when the step expires</p>
+                </div>
+              )}
             </div>
 
-            {onCompleteAction === 'MOVE_TO_FOLDER' && (
-              <div>
-                <Label>Target Folder</Label>
-                <div className="flex items-center gap-2 mt-1">
-                  <Input
-                    value={targetFolderName || 'No folder selected'}
-                    readOnly
-                    placeholder="Select target folder..."
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setShowFolderPicker(true)}
-                  >
-                    <Folder className="w-4 h-4 mr-2" />
-                    {targetFolderId ? 'Change Folder' : 'Select Folder'}
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            <div className="flex items-center gap-6">
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="is-required"
-                  checked={isRequired}
-                  onChange={(e) => setIsRequired(e.target.checked)}
-                  className="rounded"
-                />
-                <Label htmlFor="is-required" className="cursor-pointer">
-                  Required Step
-                </Label>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="allow-parallel"
-                  checked={allowParallelApproval}
-                  onChange={(e) => setAllowParallelApproval(e.target.checked)}
-                  className="rounded"
-                />
-                <Label htmlFor="allow-parallel" className="cursor-pointer">
-                  Allow Parallel Approval
-                </Label>
-              </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="allow-parallel"
+                checked={allowParallelApproval}
+                onChange={(e) => setAllowParallelApproval(e.target.checked)}
+                className="rounded"
+              />
+              <Label htmlFor="allow-parallel" className="cursor-pointer">
+                Allow Parallel Approval
+              </Label>
             </div>
 
             {allowParallelApproval && (
@@ -983,8 +949,8 @@ export default function WorkflowStepConfigModal({
                 <button
                   onClick={() => setFolderActiveTab('folders')}
                   className={`px-4 py-2 font-medium text-sm transition-colors border-b-2 ${folderActiveTab === 'folders'
-                      ? 'border-blue-600 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
                     }`}
                 >
                   <div className="flex items-center gap-2">
@@ -995,8 +961,8 @@ export default function WorkflowStepConfigModal({
                 <button
                   onClick={() => setFolderActiveTab('shared')}
                   className={`px-4 py-2 font-medium text-sm transition-colors border-b-2 ${folderActiveTab === 'shared'
-                      ? 'border-blue-600 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
                     }`}
                 >
                   <div className="flex items-center gap-2">
@@ -1027,8 +993,8 @@ export default function WorkflowStepConfigModal({
                     <button
                       onClick={() => navigateMyFoldersBreadcrumb(null)}
                       className={`flex items-center gap-1 px-2 py-1 rounded transition-colors flex-shrink-0 ${myFoldersCurrentFolderId === null
-                          ? 'font-medium text-blue-600'
-                          : 'hover:bg-gray-100 text-gray-700'
+                        ? 'font-medium text-blue-600'
+                        : 'hover:bg-gray-100 text-gray-700'
                         }`}
                     >
                       <Home className="h-4 w-4" />
@@ -1041,8 +1007,8 @@ export default function WorkflowStepConfigModal({
                         <button
                           onClick={() => navigateMyFoldersBreadcrumb(crumb.id, index)}
                           className={`px-2 py-1 rounded transition-colors truncate max-w-[150px] ${index === myFoldersBreadcrumbs.length - 1 && myFoldersCurrentFolderId === crumb.id
-                              ? 'font-medium text-blue-600'
-                              : 'hover:bg-gray-100 text-gray-700'
+                            ? 'font-medium text-blue-600'
+                            : 'hover:bg-gray-100 text-gray-700'
                             }`}
                           title={crumb.name}
                         >
@@ -1066,8 +1032,8 @@ export default function WorkflowStepConfigModal({
                             <div
                               key={folder.id}
                               className={`flex items-center py-2 px-3 rounded-md transition-colors ${isSelected
-                                  ? 'bg-blue-100 border border-blue-300'
-                                  : 'hover:bg-gray-100'
+                                ? 'bg-blue-100 border border-blue-300'
+                                : 'hover:bg-gray-100'
                                 }`}
                             >
                               <Folder className="h-4 w-4 mr-2 text-blue-500" />
@@ -1138,8 +1104,8 @@ export default function WorkflowStepConfigModal({
                     <button
                       onClick={() => navigateSharedBreadcrumb(null)}
                       className={`flex items-center gap-1 px-2 py-1 rounded transition-colors flex-shrink-0 ${sharedCurrentFolderId === null
-                          ? 'font-medium text-blue-600'
-                          : 'hover:bg-gray-100 text-gray-700'
+                        ? 'font-medium text-blue-600'
+                        : 'hover:bg-gray-100 text-gray-700'
                         }`}
                     >
                       <Home className="h-4 w-4" />
@@ -1152,8 +1118,8 @@ export default function WorkflowStepConfigModal({
                         <button
                           onClick={() => navigateSharedBreadcrumb(crumb.id, index)}
                           className={`px-2 py-1 rounded transition-colors truncate max-w-[150px] ${index === sharedBreadcrumbs.length - 1 && sharedCurrentFolderId === crumb.id
-                              ? 'font-medium text-blue-600'
-                              : 'hover:bg-gray-100 text-gray-700'
+                            ? 'font-medium text-blue-600'
+                            : 'hover:bg-gray-100 text-gray-700'
                             }`}
                           title={crumb.name}
                         >
@@ -1177,8 +1143,8 @@ export default function WorkflowStepConfigModal({
                             <div
                               key={folder.id}
                               className={`flex items-center py-2 px-3 rounded-md transition-colors ${isSelected
-                                  ? 'bg-blue-100 border border-blue-300'
-                                  : 'hover:bg-gray-100'
+                                ? 'bg-blue-100 border border-blue-300'
+                                : 'hover:bg-gray-100'
                                 }`}
                             >
                               <Folder className="h-4 w-4 mr-2 text-blue-500" />

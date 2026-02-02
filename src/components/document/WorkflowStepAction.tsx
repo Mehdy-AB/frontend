@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { CheckCircle2, XCircle, Clock, AlertCircle } from 'lucide-react';
-import { WorkflowStepInstanceResponse, CompleteStepRequest, RejectStepRequest } from '@/types/api';
+import { WorkflowNodeInstanceResponse, CompleteStepRequest, RejectStepRequest } from '@/types/api';
 import { workflowService } from '@/api/services';
 import { useNotifications } from '@/hooks/useNotifications';
 import { Button } from '@/components/ui/button';
@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/dialog';
 
 interface WorkflowStepActionProps {
-  stepInstance: WorkflowStepInstanceResponse;
+  stepInstance: WorkflowNodeInstanceResponse;
   onComplete?: () => void;
 }
 
@@ -71,7 +71,7 @@ export default function WorkflowStepAction({ stepInstance, onComplete }: Workflo
     }
   };
 
-  if (!stepInstance.isActionable) {
+  if (stepInstance.status !== 'ACTIVE') {
     return null;
   }
 
@@ -79,9 +79,8 @@ export default function WorkflowStepAction({ stepInstance, onComplete }: Workflo
 
   return (
     <>
-      <div className={`fixed bottom-0 left-0 right-0 z-50 border-t bg-white shadow-lg ${
-        isOverdue ? 'border-red-300 bg-red-50' : 'border-blue-300 bg-blue-50'
-      }`}>
+      <div className={`fixed bottom-0 left-0 right-0 z-50 border-t bg-white shadow-lg ${isOverdue ? 'border-red-300 bg-red-50' : 'border-blue-300 bg-blue-50'
+        }`}>
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3 flex-1">
@@ -92,17 +91,12 @@ export default function WorkflowStepAction({ stepInstance, onComplete }: Workflo
               )}
               <div className="flex-1">
                 <div className="font-semibold text-gray-900">
-                  {stepInstance.workflowStep.name}
+                  {stepInstance.nodeName}
                 </div>
-                {stepInstance.workflowStep.description && (
-                  <div className="text-sm text-gray-600 mt-1">
-                    {stepInstance.workflowStep.description}
-                  </div>
-                )}
+
                 {stepInstance.dueDate && (
-                  <div className={`text-xs mt-1 ${
-                    isOverdue ? 'text-red-600 font-medium' : 'text-gray-500'
-                  }`}>
+                  <div className={`text-xs mt-1 ${isOverdue ? 'text-red-600 font-medium' : 'text-gray-500'
+                    }`}>
                     Due: {new Date(stepInstance.dueDate).toLocaleString()}
                     {isOverdue && ' (Overdue)'}
                   </div>
@@ -138,7 +132,7 @@ export default function WorkflowStepAction({ stepInstance, onComplete }: Workflo
           <DialogHeader>
             <DialogTitle>Complete Step</DialogTitle>
             <DialogDescription>
-              Complete the step: {stepInstance.workflowStep.name}
+              Complete the step: {stepInstance.nodeName}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -170,7 +164,7 @@ export default function WorkflowStepAction({ stepInstance, onComplete }: Workflo
           <DialogHeader>
             <DialogTitle>Reject Step</DialogTitle>
             <DialogDescription>
-              Reject the step: {stepInstance.workflowStep.name}
+              Reject the step: {stepInstance.nodeName}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">

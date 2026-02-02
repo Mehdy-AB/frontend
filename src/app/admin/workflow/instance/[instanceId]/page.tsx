@@ -247,7 +247,7 @@ export default function WorkflowInstanceDetailPage() {
             <div>
               <p className="text-xs text-muted-foreground font-medium uppercase">Current Step</p>
               <p className="font-semibold truncate max-w-[150px]">
-                {instance.currentStep?.name || 'None'}
+                {instance.currentNodeLabel || 'None'}
               </p>
             </div>
           </CardContent>
@@ -290,7 +290,7 @@ export default function WorkflowInstanceDetailPage() {
             <div>
               <p className="text-xs text-muted-foreground font-medium uppercase">Progress</p>
               <div className="flex items-center gap-2">
-                <span className="font-semibold">{instance.completedStepsCount}/{instance.totalStepsCount}</span>
+                <span className="font-semibold">{instance.completedNodesCount}/{instance.totalNodesCount}</span>
                 <span className="text-xs text-muted-foreground">steps</span>
               </div>
             </div>
@@ -322,14 +322,14 @@ export default function WorkflowInstanceDetailPage() {
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-blue-900">Overall Completion</span>
                 <span className="text-sm font-bold text-blue-900">
-                  {Math.round((instance.completedStepsCount / Math.max(instance.totalStepsCount, 1)) * 100)}%
+                  {Math.round((instance.completedNodesCount / Math.max(instance.totalNodesCount, 1)) * 100)}%
                 </span>
               </div>
               <div className="w-full bg-blue-200/50 rounded-full h-3">
                 <div
                   className="bg-blue-600 h-3 rounded-full transition-all duration-500 ease-out shadow-sm"
                   style={{
-                    width: `${(instance.completedStepsCount / Math.max(instance.totalStepsCount, 1)) * 100}%`
+                    width: `${(instance.completedNodesCount / Math.max(instance.totalNodesCount, 1)) * 100}%`
                   }}
                 />
               </div>

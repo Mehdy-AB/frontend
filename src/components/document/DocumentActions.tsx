@@ -82,11 +82,10 @@ export default function DocumentActions({
       {/* Favorite Button */}
       <button
         onClick={onToggleFavorite}
-        className={`p-2 rounded-lg transition-colors ${
-          isFavorite 
-            ? 'bg-yellow-100 text-yellow-600 hover:bg-yellow-200' 
+        className={`p-2 rounded-lg transition-colors ${isFavorite
+            ? 'bg-yellow-100 text-yellow-600 hover:bg-yellow-200'
             : 'text-neutral-text-light hover:text-yellow-600 hover:bg-yellow-50'
-        }`}
+          }`}
         title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
       >
         <Star className={`h-5 w-5 ${isFavorite ? 'fill-current' : ''}`} />
@@ -98,11 +97,10 @@ export default function DocumentActions({
           <button
             onClick={onDownload}
             disabled={!document.userPermissions?.canView}
-            className={`p-2 rounded-lg transition-colors ${
-              document.userPermissions?.canView
+            className={`p-2 rounded-lg transition-colors ${document.userPermissions?.canView
                 ? 'text-neutral-text-light hover:text-primary hover:bg-primary/10'
                 : 'text-gray-300 cursor-not-allowed'
-            }`}
+              }`}
             title={document.userPermissions?.canView ? "Download document" : "You don't have permission to download this document"}
           >
             <Download className="h-5 w-5" />
@@ -121,11 +119,10 @@ export default function DocumentActions({
           <button
             onClick={onShare}
             disabled={!document.userPermissions?.canManagePermissions}
-            className={`p-2 rounded-lg transition-colors ${
-              document.userPermissions?.canManagePermissions
+            className={`p-2 rounded-lg transition-colors ${document.userPermissions?.canManagePermissions
                 ? 'text-neutral-text-light hover:text-primary hover:bg-primary/10'
                 : 'text-gray-300 cursor-not-allowed'
-            }`}
+              }`}
             title={document.userPermissions?.canManagePermissions ? "Share document" : "You don't have permission to manage permissions"}
           >
             <Share2 className="h-5 w-5" />
@@ -148,9 +145,9 @@ export default function DocumentActions({
         >
           <MoreVertical className="h-5 w-5" />
         </button>
-        
+
         {showMoreActions && (
-          <div 
+          <div
             ref={menuRef}
             className="absolute right-0 top-full mt-1 w-48 bg-surface border border-ui rounded-lg shadow-lg z-10"
           >
@@ -189,11 +186,10 @@ export default function DocumentActions({
                         }
                       }}
                       disabled={!document.userPermissions?.canEdit}
-                      className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
-                        document.userPermissions?.canEdit
+                      className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${document.userPermissions?.canEdit
                           ? 'text-neutral-text-light hover:text-neutral-text-dark hover:bg-neutral-background'
                           : 'text-gray-400 cursor-not-allowed'
-                      }`}
+                        }`}
                     >
                       <Edit3 className="h-4 w-4" />
                       Rename Document
@@ -217,11 +213,10 @@ export default function DocumentActions({
                         }
                       }}
                       disabled={!document.userPermissions?.canEdit}
-                      className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
-                        document.userPermissions?.canEdit
+                      className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${document.userPermissions?.canEdit
                           ? 'text-neutral-text-light hover:text-neutral-text-dark hover:bg-neutral-background'
                           : 'text-gray-400 cursor-not-allowed'
-                      }`}
+                        }`}
                     >
                       <Upload className="h-4 w-4" />
                       Upload New Version
@@ -234,6 +229,7 @@ export default function DocumentActions({
                   )}
                 </Tooltip>
               )}
+
               {onMove && (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -245,11 +241,10 @@ export default function DocumentActions({
                         }
                       }}
                       disabled={!document.userPermissions?.canEdit}
-                      className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
-                        document.userPermissions?.canEdit
+                      className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${document.userPermissions?.canEdit
                           ? 'text-neutral-text-light hover:text-neutral-text-dark hover:bg-neutral-background'
                           : 'text-gray-400 cursor-not-allowed'
-                      }`}
+                        }`}
                     >
                       <Move className="h-4 w-4" />
                       Move Document
@@ -273,11 +268,10 @@ export default function DocumentActions({
                         }
                       }}
                       disabled={!document.userPermissions?.canDelete}
-                      className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
-                        document.userPermissions?.canDelete
+                      className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${document.userPermissions?.canDelete
                           ? 'text-error hover:bg-error/10'
                           : 'text-gray-400 cursor-not-allowed'
-                      }`}
+                        }`}
                     >
                       <Trash2 className="h-4 w-4" />
                       Delete Document

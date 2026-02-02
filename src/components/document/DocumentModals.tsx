@@ -6,7 +6,7 @@ import {
 } from './index';
 import UploadVersionModal from '../modals/UploadVersionModal';
 import EditDocumentModal from '../modals/EditDocumentModal';
-import FolderActionModal from '../modals/FolderActionModal';
+import MoveModal from '../modals/MoveModal';
 
 interface DocumentModalsProps {
   document: DocumentViewDto | null;
@@ -59,12 +59,11 @@ export default function DocumentModals({
       />
 
       {/* Move Document Modal */}
-      <FolderActionModal
+      <MoveModal
         isOpen={showMoveDocument}
         onClose={onCloseMoveDocument}
-        folder={null}
-        document={document}
-        action="move"
+        item={document}
+        itemType="document"
         onSuccess={(updatedItem) => {
           onCloseMoveDocument();
           if (onMoveSuccess) {

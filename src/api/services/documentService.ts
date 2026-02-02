@@ -4,7 +4,6 @@ import {
   DocumentVersionResponseDto,
   DocumentUploadRequestDto,
   DocumentVersionUploadRequestDto,
-  EditDocumentTitleRequestDto,
   UpdateDocumentDescriptionRequestDto,
   UpdateDocumentMetadataRequestDto,
   DocumentPermissionReq,
@@ -15,6 +14,7 @@ import {
   TypeShareAccessWithTypeReq,
   TypeShareAccessRes,
   FilingCategoryDocDto,
+  BulkUploadResponse,
 } from '../../types/api';
 
 export class DocumentService {
@@ -50,43 +50,110 @@ export class DocumentService {
     lang: string,
     fileName?: string,
     tagsJson?: string,
-    filingCategory?: FilingCategoryDocDto
+    filingCategory?: FilingCategoryDocDto,
+    convertToPdf?: boolean
   ): Promise<DocumentResponseDto> {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('folderId', folderId.toString());
     formData.append('title', title);
     formData.append('lang', lang);
-    
+
     if (fileName) {
       formData.append('fileName', fileName);
     }
-    
+
     if (tagsJson) {
       formData.append('tags', tagsJson);
     }
-    
+
     if (filingCategory) {
       formData.append('filingCategory', JSON.stringify(filingCategory));
+    }
+
+    if (convertToPdf) {
+      formData.append('convertToPdf', 'true');
     }
 
     return apiClient.uploadFile<DocumentResponseDto>(`${this.baseUrl}/upload`, formData);
   }
 
-  // Upload new version
+  // Bulk upload documents (multiple files at once)
+  async uploadBulkDocuments(
+    files: File[],
+    folderId: number,
+    lang: string = 'ENG',
+    metadataList?: Array<{
+      fileName?: string;
+      title?: string;
+      filingCategoryId?: number;
+      metadataJson?: string;
+      tagsJson?: string;
+      description?: string;
+      lang?: string;
+      convertToPdf?: boolean;
+    }>,
+    onProgress?: (current: number, total: number, fileName: string) => void,
+    onByteProgress?: (loaded: number, total: number, percentage: number) => void
+  ): Promise<BulkUploadResponse> {
+    const formData = new FormData();
+
+    // Calculate total size for progress
+    const totalBytes = files.reduce((sum, f) => sum + f.size, 0);
+
+    // Add all files
+    files.forEach((file, index) => {
+      formData.append('files', file);
+      if (onProgress) {
+        onProgress(index + 1, files.length, file.name);
+      }
+    });
+
+    // Add folder and language
+    formData.append('folderId', folderId.toString());
+    formData.append('lang', lang);
+
+    // Add metadata list if provided
+    if (metadataList && metadataList.length > 0) {
+      formData.append('metadataList', JSON.stringify(metadataList));
+    }
+
+    // Use byte-based progress if callback provided
+    if (onByteProgress) {
+      return apiClient.uploadFileWithProgress<BulkUploadResponse>(
+        `${this.baseUrl}/upload/bulk`,
+        formData,
+        onByteProgress
+      );
+    }
+
+    return apiClient.uploadFile<BulkUploadResponse>(`${this.baseUrl}/upload/bulk`, formData);
+  }
+
+  // Upload new version with semantic versioning
   async uploadNewVersion(
     file: File,
     documentId: number,
     lang: string,
-    filingCategory?: FilingCategoryDocDto
+    filingCategory?: FilingCategoryDocDto,
+    modificationType?: 'MAJOR' | 'MINOR' | 'PATCH',
+    versionComment?: string
   ): Promise<DocumentResponseDto> {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('documentId', documentId.toString());
     formData.append('lang', lang.toUpperCase());
-    
+
     if (filingCategory) {
       formData.append('filingCategory', JSON.stringify(filingCategory));
+    }
+
+    // Semantic versioning parameters
+    if (modificationType) {
+      formData.append('modificationType', modificationType);
+    }
+    if (versionComment) {
+      formData.append('versionComment', versionComment);
     }
 
     return apiClient.uploadFile<DocumentResponseDto>(`${this.baseUrl}/version`, formData);
@@ -95,11 +162,6 @@ export class DocumentService {
   // Rename document
   async renameDocument(documentId: number, newName: string): Promise<void> {
     return apiClient.put<void>(`${this.baseUrl}/rename/${documentId}?name=${encodeURIComponent(newName)}`);
-  }
-
-  // Edit document title
-  async editDocumentTitle(documentId: number, titleData: EditDocumentTitleRequestDto): Promise<void> {
-    return apiClient.put<void>(`${this.baseUrl}/title/${documentId}`, titleData);
   }
 
   // Update document description
@@ -310,12 +372,12 @@ export class DocumentService {
 
     return apiClient.get<PageResponse<any>>(`/api/v1/document-links/document/${documentId}/related?${params}`);
   }
-  
+
   // Get tags by document ID  
   async getTagsByDocumentId(documentId: number): Promise<any[]> {
     return apiClient.get<any[]>(`/api/v1/tags/documents/${documentId}/tags`);
   }
-  
+
   // Get all available tags
   async getAvailableTags(): Promise<any[]> {
     return apiClient.get<any[]>(`/api/v1/tags/my-tags`);
@@ -325,12 +387,12 @@ export class DocumentService {
   async deleteDocumentLink(linkId: number): Promise<void> {
     return apiClient.delete<void>(`/api/v1/document-links/${linkId}`);
   }
-  
+
   // Download document (alias for getDownloadUrl)
   async downloadDocument(documentId: number, versionId?: number): Promise<string> {
     return this.getDownloadUrl(documentId, versionId);
   }
-  
+
   // File downloaded (alias for markFileAsDownloaded)
   async fileDownloaded(documentId: number, versionId?: number): Promise<void> {
     return this.markFileAsDownloaded(documentId, versionId);
@@ -377,25 +439,25 @@ export class DocumentService {
     const size = params?.size || 20;
     const limit = size;
     const offset = page * size;
-    
+
     const urlParams = new URLSearchParams({
       limit: limit.toString(),
       offset: offset.toString(),
     });
-    
+
     // Note: The backend endpoint doesn't support search/sort yet, but we can add client-side filtering
     const documents = await apiClient.get<DocumentResponseDto[]>(`${this.baseUrl}/shared?${urlParams}`);
-    
+
     // Return proper PageResponse structure
     const totalElements = documents?.length || 0;
     const totalPages = Math.ceil(totalElements / size);
-    
+
     const sortInfo = {
       empty: !params?.sortBy,
       sorted: !!params?.sortBy,
       unsorted: !params?.sortBy,
     };
-    
+
     return {
       content: documents || [],
       totalPages,
@@ -438,6 +500,15 @@ export class DocumentService {
       urlParams.append('search', params.search);
     }
     return apiClient.get<PageResponse<any>>(`${this.baseUrl}/${documentId}/share/available-groups?${urlParams}`);
+  }
+
+  // Set stamp on document version
+  async setStampOnVersion(documentId: number, versionId: number, stampId?: number): Promise<void> {
+    const params = new URLSearchParams();
+    if (stampId) {
+      params.append('stampId', stampId.toString());
+    }
+    return apiClient.put<void>(`${this.baseUrl}/${documentId}/versions/${versionId}/stamp?${params.toString()}`);
   }
 }
 

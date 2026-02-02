@@ -3,10 +3,10 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  FolderTree, 
-  Plus, 
-  Search, 
+import {
+  FolderTree,
+  Plus,
+  Search,
   Edit,
   Trash2,
   ChevronDown,
@@ -40,10 +40,11 @@ import ServerSearchInput from '../../../../components/main/ServerSearchInput';
 import Pagination from '../../../../components/main/Pagination';
 import { useServerSideSearch } from '../../../../components/main/useServerSideSearch';
 import { useAdminPagePermissions } from '@/hooks/useAdminPagePermissions';
-import { 
-  FilingCategoryRequestDto, 
-  FilingCategoryResponseDto, 
-  MetaDataListReq, 
+import FolderPickerModal from '../../../../components/modals/FolderPickerModal';
+import {
+  FilingCategoryRequestDto,
+  FilingCategoryResponseDto,
+  MetaDataListReq,
   MetaDataListRes,
   CategoryMetadataDefinitionDto,
   MetadataType
@@ -65,7 +66,7 @@ export default function ModelsPage() {
   const router = useRouter();
   const { canView, canCreate, canUpdate, canDelete } = useAdminPagePermissions();
   const [activeTab, setActiveTab] = useState<'categories' | 'lists'>('categories');
-  
+
   // Redirect if user doesn't have view permission
   useEffect(() => {
     if (!canView) {
@@ -80,11 +81,14 @@ export default function ModelsPage() {
   const [duplicatingCategory, setDuplicatingCategory] = useState<FilingCategoryResponseDto | null>(null);
   const [duplicateName, setDuplicateName] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deletingItem, setDeletingItem] = useState<{type: 'category' | 'list', id: number, name: string} | null>(null);
+  const [deletingItem, setDeletingItem] = useState<{ type: 'category' | 'list', id: number, name: string } | null>(null);
+  const [showDeleteErrorModal, setShowDeleteErrorModal] = useState(false);
+  const [deleteErrorMessage, setDeleteErrorMessage] = useState<string>('');
+  const [errorModalTitle, setErrorModalTitle] = useState<string>('Cannot Delete');
   const [showImportModal, setShowImportModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportQuantity, setExportQuantity] = useState(100);
-  
+
   const pageSize = 20;
 
   // Categories server-side search
@@ -219,10 +223,10 @@ export default function ModelsPage() {
     try {
       const newCategory = await notificationApiClient.createFilingCategory(categoryData);
       addCategory(newCategory);
-      
+
       // Refetch lists to get any new lists that were created
       fetchLists(false);
-      
+
       setShowCreateModal(false);
     } catch (error) {
       console.error('Error creating category:', error);
@@ -231,15 +235,31 @@ export default function ModelsPage() {
 
   const handleUpdateCategory = async (id: number, categoryData: FilingCategoryRequestDto) => {
     try {
-      const updatedCategory = await notificationApiClient.updateFilingCategory(id, categoryData);
+
+      const updatedCategory = await notificationApiClient.updateFilingCategory(id, categoryData, { showError: false });
       updateCategory(id, () => updatedCategory);
-      
+
       // Refetch lists to get any new lists that were created
       fetchLists(false);
-      
+
       setEditingCategory(null);
-    } catch (error) {
+      addNotification({
+        type: 'success',
+        title: 'Success',
+        message: 'Filing category updated successfully'
+      });
+    } catch (error: any) {
       console.error('Error updating category:', error);
+      // Extract error message from API response
+      let errorMessage = 'Failed to update filing category';
+      if (error?.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+      setDeleteErrorMessage(errorMessage);
+      setErrorModalTitle('Cannot Update Model');
+      setShowDeleteErrorModal(true);
     }
   };
 
@@ -251,12 +271,28 @@ export default function ModelsPage() {
   const confirmDeleteCategory = async () => {
     if (!deletingItem) return;
     try {
-      await notificationApiClient.deleteFilingCategory(deletingItem.id);
+      await notificationApiClient.deleteFilingCategory(deletingItem.id, { showError: false });
       removeCategory(deletingItem.id);
       setShowDeleteConfirm(false);
       setDeletingItem(null);
-    } catch (error) {
+      addNotification({
+        type: 'success',
+        title: 'Success',
+        message: 'Filing category deleted successfully'
+      });
+    } catch (error: any) {
       console.error('Error deleting category:', error);
+      // Extract error message from API response
+      let errorMessage = 'Failed to delete filing category';
+      if (error?.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+      setDeleteErrorMessage(errorMessage);
+      setErrorModalTitle('Cannot Delete Model');
+      setShowDeleteErrorModal(true);
+      setShowDeleteConfirm(false);
     }
   };
 
@@ -289,12 +325,28 @@ export default function ModelsPage() {
   const confirmDeleteList = async () => {
     if (!deletingItem) return;
     try {
-      await notificationApiClient.deleteMetadataList(deletingItem.id);
+      await notificationApiClient.deleteMetadataList(deletingItem.id, { showError: false });
       removeList(deletingItem.id);
       setShowDeleteConfirm(false);
       setDeletingItem(null);
-    } catch (error) {
+      addNotification({
+        type: 'success',
+        title: 'Success',
+        message: 'List deleted successfully'
+      });
+    } catch (error: any) {
       console.error('Error deleting list:', error);
+      // Extract error message from API response
+      let errorMessage = 'Failed to delete list';
+      if (error?.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+      setDeleteErrorMessage(errorMessage);
+      setErrorModalTitle('Cannot Delete List');
+      setShowDeleteErrorModal(true);
+      setShowDeleteConfirm(false);
     }
   };
 
@@ -336,11 +388,11 @@ export default function ModelsPage() {
       const text = await file.text();
       const lines = text.split('\n');
       const headers = lines[0].split(',').map(h => h.trim());
-      
+
       // Expected headers for category import with metadata support
       const expectedHeaders = ['name', 'description', 'metadata_fields'];
       const hasValidHeaders = expectedHeaders.every(header => headers.includes(header));
-      
+
       if (!hasValidHeaders) {
         addNotification({
           type: 'error',
@@ -351,8 +403,8 @@ export default function ModelsPage() {
       }
 
       const categoriesToImport = [];
-      const listsToCreate = new Map<string, {name: string, description: string, mandatory: boolean, options: string[]}>();
-      
+      const listsToCreate = new Map<string, { name: string, description: string, mandatory: boolean, options: string[] }>();
+
       // Parse CSV data
       for (let i = 1; i < lines.length; i++) {
         if (lines[i].trim()) {
@@ -360,23 +412,23 @@ export default function ModelsPage() {
           const name = values[headers.indexOf('name')] || '';
           const description = values[headers.indexOf('description')] || '';
           const metadataFieldsStr = values[headers.indexOf('metadata_fields')] || '';
-          
+
           // Parse metadata fields (format: "field1:STRING:true,field2:LIST:listName:false")
           const metadataDefinitions: any[] = [];
           if (metadataFieldsStr) {
             const fieldDefinitions = metadataFieldsStr.split(';').map(f => f.trim());
-            
+
             for (const fieldDef of fieldDefinitions) {
               const parts = fieldDef.split(':');
               if (parts.length >= 2) {
                 const fieldKey = parts[0];
                 const dataType = parts[1] as MetadataType;
                 const isMandatory = parts[2] === 'true';
-                
+
                 if (dataType === MetadataType.LIST && parts.length >= 4) {
                   const listName = parts[3];
                   const listMandatory = parts[4] === 'true';
-                  
+
                   // Collect list information for later creation
                   if (!listsToCreate.has(listName)) {
                     listsToCreate.set(listName, {
@@ -386,7 +438,7 @@ export default function ModelsPage() {
                       options: []
                     });
                   }
-                  
+
                   metadataDefinitions.push({
                     key: fieldKey,
                     dataType: dataType,
@@ -408,7 +460,7 @@ export default function ModelsPage() {
               }
             }
           }
-          
+
           categoriesToImport.push({
             name,
             description,
@@ -419,7 +471,7 @@ export default function ModelsPage() {
 
       // Step 1: Create lists first (avoiding duplicates)
       const createdLists = new Map<string, number>();
-      
+
       for (const [listName, listData] of listsToCreate) {
         try {
           // Check if list already exists
@@ -428,7 +480,7 @@ export default function ModelsPage() {
             createdLists.set(listName, existingList.id);
             continue;
           }
-          
+
           // Create new list
           const newList = await notificationApiClient.createMetadataList({
             name: listData.name,
@@ -436,7 +488,7 @@ export default function ModelsPage() {
             mandatory: listData.mandatory,
             option: listData.options
           });
-          
+
           createdLists.set(listName, newList.id);
         } catch (error) {
           console.error(`Error creating list ${listName}:`, error);
@@ -477,7 +529,7 @@ export default function ModelsPage() {
         fetchCategories(false),
         fetchLists(false)
       ]);
-      
+
       setShowImportModal(false);
 
       addNotification({
@@ -498,7 +550,7 @@ export default function ModelsPage() {
   const handleExportCSV = async () => {
     try {
       const categoriesToExport = displayCategories.slice(0, exportQuantity);
-      
+
       // Helper function to format metadata fields for export
       const formatMetadataFields = (metadataDefinitions: CategoryMetadataDefinitionDto[] | undefined) => {
         return (metadataDefinitions ?? []).map(metadata => {
@@ -509,10 +561,10 @@ export default function ModelsPage() {
           return fieldStr;
         }).join(';');
       };
-      
+
       const csvContent = [
         'name,description,metadata_fields,created_by',
-        ...categoriesToExport.map(cat => 
+        ...categoriesToExport.map(cat =>
           `"${cat.name}","${cat.description || ''}","${formatMetadataFields(cat.metadataDefinitions)}","${cat.createdBy?.firstName ?? ''} ${cat.createdBy?.lastName ?? ''}"`
         )
       ].join('\n');
@@ -526,7 +578,7 @@ export default function ModelsPage() {
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
-      
+
       setShowExportModal(false);
       addNotification({
         type: 'success',
@@ -586,7 +638,7 @@ export default function ModelsPage() {
               </div>
             </div>
             <div className="flex gap-3">
-              <Button 
+              <Button
                 onClick={() => {
                   if (activeTab === 'categories') {
                     fetchCategories(false);
@@ -601,7 +653,7 @@ export default function ModelsPage() {
                 <RefreshCw className={`h-4 w-4 ${activeTab === 'categories' ? (categoriesLoading ? 'animate-spin' : '') : (listsLoading ? 'animate-spin' : '')}`} />
                 {activeTab === 'categories' ? (categoriesLoading ? 'Refreshing...' : 'Refresh') : (listsLoading ? 'Refreshing...' : 'Refresh')}
               </Button>
-              <Button 
+              <Button
                 onClick={() => setShowImportModal(true)}
                 variant="outline"
                 className="flex items-center gap-2 bg-white hover:bg-slate-50 border-slate-300"
@@ -609,7 +661,7 @@ export default function ModelsPage() {
                 <Upload className="h-4 w-4" />
                 Import CSV
               </Button>
-              <Button 
+              <Button
                 onClick={() => setShowExportModal(true)}
                 variant="outline"
                 className="flex items-center gap-2 bg-white hover:bg-slate-50 border-slate-300"
@@ -620,7 +672,7 @@ export default function ModelsPage() {
               {activeTab === 'lists' && (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button 
+                    <Button
                       onClick={() => canCreate && setShowCreateListModal(true)}
                       disabled={!canCreate}
                       variant="outline"
@@ -639,7 +691,7 @@ export default function ModelsPage() {
               )}
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button 
+                  <Button
                     onClick={() => canCreate && setShowCreateModal(true)}
                     disabled={!canCreate}
                     className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-200"
@@ -663,15 +715,15 @@ export default function ModelsPage() {
           <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'categories' | 'lists')}>
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
               <TabsList className="grid w-full lg:w-auto grid-cols-2 bg-slate-100 p-1 rounded-lg">
-                <TabsTrigger 
-                  value="categories" 
+                <TabsTrigger
+                  value="categories"
                   className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm"
                 >
                   <FolderTree className="h-4 w-4" />
                   {t('models.title')} ({categoriesTotalElements})
                 </TabsTrigger>
-                <TabsTrigger 
-                  value="lists" 
+                <TabsTrigger
+                  value="lists"
                   className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm"
                 >
                   <List className="h-4 w-4" />
@@ -710,8 +762,8 @@ export default function ModelsPage() {
             {/* Content Area */}
             <TabsContent value="categories" className="mt-6">
               <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                <CategoriesTab 
-                  categories={displayCategories} 
+                <CategoriesTab
+                  categories={displayCategories}
                   lists={displayLists}
                   getDataTypeIcon={getDataTypeIcon}
                   getDataTypeColor={getDataTypeColor}
@@ -722,7 +774,7 @@ export default function ModelsPage() {
                   loading={categoriesTableLoading}
                 />
               </div>
-              
+
               {/* Pagination */}
               <Pagination
                 currentPage={categoriesPage}
@@ -738,14 +790,14 @@ export default function ModelsPage() {
 
             <TabsContent value="lists" className="mt-6">
               <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                <ListsTab 
+                <ListsTab
                   lists={displayLists}
                   onEdit={handleEditList}
                   onDelete={handleDeleteList}
                   loading={listsTableLoading}
                 />
               </div>
-              
+
               {/* Pagination */}
               <Pagination
                 currentPage={listsPage}
@@ -764,7 +816,7 @@ export default function ModelsPage() {
 
       {/* Create/Edit Category Modal */}
       {(showCreateModal || editingCategory) && (
-        <CategoryModal 
+        <CategoryModal
           category={editingCategory}
           lists={displayLists}
           onClose={() => {
@@ -775,7 +827,7 @@ export default function ModelsPage() {
           onSave={async (categoryData: FilingCategoryRequestDto) => {
             try {
               // First, validate all LIST type fields
-              const invalidListFields = (categoryData.metadataDefinitions ?? []).filter(metadata => 
+              const invalidListFields = (categoryData.metadataDefinitions ?? []).filter(metadata =>
                 metadata.dataType === MetadataType.LIST && !metadata.list && !metadata.listId
               );
 
@@ -788,12 +840,18 @@ export default function ModelsPage() {
               }
 
               // Clean the data before sending
-              const cleanedCategoryData = {
+              const cleanedCategoryData: FilingCategoryRequestDto = {
                 name: categoryData.name,
                 description: categoryData.description,
+                nameStructure: categoryData.nameStructure,
+                // Auto-classification fields
+                autoClassificationEnabled: categoryData.autoClassificationEnabled,
+                targetFolderId: categoryData.targetFolderId,
+                classificationRules: categoryData.classificationRules,
                 metadataDefinitions: (categoryData.metadataDefinitions ?? []).map(metadata => {
-                  // Remove id field - backend doesn't need it
+                  // Keep id field for updates so backend can recognize existing definitions
                   const cleanedMetadata: any = {
+                    id: metadata.id, // Keep ID for updates
                     key: metadata.key,
                     dataType: metadata.dataType,
                     mandatory: metadata.mandatory
@@ -820,6 +878,8 @@ export default function ModelsPage() {
                 })
               };
 
+
+
               // Send the cleaned category data to the backend
               if (editingCategory) {
                 handleUpdateCategory(editingCategory.id, cleanedCategoryData);
@@ -840,7 +900,7 @@ export default function ModelsPage() {
 
       {/* Create/Edit List Modal */}
       {(showCreateListModal || editingList) && (
-        <ListModal 
+        <ListModal
           list={editingList}
           onClose={() => {
             setShowCreateListModal(false);
@@ -860,11 +920,11 @@ export default function ModelsPage() {
       {showDuplicateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           {/* Backdrop */}
-          <div 
+          <div
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             onClick={() => setShowDuplicateModal(false)}
           />
-          
+
           {/* Modal */}
           <div className="relative w-[500px] max-w-[90vw] bg-background border rounded-lg shadow-lg">
             <div className="flex items-center justify-between p-6 border-b bg-muted/20">
@@ -892,7 +952,7 @@ export default function ModelsPage() {
                 <Button variant="outline" onClick={() => setShowDuplicateModal(false)}>
                   Cancel
                 </Button>
-                <Button 
+                <Button
                   onClick={handleConfirmDuplicate}
                   disabled={!duplicateName.trim()}
                 >
@@ -908,11 +968,11 @@ export default function ModelsPage() {
       {showDeleteConfirm && deletingItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           {/* Backdrop */}
-          <div 
+          <div
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             onClick={() => setShowDeleteConfirm(false)}
           />
-          
+
           {/* Modal */}
           <div className="relative w-[500px] max-w-[90vw] bg-background border rounded-lg shadow-lg">
             <div className="flex items-center justify-between p-6 border-b bg-muted/20">
@@ -947,7 +1007,7 @@ export default function ModelsPage() {
                 <Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>
                   Cancel
                 </Button>
-                <Button 
+                <Button
                   onClick={deletingItem.type === 'category' ? confirmDeleteCategory : confirmDeleteList}
                   className="bg-red-600 hover:bg-red-700 text-white"
                 >
@@ -960,15 +1020,61 @@ export default function ModelsPage() {
         </div>
       )}
 
+      {/* Delete Error Modal */}
+      {showDeleteErrorModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setShowDeleteErrorModal(false)}
+          />
+
+          {/* Modal */}
+          <div className="relative w-[500px] max-w-[90vw] bg-background border rounded-lg shadow-lg">
+            <div className="flex items-center justify-between p-6 border-b bg-muted/20">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 bg-red-100 rounded-lg flex items-center justify-center">
+                  <AlertTriangle className="h-5 w-5 text-red-600" />
+                </div>
+                <h2 className="text-xl font-semibold">{errorModalTitle}</h2>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowDeleteErrorModal(false)}
+                className="h-8 w-8 p-0"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="text-center">
+                <p className="text-lg text-slate-700 mb-2">
+                  {deleteErrorMessage || 'This model cannot be deleted.'}
+                </p>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button
+                  onClick={() => setShowDeleteErrorModal(false)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  OK
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Import CSV Modal */}
       {showImportModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           {/* Backdrop */}
-          <div 
+          <div
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             onClick={() => setShowImportModal(false)}
           />
-          
+
           {/* Modal */}
           <div className="relative w-[600px] max-w-[90vw] bg-background border rounded-lg shadow-lg">
             <div className="flex items-center justify-between p-6 border-b bg-muted/20">
@@ -1042,11 +1148,11 @@ export default function ModelsPage() {
       {showExportModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           {/* Backdrop */}
-          <div 
+          <div
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             onClick={() => setShowExportModal(false)}
           />
-          
+
           {/* Modal */}
           <div className="relative w-[500px] max-w-[90vw] bg-background border rounded-lg shadow-lg">
             <div className="flex items-center justify-between p-6 border-b bg-muted/20">
@@ -1092,7 +1198,7 @@ export default function ModelsPage() {
                 <Button variant="outline" onClick={() => setShowExportModal(false)}>
                   Cancel
                 </Button>
-                <Button 
+                <Button
                   onClick={handleExportCSV}
                   className="bg-green-600 hover:bg-green-700 text-white"
                 >
@@ -1158,115 +1264,115 @@ function CategoriesTab({ categories, lists, getDataTypeIcon, getDataTypeColor, o
               <th className="text-left p-6 text-xs font-semibold text-slate-600 uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
-        <tbody>
-          {categories.map((category: FilingCategoryResponseDto,index:number) => {
-            const isExpanded = expandedCategories.includes(category.id);
+          <tbody>
+            {categories.map((category: FilingCategoryResponseDto, index: number) => {
+              const isExpanded = expandedCategories.includes(category.id);
 
-            return (
-              <React.Fragment key={category.id}>
-                <tr className="border-b border-slate-200 hover:bg-slate-50 transition-colors">
-                  <td className="p-6">
-                    <button 
-                      onClick={() => toggleCategoryExpansion(category.id)}
-                      className="p-2 rounded-lg hover:bg-slate-100 transition-colors"
-                    >
-                      {isExpanded ? (
-                        <ChevronDown className="h-4 w-4 text-slate-600" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4 text-slate-600" />
-                      )}
-                    </button>
-                  </td>
-                  <td className="p-6">
-                    <div className="flex items-center gap-4">
-                      <div className="h-12 w-12 bg-blue-100 rounded-xl flex items-center justify-center">
-                        <FolderTree className="h-6 w-6 text-blue-600" />
-                      </div>
-                      <div>
-                        <div className="font-semibold text-slate-900 text-lg">{category.name}</div>
-                        <div className="text-sm text-slate-500">ID: {category.id}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="p-6">
-                    <div className="text-sm text-slate-700 max-w-xs truncate">{category.description || 'No description'}</div>
-                  </td>
-                  <td className="p-6">
-                    <div className="flex items-center gap-2">
-                      <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
-                        {(category.metadataDefinitions?.length ?? 0)} fields
-                      </span>
-                    </div>
-                  </td>
-                  <td className="p-6">
-                    {category.createdBy ? (
-                      <div className="flex items-center gap-3">
-                        <UserAvatar 
-                          user={category.createdBy}
-                          size="sm"
-                        />
-                        <div className="flex flex-col">
-                          <div className="text-sm font-medium text-slate-900">
-                            {category.createdBy.displayName}
-                          </div>
-                          <div className="text-xs text-slate-500">
-                            {category.createdBy.email}
-                          </div>
+              return (
+                <React.Fragment key={category.id}>
+                  <tr className="border-b border-slate-200 hover:bg-slate-50 transition-colors">
+                    <td className="p-6">
+                      <button
+                        onClick={() => toggleCategoryExpansion(category.id)}
+                        className="p-2 rounded-lg hover:bg-slate-100 transition-colors"
+                      >
+                        {isExpanded ? (
+                          <ChevronDown className="h-4 w-4 text-slate-600" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 text-slate-600" />
+                        )}
+                      </button>
+                    </td>
+                    <td className="p-6">
+                      <div className="flex items-center gap-4">
+                        <div className="h-12 w-12 bg-blue-100 rounded-xl flex items-center justify-center">
+                          <FolderTree className="h-6 w-6 text-blue-600" />
                         </div>
-                      </div>
-                    ) : (
-                      <div className="text-sm text-slate-500 italic">Unknown</div>
-                    )}
-                  </td>
-                  <td className="p-6">
-                    <div className="flex gap-2">
-                      <Button 
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onEdit(category)}
-                        title="Edit"
-                        className="h-8 w-8 p-0 hover:bg-blue-100 hover:text-blue-700"
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button 
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onDelete(category)}
-                        title="Delete"
-                        className="h-8 w-8 p-0 hover:bg-red-100 hover:text-red-700"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-                
-                {/* Expanded Metadata Definitions */}
-                {isExpanded && (
-                  <tr className="bg-slate-50">
-                    <td colSpan={6} className="p-6">
-                      <div className="ml-16">
-                        <h4 className="font-semibold text-slate-900 mb-4 text-lg">Metadata Fields</h4>
-                        <div className="grid gap-4">
-                          {(category.metadataDefinitions ?? []).map((metadata: CategoryMetadataDefinitionDto) => (
-                            <MetadataDefinitionCard 
-                              key={metadata.id} 
-                              metadata={metadata}
-                              getDataTypeIcon={getDataTypeIcon}
-                              getDataTypeColor={getDataTypeColor}
-                              onEditList={onEditList}
-                            />
-                          ))}
+                        <div>
+                          <div className="font-semibold text-slate-900 text-lg">{category.name}</div>
+                          <div className="text-sm text-slate-500">ID: {category.id}</div>
                         </div>
                       </div>
                     </td>
+                    <td className="p-6">
+                      <div className="text-sm text-slate-700 max-w-xs truncate">{category.description || 'No description'}</div>
+                    </td>
+                    <td className="p-6">
+                      <div className="flex items-center gap-2">
+                        <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
+                          {(category.metadataDefinitions?.length ?? 0)} fields
+                        </span>
+                      </div>
+                    </td>
+                    <td className="p-6">
+                      {category.createdBy ? (
+                        <div className="flex items-center gap-3">
+                          <UserAvatar
+                            user={category.createdBy}
+                            size="sm"
+                          />
+                          <div className="flex flex-col">
+                            <div className="text-sm font-medium text-slate-900">
+                              {category.createdBy.displayName}
+                            </div>
+                            <div className="text-xs text-slate-500">
+                              {category.createdBy.email}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-sm text-slate-500 italic">Unknown</div>
+                      )}
+                    </td>
+                    <td className="p-6">
+                      <div className="flex gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onEdit(category)}
+                          title="Edit"
+                          className="h-8 w-8 p-0 hover:bg-blue-100 hover:text-blue-700"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onDelete(category)}
+                          title="Delete"
+                          className="h-8 w-8 p-0 hover:bg-red-100 hover:text-red-700"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </td>
                   </tr>
-                )}
-              </React.Fragment>
-            );
-          })}
-        </tbody>
+
+                  {/* Expanded Metadata Definitions */}
+                  {isExpanded && (
+                    <tr className="bg-slate-50">
+                      <td colSpan={6} className="p-6">
+                        <div className="ml-16">
+                          <h4 className="font-semibold text-slate-900 mb-4 text-lg">Metadata Fields</h4>
+                          <div className="grid gap-4">
+                            {(category.metadataDefinitions ?? []).map((metadata: CategoryMetadataDefinitionDto) => (
+                              <MetadataDefinitionCard
+                                key={metadata.id}
+                                metadata={metadata}
+                                getDataTypeIcon={getDataTypeIcon}
+                                getDataTypeColor={getDataTypeColor}
+                                onEditList={onEditList}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </tbody>
         </table>
       </div>
     </div>
@@ -1353,71 +1459,70 @@ function ListsTab({ lists, onEdit, onDelete, loading }: any) {
               <th className="text-left p-6 text-xs font-semibold text-slate-600 uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
-        <tbody>
-          {lists.map((list: MetaDataListRes) => (
-            <tr key={list.id} className="border-b border-slate-200 hover:bg-slate-50 transition-colors">
-              <td className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className="h-12 w-12 bg-purple-100 rounded-xl flex items-center justify-center">
-                    <List className="h-6 w-6 text-purple-600" />
+          <tbody>
+            {lists.map((list: MetaDataListRes) => (
+              <tr key={list.id} className="border-b border-slate-200 hover:bg-slate-50 transition-colors">
+                <td className="p-6">
+                  <div className="flex items-center gap-4">
+                    <div className="h-12 w-12 bg-purple-100 rounded-xl flex items-center justify-center">
+                      <List className="h-6 w-6 text-purple-600" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-slate-900 text-lg">{list.name}</div>
+                      <div className="text-sm text-slate-500">ID: {list.id}</div>
+                    </div>
                   </div>
-                  <div>
-                    <div className="font-semibold text-slate-900 text-lg">{list.name}</div>
-                    <div className="text-sm text-slate-500">ID: {list.id}</div>
+                </td>
+                <td className="p-6">
+                  <div className="text-sm text-slate-700 max-w-xs truncate">{list.description || 'No description'}</div>
+                </td>
+                <td className="p-6">
+                  <div className="flex flex-wrap gap-2">
+                    {(list.option ?? []).slice(0, 3).map((option: string, index: number) => (
+                      <span key={index} className="px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-xs font-medium">
+                        {option}
+                      </span>
+                    ))}
+                    {(list.option?.length ?? 0) > 3 && (
+                      <span className="px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-xs font-medium">
+                        +{(list.option?.length ?? 0) - 3} more
+                      </span>
+                    )}
                   </div>
-                </div>
-              </td>
-              <td className="p-6">
-                <div className="text-sm text-slate-700 max-w-xs truncate">{list.description || 'No description'}</div>
-              </td>
-              <td className="p-6">
-                <div className="flex flex-wrap gap-2">
-                  {(list.option ?? []).slice(0, 3).map((option: string, index: number) => (
-                    <span key={index} className="px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-xs font-medium">
-                      {option}
-                    </span>
-                  ))}
-                  {(list.option?.length ?? 0) > 3 && (
-                    <span className="px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-xs font-medium">
-                      +{(list.option?.length ?? 0) - 3} more
-                    </span>
-                  )}
-                </div>
-              </td>
-              <td className="p-6">
-                <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                  list.mandatory 
-                    ? 'bg-red-100 text-red-700' 
+                </td>
+                <td className="p-6">
+                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${list.mandatory
+                    ? 'bg-red-100 text-red-700'
                     : 'bg-green-100 text-green-700'
-                }`}>
-                  {list.mandatory ? 'Fixed Options' : 'Open List'}
-                </span>
-              </td>
-              <td className="p-6">
-                <div className="flex gap-2">
-                  <Button 
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onEdit(list)}
-                    title="Edit"
-                    className="h-8 w-8 p-0 hover:bg-blue-100 hover:text-blue-700"
-                  >
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button 
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onDelete(list)}
-                    title="Delete"
-                    className="h-8 w-8 p-0 hover:bg-red-100 hover:text-red-700"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
+                    }`}>
+                    {list.mandatory ? 'Fixed Options' : 'Open List'}
+                  </span>
+                </td>
+                <td className="p-6">
+                  <div className="flex gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onEdit(list)}
+                      title="Edit"
+                      className="h-8 w-8 p-0 hover:bg-blue-100 hover:text-blue-700"
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onDelete(list)}
+                      title="Delete"
+                      className="h-8 w-8 p-0 hover:bg-red-100 hover:text-red-700"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
         </table>
       </div>
     </div>
@@ -1430,8 +1535,36 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
   const [formData, setFormData] = useState<FilingCategoryRequestDto>({
     name: category?.name || '',
     description: category?.description || '',
-    metadataDefinitions: category?.metadataDefinitions || []
+    metadataDefinitions: category?.metadataDefinitions || [],
+    // Auto-classification fields
+    autoClassificationEnabled: category?.autoClassificationEnabled || false,
+    targetFolderId: category?.autoClassificationTarget?.folderId || undefined,
+    classificationRules: category?.classificationRules || [],
+    // Name structure for auto-generated filenames
+    nameStructure: category?.nameStructure || ''
   });
+
+  // Auto-classification UI state
+  const [targetFolderName, setTargetFolderName] = useState<string>(
+    category?.autoClassificationTarget?.folderPath || ''
+  );
+  const [showFolderPicker, setShowFolderPicker] = useState(false);
+
+  // Sync formData when category changes (for edit mode)
+  useEffect(() => {
+    if (category) {
+      setFormData({
+        name: category.name || '',
+        description: category.description || '',
+        metadataDefinitions: category.metadataDefinitions || [],
+        autoClassificationEnabled: category.autoClassificationEnabled || false,
+        targetFolderId: category.autoClassificationTarget?.folderId || undefined,
+        classificationRules: category.classificationRules || [],
+        nameStructure: category.nameStructure || ''
+      });
+      setTargetFolderName(category.autoClassificationTarget?.folderPath || '');
+    }
+  }, [category?.id]); // Only reset when category ID changes, not object reference
 
   const [newMetadata, setNewMetadata] = useState<ExtendedCategoryMetadataDefinitionDto>({
     key: '',
@@ -1449,7 +1582,7 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
   const isListNameDuplicate = (listName: string, excludeListId?: number) => {
     const trimmedName = listName.trim().toLowerCase();
     // Check against existing lists
-    const existsInLists = lists.some((l: MetaDataListRes) => 
+    const existsInLists = lists.some((l: MetaDataListRes) =>
       l.name.toLowerCase() === trimmedName && l.id !== excludeListId
     );
     // Check against inline lists being created in current form
@@ -1486,8 +1619,8 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
   const filteredLists = useMemo(() => {
     if (!listSearchQuery.trim()) return lists;
     const query = listSearchQuery.toLowerCase();
-    return lists.filter((list: MetaDataListRes) => 
-      list.name.toLowerCase().includes(query) || 
+    return lists.filter((list: MetaDataListRes) =>
+      list.name.toLowerCase().includes(query) ||
       (list.description && list.description.toLowerCase().includes(query))
     );
   }, [lists, listSearchQuery]);
@@ -1537,6 +1670,7 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
     const metadata = (formData.metadataDefinitions ?? [])[index];
     if (!metadata) return;
     setEditingMetadata({
+      id: metadata.id, // Preserve ID when editing
       key: metadata.key,
       dataType: metadata.dataType,
       mandatory: metadata.mandatory,
@@ -1571,7 +1705,7 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
 
     setFormData(prev => ({
       ...prev,
-      metadataDefinitions: (prev.metadataDefinitions ?? []).map((metadata, index) => 
+      metadataDefinitions: (prev.metadataDefinitions ?? []).map((metadata, index) =>
         index === editingMetadataIndex ? editingMetadata : metadata
       )
     }));
@@ -1608,11 +1742,11 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
-      <div 
+      <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         onClick={onClose}
       />
-      
+
       {/* Modal */}
       <div className="relative w-[90vw] max-w-6xl max-h-[90vh] bg-background border rounded-lg shadow-lg overflow-hidden">
         <div className="flex items-center justify-between p-6 border-b bg-muted/20">
@@ -1666,9 +1800,42 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
                   />
                 </div>
               </div>
+
+              {/* Name Structure */}
+              <div className="space-y-2 pt-4 border-t">
+                <Label htmlFor="nameStructure">Name Structure</Label>
+                <Input
+                  id="nameStructure"
+                  placeholder="e.g., invoice_{client}_{number}_{date}"
+                  value={formData.nameStructure || ''}
+                  onChange={(e) => setFormData(prev => ({ ...prev, nameStructure: e.target.value }))}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Auto-generate filenames using {'{'}<code>fieldName</code>{'}'} placeholders. Leave empty to use original filename.
+                </p>
+                {/* Quick Add Buttons */}
+                {(formData.metadataDefinitions?.length ?? 0) > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    {(formData.metadataDefinitions || []).map((md, idx) => (
+                      <Button
+                        key={idx}
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => setFormData(prev => ({
+                          ...prev,
+                          nameStructure: (prev.nameStructure || '') + `{${md.key}}`
+                        }))}
+                      >
+                        <Plus className="h-3 w-3 mr-1" />
+                        {'{' + md.key + '}'}
+                      </Button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
-
           {/* Metadata Definitions */}
           <Card>
             <CardHeader>
@@ -1778,8 +1945,8 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
                             <Select
                               value={newMetadata.listId?.toString() || ''}
                               onValueChange={(value) => {
-                                setNewMetadata(prev => ({ 
-                                  ...prev, 
+                                setNewMetadata(prev => ({
+                                  ...prev,
                                   listId: value ? parseInt(value) : undefined,
                                   list: undefined // Clear inline list when selecting existing
                                 }));
@@ -1826,16 +1993,16 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
                           <div className="space-y-2">
                             <Label>List Behavior</Label>
                             <div className="text-sm text-muted-foreground p-2 bg-muted rounded">
-                              {newMetadata.listId ? 
-                                lists.find((l: MetaDataListRes) => l.id === newMetadata.listId)?.mandatory ? 
-                                  '✓ Fixed list - Users must choose from predefined options' : 
+                              {newMetadata.listId ?
+                                lists.find((l: MetaDataListRes) => l.id === newMetadata.listId)?.mandatory ?
+                                  '✓ Fixed list - Users must choose from predefined options' :
                                   '✓ Open list - Users can add custom values' :
                                 '✎ A new list will be created when saving this model'
                               }
                             </div>
                           </div>
                         </div>
-                    
+
                         {/* Inline List Creation */}
                         {!newMetadata.listId && (
                           <Card className="mt-6 border-dashed border-2 border-primary/30 bg-primary/5">
@@ -1858,10 +2025,10 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
                                     id="list-name"
                                     type="text"
                                     value={newMetadata.list?.name || ''}
-                                    onChange={(e) => setNewMetadata(prev => ({ 
-                                      ...prev, 
-                                      list: { 
-                                        ...prev.list, 
+                                    onChange={(e) => setNewMetadata(prev => ({
+                                      ...prev,
+                                      list: {
+                                        ...prev.list,
                                         name: e.target.value,
                                         description: prev.list?.description || '',
                                         mandatory: prev.list?.mandatory || false,
@@ -1883,10 +2050,10 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
                                     id="list-description"
                                     type="text"
                                     value={newMetadata.list?.description || ''}
-                                    onChange={(e) => setNewMetadata(prev => ({ 
-                                      ...prev, 
-                                      list: { 
-                                        ...prev.list, 
+                                    onChange={(e) => setNewMetadata(prev => ({
+                                      ...prev,
+                                      list: {
+                                        ...prev.list,
                                         description: e.target.value,
                                         name: prev.list?.name || '',
                                         mandatory: prev.list?.mandatory || false,
@@ -1904,10 +2071,10 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
                                       type="checkbox"
                                       id="list-mandatory"
                                       checked={newMetadata.list?.mandatory || false}
-                                      onChange={(e) => setNewMetadata(prev => ({ 
-                                        ...prev, 
-                                        list: { 
-                                          ...prev.list, 
+                                      onChange={(e) => setNewMetadata(prev => ({
+                                        ...prev,
+                                        list: {
+                                          ...prev.list,
                                           mandatory: e.target.checked,
                                           name: prev.list?.name || '',
                                           description: prev.list?.description || '',
@@ -1919,8 +2086,8 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
                                     <Label htmlFor="list-mandatory" className="text-sm">Fixed options only</Label>
                                   </div>
                                   <p className="text-xs text-muted-foreground">
-                                    {newMetadata.list?.mandatory ? 
-                                      'Users must choose from predefined options' : 
+                                    {newMetadata.list?.mandatory ?
+                                      'Users must choose from predefined options' :
                                       'Users can add custom values to the list'
                                     }
                                   </p>
@@ -1933,16 +2100,16 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
                                     {newMetadata.list?.option?.length || 0} option{(newMetadata.list?.option?.length || 0) !== 1 ? 's' : ''} added
                                   </span>
                                 </div>
-                                
+
                                 <div className="flex gap-3">
                                   <Input
                                     id="list-options"
                                     type="text"
                                     value={newMetadata.list?.newOption || ''}
-                                    onChange={(e) => setNewMetadata(prev => ({ 
-                                      ...prev, 
-                                      list: { 
-                                        ...prev.list, 
+                                    onChange={(e) => setNewMetadata(prev => ({
+                                      ...prev,
+                                      list: {
+                                        ...prev.list,
                                         newOption: e.target.value,
                                         name: prev.list?.name || '',
                                         description: prev.list?.description || '',
@@ -1954,10 +2121,10 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
                                       if (e.key === 'Enter' && newMetadata.list?.newOption?.trim()) {
                                         const newOption = newMetadata.list.newOption.trim();
                                         if (!(newMetadata.list.option ?? []).includes(newOption)) {
-                                          setNewMetadata(prev => ({ 
-                                            ...prev, 
-                                            list: { 
-                                              ...prev.list, 
+                                          setNewMetadata(prev => ({
+                                            ...prev,
+                                            list: {
+                                              ...prev.list,
                                               option: [...(prev.list?.option || []), newOption],
                                               newOption: '',
                                               name: prev.list?.name || '',
@@ -1976,10 +2143,10 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
                                       if (newMetadata.list?.newOption?.trim()) {
                                         const newOption = newMetadata.list.newOption.trim();
                                         if (!(newMetadata.list.option ?? []).includes(newOption)) {
-                                          setNewMetadata(prev => ({ 
-                                            ...prev, 
-                                            list: { 
-                                              ...prev.list, 
+                                          setNewMetadata(prev => ({
+                                            ...prev,
+                                            list: {
+                                              ...prev.list,
                                               option: [...(prev.list?.option || []), newOption],
                                               newOption: '',
                                               name: prev.list?.name || '',
@@ -1997,7 +2164,7 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
                                     Add Option
                                   </Button>
                                 </div>
-                                
+
                                 {newMetadata.list?.option && newMetadata.list.option.length > 0 ? (
                                   <div className="space-y-3">
                                     <div className="text-sm font-medium text-muted-foreground">Current Options:</div>
@@ -2008,10 +2175,10 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
                                           <Button
                                             variant="ghost"
                                             size="sm"
-                                            onClick={() => setNewMetadata(prev => ({ 
-                                              ...prev, 
-                                              list: { 
-                                                ...prev.list, 
+                                            onClick={() => setNewMetadata(prev => ({
+                                              ...prev,
+                                              list: {
+                                                ...prev.list,
                                                 option: prev.list?.option?.filter((_, i) => i !== index) || [],
                                                 name: prev.list?.name || '',
                                                 description: prev.list?.description || '',
@@ -2039,11 +2206,11 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
                             </CardContent>
                           </Card>
                         )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Existing Metadata Definitions */}
               <div className="space-y-3">
@@ -2131,8 +2298,8 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
                               <Select
                                 value={editingMetadata.listId?.toString() || ''}
                                 onValueChange={(value) => {
-                                  setEditingMetadata(prev => prev ? ({ 
-                                    ...prev, 
+                                  setEditingMetadata(prev => prev ? ({
+                                    ...prev,
                                     listId: value ? parseInt(value) : undefined,
                                     list: undefined // Clear inline list when selecting existing
                                   }) : null);
@@ -2219,6 +2386,115 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
               </div>
             </CardContent>
           </Card>
+
+          {/* Auto-Classification Section */}
+          <div className="mt-6">
+            <Card className="border-blue-100 bg-blue-50/20">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg flex items-center gap-3">
+                  <div className="h-8 w-8 bg-blue-100 rounded-lg flex items-center justify-center text-blue-600">
+                    <FolderTree className="h-4 w-4" />
+                  </div>
+                  Auto-Classification
+                </CardTitle>
+                <div className="flex items-center space-x-2 mt-2">
+                  <input
+                    type="checkbox"
+                    id="auto-class-enabled"
+                    checked={formData.autoClassificationEnabled || false}
+                    onChange={(e) => setFormData(prev => ({ ...prev, autoClassificationEnabled: e.target.checked }))}
+                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                  />
+                  <Label htmlFor="auto-class-enabled" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Enable auto-classification for documents in this category
+                  </Label>
+                </div>
+              </CardHeader>
+
+              {formData.autoClassificationEnabled && (
+                <CardContent className="space-y-6 animate-in slide-in-from-top-2 duration-200">
+                  <div className="space-y-4 p-4 bg-background/50 rounded-lg border border-border">
+                    <div className="space-y-2">
+                      <Label>Target Root Folder</Label>
+                      <div className="flex gap-2">
+                        <div className="flex-1 px-3 py-2 border rounded-md bg-background text-sm text-muted-foreground flex items-center overflow-hidden">
+                          {targetFolderName ? (
+                            <span className="text-foreground">{targetFolderName}</span>
+                          ) : (
+                            <span className="italic">No folder selected</span>
+                          )}
+                        </div>
+                        <Button
+                          variant="outline"
+                          onClick={() => setShowFolderPicker(true)}
+                          className="flex items-center gap-2"
+                        >
+                          <FolderTree className="h-4 w-4" />
+                          Browse
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Documents will be automatically moved to this folder, organized by the rules below.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Classification Rules (Path Structure)</Label>
+                      <div className="flex flex-wrap gap-2 p-3 border rounded-md min-h-[50px] bg-background items-center">
+                        <span className="px-2 py-1 bg-muted rounded text-xs font-mono text-muted-foreground">
+                          {targetFolderName || '[Root]'} /
+                        </span>
+                        {(formData.classificationRules || []).map((rule, idx) => (
+                          <div key={idx} className="flex items-center animate-in fade-in zoom-in duration-200">
+                            <div className="flex items-center bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-200 text-sm">
+                              <Tag className="h-3 w-3 mr-1" />
+                              {rule}
+                              <button
+                                onClick={() => setFormData(prev => ({
+                                  ...prev,
+                                  classificationRules: (prev.classificationRules || []).filter((_, i) => i !== idx)
+                                }))}
+                                className="ml-2 hover:bg-blue-100 rounded-full p-0.5"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </div>
+                            <span className="mx-1 text-muted-foreground">/</span>
+                          </div>
+                        ))}
+                        <span className="text-xs text-muted-foreground italic">[Document]</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs uppercase text-muted-foreground font-semibold">Available Metadata Fields</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {(formData.metadataDefinitions || []).map((md, idx) => (
+                          <Button
+                            key={idx}
+                            variant="secondary"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => setFormData(prev => ({
+                              ...prev,
+                              classificationRules: [...(prev.classificationRules || []), md.key]
+                            }))}
+                            disabled={(formData.classificationRules || []).includes(md.key)}
+                          >
+                            <Plus className="h-3 w-3 mr-1" />
+                            {md.key}
+                          </Button>
+                        ))}
+                        {(formData.metadataDefinitions?.length ?? 0) === 0 && (
+                          <span className="text-xs text-muted-foreground">No metadata fields available</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              )}
+            </Card>
+          </div>
         </div>
 
         {/* Footer */}
@@ -2230,13 +2506,25 @@ function CategoryModal({ category, lists, getDataTypeIcon, onClose, onSave }: an
             <Button variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button onClick={() => onSave(formData)} className="flex items-center gap-2">
+            <Button onClick={() => {
+              onSave(formData);
+            }} className="flex items-center gap-2">
               <Save className="h-4 w-4" />
               {category ? 'Update Model' : 'Create Model'}
             </Button>
           </div>
         </div>
       </div>
+
+      {/* Folder Picker Modal */}
+      <FolderPickerModal
+        isOpen={showFolderPicker}
+        onClose={() => setShowFolderPicker(false)}
+        onSelect={(folderId, folderName, folderPath) => {
+          setFormData(prev => ({ ...prev, targetFolderId: folderId }));
+          setTargetFolderName(folderPath);
+        }}
+      />
     </div>
   );
 }
@@ -2278,11 +2566,11 @@ function ListModal({ list, onClose, onSave }: any) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
-      <div 
+      <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         onClick={onClose}
       />
-      
+
       {/* Modal */}
       <div className="relative w-[80vw] max-w-4xl max-h-[85vh] bg-background border rounded-lg shadow-lg overflow-hidden">
         <div className="flex items-center justify-between p-6 border-b bg-muted/20">
@@ -2351,8 +2639,8 @@ function ListModal({ list, onClose, onSave }: any) {
                       </Label>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {formData.mandatory ? 
-                        'Users must choose from predefined options' : 
+                      {formData.mandatory ?
+                        'Users must choose from predefined options' :
                         'Users can add custom values to the list'
                       }
                     </p>
@@ -2437,7 +2725,7 @@ function ListModal({ list, onClose, onSave }: any) {
             <Button variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button 
+            <Button
               onClick={handleSave}
               disabled={!formData.name.trim() || (formData.option?.length ?? 0) === 0}
               className="flex items-center gap-2"

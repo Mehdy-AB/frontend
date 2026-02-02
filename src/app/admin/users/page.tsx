@@ -2,23 +2,31 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  Users, 
-  Plus, 
+import {
+  Users,
+  Plus,
   Trash2,
   Mail,
   Shield,
   UsersIcon,
   Ban,
-  CheckCircle
+  CheckCircle,
+  RotateCcw,
+  ArrowUpDown
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@/components/ui/tabs';
 import { notificationApiClient } from '@/api/notificationClient';
-import { UserDto } from '@/types/api';
+import { UserDto, SortFieldsUser } from '@/types/api';
 import CreateUserModal, { CreateUserData } from '@/components/modals/CreateUserModal';
 import ConfirmationModal from '@/components/modals/ConfirmationModal';
 import ServerSearchInput from '@/components/main/ServerSearchInput';
@@ -26,20 +34,27 @@ import Pagination from '@/components/main/Pagination';
 import { useServerSideSearch } from '@/components/main/useServerSideSearch';
 import { formatDate } from '@/lib/dateFormatter';
 import { useAdminPagePermissions } from '@/hooks/useAdminPagePermissions';
+import { exportToCSV, exportSelected, USER_EXPORT_COLUMNS } from '@/lib/exportUtils';
+import { Download, Upload } from 'lucide-react';
 
 export default function UsersPage() {
   const router = useRouter();
-  const { canView, canCreate, canUpdate, canDelete } = useAdminPagePermissions();
+  const { canView, canCreate, canUpdate, canDelete, canAssign } = useAdminPagePermissions();
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
-  const pageSize = 20;
-  
+  const [pageSize, setPageSize] = useState(20);
+
+  // Sorting & Tabs
+  const [activeTab, setActiveTab] = useState<'active' | 'deleted'>('active');
+  const [sortField, setSortField] = useState<SortFieldsUser>(SortFieldsUser.CREATED_TIMESTAMP);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+
   // Redirect if user doesn't have view permission
   useEffect(() => {
     if (!canView) {
       router.push('/');
     }
   }, [canView, router]);
-  
+
   // Modal states
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -66,11 +81,23 @@ export default function UsersPage() {
     removeItem
   } = useServerSideSearch<UserDto>({
     fetchFunction: async (page, searchTerm) => {
-      return await notificationApiClient.getAllUsers({
-        page,
-        size: pageSize,
-        query: searchTerm || undefined,
-      });
+      // Determine which API to call based on active tab
+      if (activeTab === 'deleted') {
+        return await notificationApiClient.getDeletedUsers(
+          page,
+          pageSize,
+          sortField,
+          sortDirection
+        );
+      } else {
+        return await notificationApiClient.getAllUsers({
+          page,
+          size: pageSize,
+          query: searchTerm || undefined,
+          sortBy: sortField,
+          sortDirection
+        });
+      }
     },
     searchFields: (user) => [
       user.username,
@@ -82,9 +109,49 @@ export default function UsersPage() {
     debounceMs: 800
   });
 
+  // Re-fetch when tab or sort changes
+  useEffect(() => {
+    // We use the refresh function from the hook which triggers fetchFunction
+    // But we need to make sure fetchFunction (which is closure) sees the new state.
+    // useServerSideSearch typically uses the latest fetchFunction if passed correctly, 
+    // or we might rely on the fact that refresh causes a re-render/re-fetch.
+    // Ideally useServerSideSearch should accept dependencies or we trigger it.
+    // Assuming fetchData() works.
+    fetchData();
+  }, [activeTab, sortField, sortDirection]); // we omitted fetchData from dependency array to avoid loop
+
+  const handleSort = (field: SortFieldsUser) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
   const handlePageChange = (newPage: number) => {
     setPage(newPage);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize);
+    setPage(0);
+  };
+
+  const handleExportAll = () => {
+    exportToCSV(displayUsers, {
+      filename: `users_${activeTab}_export_${new Date().toISOString().split('T')[0]}`,
+      columns: USER_EXPORT_COLUMNS
+    });
+  };
+
+  const handleExportSelected = () => {
+    if (selectedItems.length === 0) return;
+    exportSelected(displayUsers, selectedItems, {
+      filename: `users_selected_${new Date().toISOString().split('T')[0]}`,
+      columns: USER_EXPORT_COLUMNS
+    });
   };
 
   const toggleSelectUser = (userId: string) => {
@@ -95,11 +162,31 @@ export default function UsersPage() {
     );
   };
 
+  const toggleSelectAll = () => {
+    if (displayUsers.length === 0) return;
+    if (selectedItems.length === displayUsers.length) {
+      setSelectedItems([]);
+    } else {
+      setSelectedItems(displayUsers.map(u => u.id));
+    }
+  };
+
+  const handleRestoreUser = async (user: UserDto) => {
+    try {
+      await notificationApiClient.restoreUser(user.id);
+      fetchData();
+    } catch (error) {
+      console.error('Error restoring user:', error);
+    }
+  };
+
   const handleCreateUser = async (data: CreateUserData) => {
     try {
       setIsCreateLoading(true);
       const newUser = await notificationApiClient.createUser(data);
-      addItem(newUser);
+      if (activeTab === 'active') {
+        addItem(newUser);
+      }
       setIsCreateModalOpen(false);
     } catch (error) {
       console.error('Error creating user:', error);
@@ -115,7 +202,7 @@ export default function UsersPage() {
 
   const handleDeleteConfirm = async () => {
     if (!userToDelete) return;
-    
+
     try {
       await notificationApiClient.deleteUser(userToDelete.id);
       removeItem(userToDelete.id);
@@ -128,10 +215,15 @@ export default function UsersPage() {
 
   const handleUpdateUserStatus = async (userId: string, enabled: boolean) => {
     try {
+      // Optimistic update
+      updateItem(userId, (user) => ({ ...user, enabled, status: enabled ? 'ACTIVE' : 'INACTIVE' }));
+
       await notificationApiClient.updateUserStatus(userId, enabled);
-      updateItem(userId, (user) => ({ ...user, enabled }));
+      // No need to refresh() as we updated locally. 
+      // If error, we might want to revert, but for now simple log.
     } catch (error) {
       console.error('Error updating user status:', error);
+      fetchData(); // Revert on error
     }
   };
 
@@ -162,29 +254,54 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-6 p-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold">User Management</h1>
           <p className="text-muted-foreground">Manage system users, roles, groups, and permissions</p>
         </div>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button 
-              className="gap-2" 
-              onClick={() => setIsCreateModalOpen(true)}
-              disabled={!canCreate}
-            >
-              <Plus className="h-4 w-4" />
-              Add User
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex bg-muted/50 p-1 rounded-lg gap-1 border">
+            <Button variant="ghost" size="sm" className="h-8 gap-2" onClick={handleExportAll}>
+              <Download className="h-4 w-4" />
+              <span className="hidden sm:inline">Export All</span>
             </Button>
-          </TooltipTrigger>
-          {!canCreate && (
-            <TooltipContent>
-              <p>You don't have permission to create users</p>
-            </TooltipContent>
-          )}
-        </Tooltip>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-2"
+              onClick={handleExportSelected}
+              disabled={selectedItems.length === 0}
+            >
+              <Download className="h-4 w-4" />
+              <span className="hidden sm:inline">Selected ({selectedItems.length})</span>
+            </Button>
+            <Button variant="ghost" size="sm" className="h-8 gap-2" disabled>
+              <Upload className="h-4 w-4" />
+              <span className="hidden sm:inline">Import</span>
+            </Button>
+          </div>
+
+          <div className="h-8 w-px bg-border mx-1 hidden sm:block"></div>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                className="gap-2"
+                onClick={() => setIsCreateModalOpen(true)}
+                disabled={!canCreate}
+              >
+                <Plus className="h-4 w-4" />
+                Add User
+              </Button>
+            </TooltipTrigger>
+            {!canCreate && (
+              <TooltipContent>
+                <p>You don't have permission to create users</p>
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </div>
       </div>
 
       {/* Error Display */}
@@ -201,194 +318,261 @@ export default function UsersPage() {
         </Card>
       )}
 
-      {/* Search and Stats */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex items-center gap-4">
-            <ServerSearchInput
-              value={searchQuery}
-              onChange={setSearchQuery}
-              placeholder="Search users by name, email, or username..."
-            />
-            <div className="text-sm text-muted-foreground whitespace-nowrap">
-              {totalElements} user{totalElements !== 1 ? 's' : ''} total
+      <Tabs defaultValue="active" value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full">
+        <div className="flex justify-between items-center mb-4">
+          <TabsList>
+            <TabsTrigger value="active" className="gap-2">
+              <UsersIcon className="h-4 w-4" />
+              Active Users
+            </TabsTrigger>
+            <TabsTrigger value="deleted" className="gap-2">
+              <Trash2 className="h-4 w-4" />
+              Recycle Bin
+            </TabsTrigger>
+          </TabsList>
+
+          <div className="flex gap-2 text-sm text-center">
+            {/* Search Input handled below */}
+          </div>
+        </div>
+
+        <Card>
+          <CardContent className="p-0">
+            <div className="p-4 border-b flex justify-between items-center bg-muted/20">
+              <div className="flex items-center gap-2">
+                {/* Search handled by ServerSearchInput */}
+              </div>
+              <ServerSearchInput
+                value={searchQuery}
+                onChange={setSearchQuery}
+                placeholder={activeTab === 'deleted' ? "Search not available in bin" : "Search users..."}
+                disabled={activeTab === 'deleted'}
+              />
             </div>
-          </div>
-        </CardContent>
-      </Card>
 
-      {/* Users Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            {selectedItems.length > 0 && (
-              <span className="text-sm font-normal text-muted-foreground">
-                {selectedItems.length} selected
-              </span>
-            )}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-muted">
-                <tr>
-                  <th className="text-left p-4">
-                    <input 
-                      type="checkbox" 
-                      className="rounded border-ui"
-                      checked={selectedItems.length === displayUsers.length && displayUsers.length > 0}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedItems(displayUsers.map(u => u.id));
-                        } else {
-                          setSelectedItems([]);
-                        }
-                      }}
-                    />
-                  </th>
-                  <th className="text-left p-4 text-sm font-medium">User</th>
-                  <th className="text-left p-4 text-sm font-medium">Email</th>
-                  <th className="text-left p-4 text-sm font-medium">Roles</th>
-                  <th className="text-left p-4 text-sm font-medium">Groups</th>
-                  <th className="text-left p-4 text-sm font-medium">Status</th>
-                  <th className="text-left p-4 text-sm font-medium">Created</th>
-                  <th className="text-left p-4 text-sm font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {displayUsers.map((user: UserDto) => (
-                  <tr 
-                    key={user.id} 
-                    className="border-b hover:bg-muted/50 cursor-pointer group"
-                    onClick={() => handleViewUserDetails(user.id)}
-                  >
-                    <td 
-                      className="p-4" 
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <input 
-                        type="checkbox" 
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="w-12 p-4">
+                      <input
+                        type="checkbox"
                         className="rounded border-ui"
-                        checked={selectedItems.includes(user.id)}
-                        onChange={() => toggleSelectUser(user.id)}
+                        checked={selectedItems.length === displayUsers.length && displayUsers.length > 0}
+                        onChange={toggleSelectAll}
                       />
-                    </td>
-                    <td className="p-4">
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-10 w-10">
-                          <AvatarImage src={user.imageUrl || user.imgUrl} alt={user.displayName} />
-                          <AvatarFallback>
-                            {user.firstName?.[0] || user.username[0].toUpperCase()}
-                            {user.lastName?.[0] || user.username[1]?.toUpperCase() || ''}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <div className="font-medium group-hover:underline">{user.displayName}</div>
-                          <div className="text-sm text-muted-foreground">@{user.username}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex items-center gap-2">
-                        <Mail className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm">{user.email}</span>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex items-center gap-2">
-                        <Shield className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm">{user.roles?.length || 0} roles</span>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex items-center gap-2">
-                        <UsersIcon className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm">{user.groups?.length || 0} groups</span>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      {user.status === 'ACTIVE' || user.enabled ? (
-                        <Badge variant="default" className="bg-green-500">Active</Badge>
-                      ) : (
-                        <Badge variant="destructive">Disabled</Badge>
-                      )}
-                    </td>
-                    <td className="p-4 text-sm text-muted-foreground">
-                      {formatDate(user.createdAt || user.createdTimestamp)}
-                    </td>
-                    <td 
-                      className="p-4" 
-                      onClick={(e) => e.stopPropagation()}
+                    </th>
+                    <th
+                      className="text-left p-4 text-sm font-medium cursor-pointer hover:bg-muted/80 transition-colors"
+                      onClick={() => handleSort(SortFieldsUser.USERNAME)}
                     >
-                      <div className="flex items-center gap-2">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => canUpdate && handleUpdateUserStatus(user.id, !user.enabled)}
-                              disabled={!canUpdate}
-                              title={user.enabled ? 'Disable user' : 'Enable user'}
-                            >
-                              {user.enabled ? (
-                                <Ban className="h-4 w-4 text-orange-500" />
-                              ) : (
-                                <CheckCircle className="h-4 w-4 text-green-500" />
-                              )}
-                            </Button>
-                          </TooltipTrigger>
-                          {!canUpdate && (
-                            <TooltipContent>
-                              <p>You don't have permission to update users</p>
-                            </TooltipContent>
-                          )}
-                        </Tooltip>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => canDelete && handleDeleteClick(user)}
-                              disabled={!canDelete}
-                              className={canDelete ? "text-destructive hover:text-destructive" : "opacity-50 cursor-not-allowed"}
-                              title="Delete user"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          {!canDelete && (
-                            <TooltipContent>
-                              <p>You don't have permission to delete users</p>
-                            </TooltipContent>
-                          )}
-                        </Tooltip>
+                      <div className="flex items-center gap-1">
+                        User
+                        {sortField === SortFieldsUser.USERNAME && <ArrowUpDown className="h-4 w-4" />}
                       </div>
-                    </td>
+                    </th>
+                    <th
+                      className="text-left p-4 text-sm font-medium cursor-pointer hover:bg-muted/80 transition-colors"
+                      onClick={() => handleSort(SortFieldsUser.EMAIL)}
+                    >
+                      <div className="flex items-center gap-1">
+                        Email
+                        {sortField === SortFieldsUser.EMAIL && <ArrowUpDown className="h-4 w-4" />}
+                      </div>
+                    </th>
+                    <th className="text-left p-4 text-sm font-medium">Roles</th>
+                    <th className="text-left p-4 text-sm font-medium">Groups</th>
+                    <th className="text-left p-4 text-sm font-medium">Status</th>
+                    <th
+                      className="text-left p-4 text-sm font-medium cursor-pointer hover:bg-muted/80 transition-colors"
+                      onClick={() => handleSort(SortFieldsUser.CREATED_TIMESTAMP)}
+                    >
+                      <div className="flex items-center gap-1">
+                        Created
+                        {sortField === SortFieldsUser.CREATED_TIMESTAMP && <ArrowUpDown className="h-4 w-4" />}
+                      </div>
+                    </th>
+                    <th className="text-left p-4 text-sm font-medium">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            
-            {displayUsers.length === 0 && !tableLoading && (
-              <div className="text-center py-12">
-                <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground">
-                  {searchQuery ? 'No users match your search' : 'No users found'}
-                </p>
-              </div>
-            )}
+                </thead>
+                <tbody>
+                  {displayUsers.map((user: UserDto) => (
+                    <tr
+                      key={user.id}
+                      className={`border-b cursor-pointer group ${user.status !== 'ACTIVE' && !user.enabled ? 'bg-muted/30' : 'hover:bg-muted/50'}`}
+                      onClick={() => handleViewUserDetails(user.id)}
+                    >
+                      <td
+                        className="p-4"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          className="rounded border-ui"
+                          checked={selectedItems.includes(user.id)}
+                          onChange={() => toggleSelectUser(user.id)}
+                        />
+                      </td>
+                      <td className="p-4">
+                        <div className="flex items-center gap-3">
+                          <Avatar className={`h-10 w-10 ${user.status !== 'ACTIVE' && !user.enabled ? 'grayscale' : ''}`}>
+                            <AvatarImage src={user.imageUrl || user.imgUrl} alt={user.displayName} />
+                            <AvatarFallback>
+                              {user.firstName?.[0] || user.username[0].toUpperCase()}
+                              {user.lastName?.[0] || user.username[1]?.toUpperCase() || ''}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <div className="font-medium group-hover:underline">{user.displayName}</div>
+                            <div className="text-sm text-muted-foreground">@{user.username}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex items-center gap-2">
+                          <Mail className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm">{user.email}</span>
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex items-center gap-2">
+                          <Shield className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm">{user.roles?.length || 0} roles</span>
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex items-center gap-2">
+                          <UsersIcon className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm">{user.groups?.length || 0} groups</span>
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        {activeTab === 'deleted' ? (
+                          <Badge variant="destructive" className="bg-red-900/50 text-red-200">Deleted</Badge>
+                        ) : (user.status === 'ACTIVE' || user.enabled ? (
+                          <Badge variant="default" className="bg-green-500">Active</Badge>
+                        ) : (
+                          <Badge variant="destructive">Disabled</Badge>
+                        ))}
+                      </td>
+                      <td className="p-4 text-sm text-muted-foreground">
+                        {formatDate(user.createdAt || user.createdTimestamp)}
+                      </td>
+                      <td
+                        className="p-4"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex items-center gap-2">
+                          {activeTab === 'deleted' ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    canDelete && handleRestoreUser(user);
+                                  }}
+                                  disabled={!canDelete}
+                                  className="gap-2 text-green-600 hover:text-green-700 hover:border-green-200"
+                                  title="Restore user"
+                                >
+                                  <RotateCcw className="h-4 w-4" />
+                                  Restore
+                                </Button>
+                              </TooltipTrigger>
+                              {!canDelete && (
+                                <TooltipContent>
+                                  <p>You don't have permission to restore users</p>
+                                </TooltipContent>
+                              )}
+                            </Tooltip>
+                          ) : (
+                            <>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span tabIndex={0}> {/* Span wrapper for disabled button tooltip */}
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const isEnabled = user.status === 'ACTIVE' || user.enabled;
+                                        canUpdate && !user.roles?.includes('SUPER_ADMIN') && handleUpdateUserStatus(user.id, !isEnabled);
+                                      }}
+                                      disabled={!canUpdate || user.roles?.includes('SUPER_ADMIN')}
+                                      className={user.roles?.includes('SUPER_ADMIN') ? "opacity-50 cursor-not-allowed" : ""}
+                                    >
+                                      {user.status === 'ACTIVE' || user.enabled ? (
+                                        <Ban className={`h-4 w-4 ${user.roles?.includes('SUPER_ADMIN') ? 'text-gray-400' : 'text-orange-500'}`} />
+                                      ) : (
+                                        <CheckCircle className={`h-4 w-4 ${user.roles?.includes('SUPER_ADMIN') ? 'text-gray-400' : 'text-green-500'}`} />
+                                      )}
+                                    </Button>
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {user.roles?.includes('SUPER_ADMIN')
+                                    ? <p>Super Admin cannot be modified</p>
+                                    : (!canUpdate ? <p>You don't have permission to update users</p> : <p>{user.status === 'ACTIVE' || user.enabled ? 'Disable user' : 'Enable user'}</p>)
+                                  }
+                                </TooltipContent>
+                              </Tooltip>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span tabIndex={0}>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        canDelete && !user.roles?.includes('SUPER_ADMIN') && handleDeleteClick(user);
+                                      }}
+                                      disabled={!canDelete || user.roles?.includes('SUPER_ADMIN')}
+                                      className={canDelete && !user.roles?.includes('SUPER_ADMIN') ? "text-destructive hover:text-destructive" : "opacity-50 cursor-not-allowed"}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {user.roles?.includes('SUPER_ADMIN')
+                                    ? <p>Super Admin cannot be deleted</p>
+                                    : (!canDelete ? <p>You don't have permission to delete users</p> : <p>Delete user</p>)
+                                  }
+                                </TooltipContent>
+                              </Tooltip>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
 
-            {/* Loading indicator */}
-            {tableLoading && (
-              <div className="flex items-center justify-center py-4 text-sm text-muted-foreground">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2"></div>
-                {isLocalFiltering ? 'Fetching comprehensive results...' : 'Loading users...'}
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+              {displayUsers.length === 0 && !tableLoading && (
+                <div className="text-center py-12">
+                  <UsersIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <p className="text-muted-foreground">
+                    {activeTab === 'deleted'
+                      ? 'Recycle bin is empty'
+                      : (searchQuery ? `No users match '${searchQuery}'` : 'No users found')}
+                  </p>
+                </div>
+              )}
+
+              {/* Loading indicator */}
+              {tableLoading && (
+                <div className="flex items-center justify-center py-4 text-sm text-muted-foreground">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2"></div>
+                  Loading users...
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </Tabs>
 
       <Pagination
         currentPage={page}
@@ -396,6 +580,7 @@ export default function UsersPage() {
         totalElements={totalElements}
         pageSize={pageSize}
         onPageChange={handlePageChange}
+        onPageSizeChange={handlePageSizeChange}
       />
 
       {/* Modals */}
@@ -414,7 +599,7 @@ export default function UsersPage() {
         }}
         onConfirm={handleDeleteConfirm}
         title="Delete User"
-        message={userToDelete ? `Are you sure you want to delete user "${userToDelete.displayName}"? This action cannot be undone.` : ''}
+        message={userToDelete ? `Are you sure you want to delete user "${userToDelete.displayName}"?` : ''}
         confirmText="Delete"
         cancelText="Cancel"
         variant="destructive"

@@ -29,7 +29,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { workflowService } from '@/api/services/workflowService';
+import { workflowAdminService } from '@/api/services/workflowAdminService';
 import { WorkflowResponse } from '@/types/api';
 import Pagination from '@/components/main/Pagination';
 import ServerSearchInput from '@/components/main/ServerSearchInput';
@@ -61,7 +61,7 @@ export default function WorkflowManagementPage() {
     removeItem
   } = useServerSideSearch<WorkflowResponse>({
     fetchFunction: async (page, searchTerm) => {
-      const response = await workflowService.getAllWorkflows(page, pageSize, searchTerm || undefined, true);
+      const response = await workflowAdminService.getAllWorkflows(page, pageSize, searchTerm || undefined, true);
       return response;
     },
     searchFields: (workflow) => [workflow.name],
@@ -89,6 +89,8 @@ export default function WorkflowManagementPage() {
   };
 
   const handleCreateWorkflow = () => {
+    // TODO: Implement create workflow dialog, then create and navigate
+    alert('Please create workflow via the old designer for now, then use the new designer to edit it.');
     router.push('/admin/workflow/designer');
   };
 
@@ -101,7 +103,7 @@ export default function WorkflowManagementPage() {
     if (!workflowToDelete) return;
 
     try {
-      await workflowService.deleteWorkflow(workflowToDelete.id);
+      await workflowAdminService.deleteWorkflow(workflowToDelete.id);
       removeItem(workflowToDelete);
       setIsDeleteModalOpen(false);
       setWorkflowToDelete(null);
@@ -116,7 +118,7 @@ export default function WorkflowManagementPage() {
   };
 
   const handleDesignWorkflow = (workflowId: number) => {
-    router.push(`/admin/workflow/designer?id=${workflowId}`);
+    router.push(`/admin/workflows/designer/${workflowId}`);
   };
 
   return (
@@ -133,7 +135,7 @@ export default function WorkflowManagementPage() {
             onClick={() => router.push('/admin/workflow/designer')}
           >
             <GitBranch className="h-4 w-4 mr-2" />
-            Workflow Designer
+            Old Designer (Legacy)
           </Button>
           <Button onClick={handleCreateWorkflow}>
             <Plus className="h-4 w-4 mr-2" />

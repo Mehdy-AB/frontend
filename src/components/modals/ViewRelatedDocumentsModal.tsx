@@ -321,10 +321,10 @@ export default function ViewRelatedDocumentsModal({
                       {/* Document Icon */}
                       <div className="flex-shrink-0">
                         <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
-                          doc.isManual ? 'bg-blue-50' : 'bg-green-50'
+                          doc.manual ? 'bg-blue-50' : 'bg-green-50'
                         }`}>
                           <FileText className={`h-6 w-6 ${
-                            doc.isManual ? 'text-blue-600' : 'text-green-600'
+                            doc.manual ? 'text-blue-600' : 'text-green-600'
                           }`} />
                         </div>
                       </div>
@@ -342,7 +342,7 @@ export default function ViewRelatedDocumentsModal({
                               <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${getLinkTypeColor(doc.linkType)}`}>
                                 {doc.linkType}
                               </span>
-                              {doc.isManual ? (
+                              {doc.manual ? (
                                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
                                   <Settings className="h-3 w-3" />
                                   Manual
@@ -374,9 +374,9 @@ export default function ViewRelatedDocumentsModal({
                             )}
                             {canEdit && doc.linkId && (
                               <button
-                                onClick={() => handleDeleteLinkClick(doc.linkId!, doc.documentName, doc.isManual)}
+                                onClick={() => handleDeleteLinkClick(doc.linkId!, doc.documentName, doc.manual)}
                                 className="p-2 rounded hover:bg-red-100 text-gray-600 hover:text-red-700 transition-colors"
-                                title={doc.isManual ? "Remove Manual Link" : "Remove Auto Link"}
+                                title={doc.manual ? "Remove Manual Link" : "Remove Auto Link"}
                               >
                                 <Trash2 className="h-4 w-4" />
                               </button>

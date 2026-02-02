@@ -29,7 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { workflowService } from '@/api/services/workflowService';
+import { workflowAdminService } from '@/api/services/workflowAdminService';
 import { WorkflowStepInstanceResponse, WorkflowResponse } from '@/types/api';
 import { formatDate } from '@/lib/dateFormatter';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -59,11 +59,11 @@ export default function DashboardPage() {
       setLoading(true);
 
       // Load user's pending tasks
-      const tasks = await workflowService.getPendingSteps();
+      const tasks = await workflowAdminService.getPendingSteps();
       setMyTasks(tasks);
 
       // Load workflows user admins
-      const workflows = await workflowService.getAdminedWorkflows(0, 100);
+      const workflows = await workflowAdminService.getAdminedWorkflows(0, 100);
       setAdminWorkflows(workflows.content);
 
     } catch (error) {
@@ -76,8 +76,8 @@ export default function DashboardPage() {
   // Filter tasks
   const filteredTasks = myTasks.filter(task => {
     const matchesSearch = searchQuery === '' ||
-      task.workflowStep?.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      task.documentName?.toLowerCase().includes(searchQuery.toLowerCase());
+      task.nodeName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      task.documentTitle?.toLowerCase().includes(searchQuery.toLowerCase());
 
     const matchesStatus = statusFilter === 'all' || task.status === statusFilter;
 
@@ -283,11 +283,11 @@ export default function DashboardPage() {
                         <div className="flex items-start justify-between">
                           <div className="space-y-1">
                             <h3 className="font-semibold text-lg">
-                              {task.workflowStep?.name || 'Unknown Step'}
+                              {task.nodeName || 'Unknown Step'}
                             </h3>
                             <p className="text-sm text-muted-foreground">
                               <FileText className="h-3 w-3 inline mr-1" />
-                              {task.documentName || 'Unknown Document'}
+                              {task.documentTitle || 'Unknown Document'}
                             </p>
                           </div>
                           <Badge
@@ -313,9 +313,7 @@ export default function DashboardPage() {
                               <span>Due: {formatDate(task.dueDate)}</span>
                             </div>
                           )}
-                          {task.workflowStep?.description && (
-                            <p className="text-sm">{task.workflowStep.description}</p>
-                          )}
+
                         </div>
                       </div>
                       <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-1" />

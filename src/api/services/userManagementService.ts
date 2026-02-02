@@ -92,6 +92,27 @@ export class UserManagementService {
     return apiClient.get<PageResponse<UserDto>>(`${this.baseUrl}/status/${status}?${params}`);
   }
 
+  // Get deleted users (Recycle Bin)
+  async getDeletedUsers(
+    page: number = 0,
+    size: number = 20,
+    sortBy?: SortFieldsUser,
+    sortDirection: 'asc' | 'desc' = 'asc'
+  ): Promise<PageResponse<UserDto>> {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      size: size.toString(),
+      sortBy: sortBy || SortFieldsUser.USERNAME,
+      sortDirection,
+    });
+    return apiClient.get<PageResponse<UserDto>>(`${this.baseUrl}/deleted?${params}`);
+  }
+
+  // Restore user
+  async restoreUser(userId: string): Promise<UserDto> {
+    return apiClient.post<UserDto>(`${this.baseUrl}/${userId}/restore`, {});
+  }
+
   // Get user statistics
   async getUserStatistics(): Promise<{
     totalUsers: number;

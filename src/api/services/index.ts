@@ -16,6 +16,7 @@ export { recycleBinService } from './recycleBinService';
 export { auditLogService } from './auditLogService';
 export { unclassifiedDocumentService } from './unclassifiedDocumentService';
 export { workflowService } from './workflowService';
+export { stampService } from './stampService';
 
 // Re-export types for convenience
 export * from '../../types/api';

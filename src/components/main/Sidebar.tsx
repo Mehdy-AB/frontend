@@ -26,7 +26,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { isAdmin } from '../../utils/adminUtils';
-import { workflowService } from '@/api/services/workflowService';
+import { workflowAdminService } from '@/api/services/workflowAdminService';
 
 interface SidebarItem {
   id: string;
@@ -46,19 +46,19 @@ export default function Sidebar() {
   const userIsAdmin = isAdmin();
 
   useEffect(() => {
-    const fetchTaskCount = async () => {
-      try {
-        const response = await workflowService.getActiveSteps(0, 1, '', 'all');
-        setPendingTasksCount(response.totalElements);
-      } catch (error) {
-        console.error('Failed to fetch task count', error);
-      }
-    };
+    // const fetchTaskCount = async () => {
+    //   try {
+    //     const response = await workflowAdminService.getActiveSteps(0, 1, '', 'all');
+    //     setPendingTasksCount(response.totalElements);
+    //   } catch (error) {
+    //     console.error('Failed to fetch task count', error);
+    //   }
+    // };
 
-    fetchTaskCount();
-    // Poll every minute
-    const interval = setInterval(fetchTaskCount, 60000);
-    return () => clearInterval(interval);
+    // fetchTaskCount();
+    // // Poll every minute
+    // const interval = setInterval(fetchTaskCount, 60000);
+    // return () => clearInterval(interval);
   }, []);
 
   // Base navigation items for all users
@@ -184,20 +184,14 @@ export default function Sidebar() {
   return (
     <aside className="w-64 bg-card border-r h-full flex flex-col">
       {/* Logo Section */}
-      <div className="p-6 border-b">
-        <div className="flex items-center gap-3">
-          <div className=" flex items-center justify-center">
+      <div className=" border-b">
+        <div className="flex items-center ml-8 w-full">
             <img
               src="/logo.svg"
               alt="Logo"
-              className="h-16 w-16"
+              className="h-32 w-32"
             />
           </div>
-          <div>
-            <h1 className="text-xl font-semibold">Gi doc</h1>
-            <p className="text-xs text-muted-foreground"> Fast. Secure. Reliable DMS.</p>
-          </div>
-        </div>
       </div>
 
 

@@ -1,81 +1,110 @@
-// app/trash/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { 
   Trash2,
   ArchiveRestore,
-  Trash,
+  RefreshCw,
   File,
   Folder,
-  Calendar,
-  AlertTriangle
+  FileText,
+  Eye,
+  Filter
 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { trashService, TrashItemDto } from '../../api/services/trashService';
+import { notificationApiClient } from '../../api/notificationClient';
 import ServerSearchInput from '../../components/main/ServerSearchInput';
 import Pagination from '../../components/main/Pagination';
 import UserAvatar from '../../components/main/UserAvatar';
-import { useServerSideSearch } from '../../components/main/useServerSideSearch';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useRouter } from 'next/navigation';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import ConfirmationModal from '@/components/modals/ConfirmationModal';
+import { useNotifications } from '@/hooks/useNotifications';
 
 export default function TrashPage() {
   const { t } = useLanguage();
+  const { showError, showSuccess } = useNotifications();
+  const router = useRouter();
   const [items, setItems] = useState<TrashItemDto[]>([]);
-  const [selectedItems, setSelectedItems] = useState<number[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [isRestoring, setIsRestoring] = useState<number | null>(null);
-  const [isDeleting, setIsDeleting] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [tableLoading, setTableLoading] = useState(false);
   const [filterType, setFilterType] = useState<'all' | 'document' | 'folder'>('all');
-  const [sortBy, setSortBy] = useState<'name' | 'deletedAt' | 'createdAt'>('deletedAt');
+  const [sortBy, setSortBy] = useState<'name' | 'deletedAt'>('deletedAt');
   const [sortDesc, setSortDesc] = useState(true);
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(20);
   const [totalPages, setTotalPages] = useState(0);
   const [totalElements, setTotalElements] = useState(0);
+  const [query, setQuery] = useState('');
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isRestoring, setIsRestoring] = useState<number | null>(null);
+  const [isDeleting, setIsDeleting] = useState<number | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showEmptyTrashModal, setShowEmptyTrashModal] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<TrashItemDto | null>(null);
 
-  const {
-    displayData,
-    searchQuery,
-    setSearchQuery,
-    loading,
-    tableLoading,
-    totalPages: hookTotalPages,
-    totalElements: hookTotalElements,
-    fetchData
-  } = useServerSideSearch<TrashItemDto>({
-    fetchFunction: async (pageIdx: number, _query?: string) => {
+  const fetchTrash = useCallback(async (isInitialLoad: boolean = false) => {
+    try {
+      if (isInitialLoad) {
+        setLoading(true);
+      } else {
+        setTableLoading(true);
+      }
+      const backendSortBy = sortBy === 'deletedAt' ? 'deletedAt' : sortBy === 'name' ? 'entityName' : 'deletedAt';
+      const backendSortDir = sortDesc ? 'desc' as const : 'asc' as const;
       const resp = await trashService.getMyTrash({
-        page: pageIdx,
+        page,
         size,
-        sortBy: sortBy === 'deletedAt' ? 'deletedAt' : sortBy === 'name' ? 'entityName' : 'deletedAt',
-        sortDir: sortDesc ? 'desc' : 'asc',
-        entityType: filterType === 'all' ? undefined : filterType
+        sortBy: backendSortBy,
+        sortDir: backendSortDir,
+        entityType: filterType === 'all' ? undefined : filterType,
+        query: query || undefined
       });
-      return resp;
-    },
-    searchFields: (item) => [
-      item.entityName || '', 
-      item.entityType || '', 
-      String(item.entityId || '')
-    ],
-    debounceMs: 500,
-    initialPage: 0,
-    fetchOnMount: true
-  });
+
+      setItems(resp.content || []);
+      setTotalPages(resp.totalPages || 0);
+      setTotalElements(resp.totalElements || 0);
+    } catch (error) {
+      console.error('Error fetching trash:', error);
+      showError('Failed to load trash items');
+    } finally {
+      setLoading(false);
+      setTableLoading(false);
+    }
+  }, [page, size, sortBy, sortDesc, query, filterType, showError]);
 
   useEffect(() => {
-    setTotalPages(hookTotalPages);
-    setTotalElements(hookTotalElements);
-    setItems(displayData);
-  }, [displayData, hookTotalElements, hookTotalPages]);
+    const isInitialLoad = items.length === 0;
+    fetchTrash(isInitialLoad);
+  }, [page, size, sortBy, sortDesc, query, filterType]);
 
-  useEffect(() => {
-    fetchData(true);
-  }, [sortBy, sortDesc, size, filterType]);
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    setPage(0);
+    await fetchTrash(false);
+    setIsRefreshing(false);
+  };
 
   const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 Bytes';
+    if (!bytes || bytes === 0) return '0 Bytes';
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -96,157 +125,206 @@ export default function TrashPage() {
     try {
       setIsRestoring(item.id);
       await trashService.restoreItem(item.entityType, item.entityId);
-      setSelectedItems(prev => prev.filter(itemId => itemId !== item.id));
-      fetchData(true); // Refresh the data from server
-    } catch (error) {
+      showSuccess('Item restored successfully');
+      // Remove from local state
+      setItems(prev => prev.filter(i => i.id !== item.id));
+      setTotalElements(prev => Math.max(0, prev - 1));
+    } catch (error: any) {
       console.error('Error restoring item:', error);
-      setError('Failed to restore item');
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to restore item';
+      if (errorMessage.includes('name') || errorMessage.includes('conflict')) {
+        showError('A file or folder with the same name already exists. Please rename it first.');
+      } else {
+        showError(errorMessage);
+      }
     } finally {
       setIsRestoring(null);
     }
   };
 
-  const permanentlyDelete = async (item: TrashItemDto) => {
-    if (confirm('Are you sure you want to permanently delete this item? This action cannot be undone.')) {
-      try {
-        setIsDeleting(item.id);
-        await trashService.permanentlyDelete(item.entityType, item.entityId);
-        setSelectedItems(prev => prev.filter(itemId => itemId !== item.id));
-        fetchData(true); // Refresh the data from server
-      } catch (error) {
-        console.error('Error permanently deleting item:', error);
-        setError('Failed to permanently delete item');
-      } finally {
-        setIsDeleting(null);
-      }
+  const handleDeleteClick = (item: TrashItemDto) => {
+    setItemToDelete(item);
+    setShowDeleteModal(true);
+  };
+
+  const permanentlyDelete = async () => {
+    if (!itemToDelete) return;
+    
+    try {
+      setIsDeleting(itemToDelete.id);
+      await trashService.permanentlyDelete(itemToDelete.entityType, itemToDelete.entityId);
+      showSuccess('Item permanently deleted');
+      // Remove from local state
+      setItems(prev => prev.filter(i => i.id !== itemToDelete.id));
+      setTotalElements(prev => Math.max(0, prev - 1));
+      setShowDeleteModal(false);
+      setItemToDelete(null);
+    } catch (error: any) {
+      console.error('Error permanently deleting item:', error);
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to permanently delete item';
+      showError(errorMessage);
+    } finally {
+      setIsDeleting(null);
     }
+  };
+
+  const handleEmptyTrashClick = () => {
+    setShowEmptyTrashModal(true);
   };
 
   const emptyTrash = async () => {
-    if (confirm('Are you sure you want to empty the trash? This will permanently delete all items.')) {
-      try {
-        await trashService.emptyTrash();
-        setItems([]);
-        setSelectedItems([]);
-        setTotalElements(0);
-        setTotalPages(0);
-        fetchData(true); // Refresh the data
-      } catch (error) {
-        console.error('Error emptying trash:', error);
-        setError('Failed to empty trash');
-      }
+    try {
+      await trashService.emptyTrash();
+      showSuccess('Trash emptied successfully');
+      setItems([]);
+      setTotalElements(0);
+      setTotalPages(0);
+      setShowEmptyTrashModal(false);
+    } catch (error: any) {
+      console.error('Error emptying trash:', error);
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to empty trash';
+      showError(errorMessage);
     }
   };
 
-  // Filter items (search + type) - server-side filtering is handled by the API
-  const filteredItems = items.filter(item => {
-    if (!item.entityName) return false; // Safety check
-    const matchesSearch = item.entityName.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesType = filterType === 'all' || item.entityType.toLowerCase() === filterType;
-    return matchesSearch && matchesType;
-  });
+  const getFileIcon = (mimeType?: string) => {
+    if (!mimeType) return <FileText className="h-5 w-5" />;
+    if (mimeType.includes('pdf')) return <FileText className="h-5 w-5" />;
+    if (mimeType.includes('word') || mimeType.includes('document')) return <FileText className="h-5 w-5" />;
+    if (mimeType.includes('excel') || mimeType.includes('spreadsheet')) return <FileText className="h-5 w-5" />;
+    if (mimeType.includes('image')) return <FileText className="h-5 w-5" />;
+    return <FileText className="h-5 w-5" />;
+  };
 
-  // Client-side sort by name if selected (page scope)
-  const displayedItems = sortBy === 'name'
-    ? [...filteredItems].sort((a, b) => {
-        const an = a.entityName.toLowerCase();
-        const bn = b.entityName.toLowerCase();
-        if (an < bn) return sortDesc ? 1 : -1;
-        if (an > bn) return sortDesc ? -1 : 1;
-        return 0;
-      })
-    : filteredItems;
+  const getDocumentType = (mimeType?: string): string => {
+    if (!mimeType) return 'Unknown';
+    if (mimeType.includes('pdf')) return 'PDF';
+    if (mimeType.includes('word') || mimeType.includes('document')) return 'Word';
+    if (mimeType.includes('excel') || mimeType.includes('spreadsheet')) return 'Excel';
+    if (mimeType.includes('image')) return 'Image';
+    return mimeType.split('/')[1]?.toUpperCase() || 'File';
+  };
 
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <div>
-            <div className="h-8 bg-neutral-ui rounded w-48 animate-pulse mb-2"></div>
-            <div className="h-4 bg-neutral-ui rounded w-64 animate-pulse"></div>
-          </div>
-          <div className="h-10 bg-neutral-ui rounded w-32 animate-pulse"></div>
-        </div>
-        <div className="bg-surface border border-ui rounded-lg animate-pulse h-64"></div>
-      </div>
-    );
-  }
+  // Format folder path (remove first segment if it's UUID)
+  const formatFolderPath = (path: string | undefined): string[] => {
+    if (!path) return [];
+    const segments = path.split('.').filter(s => s.trim() !== '');
+    
+    // Check if first segment is UUID
+    const uuidPatternDash = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const uuidPatternUnderscore = /^[0-9a-f]{8}_[0-9a-f]{4}_[0-9a-f]{4}_[0-9a-f]{4}_[0-9a-f]{12}$/i;
+    const firstSegmentIsUuid = segments.length > 0 && 
+      (uuidPatternDash.test(segments[0]) || uuidPatternUnderscore.test(segments[0]));
+    
+    // Remove UUID segment if present
+    return firstSegmentIsUuid ? segments.slice(1) : segments;
+  };
+
+  const navigateToPath = async (path: string) => {
+    if (!path) return;
+    try {
+      const response = await notificationApiClient.getFolderIdByPath(path);
+      router.push(`/folders/${response.id}`);
+    } catch (error) {
+      console.error('Error navigating to path:', error);
+    }
+  };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-error/10 to-warning/10 rounded-lg p-6 border border-error/20">
-        <div className="flex justify-between items-start">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <div className="h-12 w-12 bg-error/20 rounded-lg flex items-center justify-center">
-                <Trash2 className="h-6 w-6 text-error" />
+      {/* Header Section */}
+      <div className="space-y-6">
+        {/* Main Header */}
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 pb-6 border-b border-gray-100">
+          <div className="space-y-2">
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 bg-red-400 rounded-xl flex items-center justify-center shadow-lg shadow-red-200">
+                <Trash2 className="h-6 w-6 text-white" />
               </div>
               <div>
-                <h1 className="text-2xl font-semibold text-neutral-text-dark">Recycle Bin</h1>
-                <p className="text-neutral-text-light">
-                  {items.length} deleted items • Items will be automatically deleted after 30 days
+                <h1 className="text-3xl font-bold text-gray-900 tracking-tight">
+                  Recycle Bin
+                </h1>
+                <p className="text-gray-500 text-sm font-medium">
+                  Restore or permanently delete deleted items
                 </p>
               </div>
             </div>
-            {error && (
-              <div className="mt-3 p-3 bg-error/10 border border-error/20 rounded-lg flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-error" />
-                <span className="text-sm text-error">{error}</span>
+          </div>
+
+          {/* Stats Cards */}
+          <div className="flex items-center gap-4">
+            <div className="flex flex-col px-4 py-2 bg-white rounded-xl border border-gray-100 shadow-sm min-w-[120px]">
+              <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Total Items</span>
+              <div className="flex items-center gap-2 mt-1">
+                <div className="h-2 w-2 rounded-full bg-red-500"></div>
+                <span className="text-xl font-bold text-gray-900">{totalElements || 0}</span>
+              </div>
+            </div>
+
+            {query && (
+              <div className="flex flex-col px-4 py-2 bg-emerald-50/50 rounded-xl border border-emerald-100 shadow-sm min-w-[120px]">
+                <span className="text-xs font-semibold text-emerald-600 uppercase tracking-wider">Results</span>
+                <div className="flex items-center gap-2 mt-1">
+                  <div className="h-2 w-2 rounded-full bg-emerald-500"></div>
+                  <span className="text-xl font-bold text-emerald-900">{items.length}</span>
+                </div>
               </div>
             )}
           </div>
-          <div className="flex gap-2">
-            {selectedItems.length > 0 && (
-              <>
-                <button 
-                  onClick={() => selectedItems.forEach(id => {
-                    const item = items.find(i => i.id === id);
-                    if (item) restoreItem(item);
-                  })}
-                  className="flex items-center gap-2 border border-ui text-neutral-text-dark px-4 py-2 rounded-lg hover:bg-neutral-background transition-colors"
-                >
-                  <ArchiveRestore className="h-4 w-4" />
-                  Restore Selected ({selectedItems.length})
-                </button>
-                <button 
-                  onClick={() => selectedItems.forEach(id => {
-                    const item = items.find(i => i.id === id);
-                    if (item) permanentlyDelete(item);
-                  })}
-                  className="flex items-center gap-2 bg-error text-surface px-4 py-2 rounded-lg hover:bg-error-dark transition-colors"
-                >
-                  <Trash className="h-4 w-4" />
-                  Delete Selected ({selectedItems.length})
-                </button>
-              </>
-            )}
-            <button 
-              onClick={emptyTrash}
-              disabled={items.length === 0}
-              className="flex items-center gap-2 bg-error text-surface px-4 py-2 rounded-lg hover:bg-error-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <Trash2 className="h-4 w-4" />
-              Empty Trash
-            </button>
-          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isRefreshing || loading}
+            className="h-10 px-4 border-blue-200 text-blue-600 hover:bg-blue-50 hover:text-blue-700 transition-colors rounded-xl"
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+
+          <Button
+            onClick={handleEmptyTrashClick}
+            disabled={items.length === 0}
+            className="h-10 px-6 bg-red-500 hover:bg-red-600 text-white shadow-md hover:shadow-lg transition-all duration-300 rounded-xl border-0"
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            Empty Trash
+          </Button>
         </div>
       </div>
 
-      {/* Search and Filters */}
-      <div className="bg-surface rounded-lg border border-ui p-4">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div className="flex items-center gap-3">
+      {/* Search and Controls Bar */}
+      <div className="flex flex-col lg:flex-row gap-4 p-1">
+        <div className="flex-1 flex gap-4 p-1.5 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300">
+          {/* Search Section */}
+          <div className="flex-1">
             <ServerSearchInput
-              value={searchQuery}
-              onChange={setSearchQuery}
+              value={query}
+              onChange={setQuery}
               placeholder="Search deleted items..."
-              className="w-64"
+              className="h-11 border-0 bg-transparent focus-visible:ring-0 px-4 text-base placeholder:text-gray-400"
             />
-            
-            <Select value={filterType} onValueChange={(val) => setFilterType(val as any)}>
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="Filter type" />
+          </div>
+
+          {/* Divider */}
+          <div className="w-px bg-gray-200 my-2"></div>
+
+          {/* Filter Type */}
+          <div className="flex items-center gap-2 pr-2">
+            <Select value={filterType} onValueChange={(value) => {
+              setFilterType(value as 'all' | 'document' | 'folder');
+              setPage(0);
+            }}>
+              <SelectTrigger className="w-[160px] h-9 border-0 bg-gray-50 hover:bg-gray-100 text-gray-600 font-medium focus:ring-0 transition-colors rounded-xl">
+                <div className="flex items-center gap-2">
+                  <Filter className="h-3.5 w-3.5" />
+                  <SelectValue />
+                </div>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Items</SelectItem>
@@ -254,220 +332,223 @@ export default function TrashPage() {
                 <SelectItem value="folder">Folders Only</SelectItem>
               </SelectContent>
             </Select>
+          </div>
 
-            <Select value={sortBy} onValueChange={(val) => setSortBy(val as any)}>
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="Sort by" />
+          {/* Divider */}
+          <div className="w-px bg-gray-200 my-2"></div>
+
+          {/* Sort Controls */}
+          <div className="flex items-center gap-2 pr-2">
+            <Select value={`${sortBy}-${sortDesc ? 'desc' : 'asc'}`} onValueChange={(value) => {
+              const [field, direction] = value.split('-');
+              setSortBy(field as 'name' | 'deletedAt');
+              setSortDesc(direction === 'desc');
+              setPage(0);
+            }}>
+              <SelectTrigger className="w-[180px] h-9 border-0 bg-gray-50 hover:bg-gray-100 text-gray-600 font-medium focus:ring-0 transition-colors rounded-xl">
+                <div className="flex items-center gap-2">
+                  <Filter className="h-3.5 w-3.5" />
+                  <SelectValue />
+                </div>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="deletedAt">Sort by Date</SelectItem>
-                <SelectItem value="name">Sort by Name</SelectItem>
-                <SelectItem value="createdAt">Sort by Created</SelectItem>
+                <SelectItem value="deletedAt-desc">Recently Deleted</SelectItem>
+                <SelectItem value="deletedAt-asc">Oldest Deleted</SelectItem>
+                <SelectItem value="name-asc">Name A-Z</SelectItem>
+                <SelectItem value="name-desc">Name Z-A</SelectItem>
               </SelectContent>
             </Select>
-
-            <button
-              onClick={() => setSortDesc(!sortDesc)}
-              className="p-2 border border-ui rounded hover:bg-neutral-background transition-colors"
-              title={sortDesc ? 'Sort Ascending' : 'Sort Descending'}
-            >
-              {sortDesc ? '↓' : '↑'}
-            </button>
-          </div>
-
-          <div className="text-sm text-neutral-text-light">
-            {selectedItems.length > 0 ? `${selectedItems.length} selected` : `${totalElements} items`}
           </div>
         </div>
       </div>
 
-      {/* Trash Items */}
-      <div className="bg-surface border border-ui rounded-lg">
-        {filteredItems.length === 0 ? (
-          <div className="text-center py-12">
-            <Trash2 className="h-16 w-16 text-neutral-ui mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-neutral-text-dark mb-2">No deleted items</h3>
-            <p className="text-neutral-text-light">
-              {items.length === 0 
-                ? "Your recycle bin is empty. Deleted items will appear here."
-                : "No items match your current filters."
-              }
-            </p>
-          </div>
-        ) : (
-          <table className="w-full relative">
-            <thead className="bg-neutral-background">
-              <tr>
-                <th className="text-left p-4 w-8">
-                  <input 
-                    type="checkbox" 
-                    className="rounded border-ui"
-                    checked={selectedItems.length === filteredItems.length && filteredItems.length > 0}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedItems(filteredItems.map(item => item.id));
-                      } else {
-                        setSelectedItems([]);
-                      }
-                    }}
-                  />
-                </th>
-                <th className="text-left p-4 text-sm font-medium text-neutral-text-dark">Name</th>
-                <th className="text-left p-4 text-sm font-medium text-neutral-text-dark">Type</th>
-                <th className="text-left p-4 text-sm font-medium text-neutral-text-dark">Deleted By</th>
-                <th className="text-left p-4 text-sm font-medium text-neutral-text-dark">Deleted At</th>
-                <th className="text-left p-4 text-sm font-medium text-neutral-text-dark">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="relative">
-              {tableLoading && (
-                <tr>
-                  <td colSpan={6}>
-                    <div className="absolute inset-0 bg-white/50 flex items-center justify-center">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-                    </div>
-                  </td>
-                </tr>
-              )}
-              {displayedItems.map((item) => (
-                <TrashItemRow 
-                  key={item.id}
-                  item={item}
-                  isSelected={selectedItems.includes(item.id)}
-                  onSelect={() => setSelectedItems(prev => 
-                    prev.includes(item.id) 
-                      ? prev.filter(id => id !== item.id)
-                      : [...prev, item.id]
-                  )}
-                  onRestore={() => restoreItem(item)}
-                  onDelete={() => permanentlyDelete(item)}
-                  formatDate={formatDate}
-                  isRestoring={isRestoring === item.id}
-                  isDeleting={isDeleting === item.id}
-                />
+      {/* Trash Table */}
+      <Card className="border-0 shadow-sm bg-white/50 backdrop-blur-sm">
+        <CardContent className="p-0">
+          {loading ? (
+            <div className="space-y-4 p-4">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="flex items-center gap-4 p-4 bg-white rounded-xl border border-gray-100">
+                  <div className="h-10 w-10 bg-gray-100 rounded-lg animate-pulse" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-4 bg-gray-100 rounded w-1/4 animate-pulse" />
+                    <div className="h-3 bg-gray-100 rounded w-1/6 animate-pulse" />
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      <Pagination
-        currentPage={page}
-        totalPages={totalPages}
-        totalElements={totalElements}
-        pageSize={size}
-        onPageChange={(p) => { setPage(p); }}
-      />
-    </div>
-  );
-}
-
-function TrashItemRow({ 
-  item, 
-  isSelected, 
-  onSelect, 
-  onRestore, 
-  onDelete, 
-  formatDate, 
-  isRestoring, 
-  isDeleting 
-}: { 
-  item: TrashItemDto;
-  isSelected: boolean;
-  onSelect: () => void;
-  onRestore: () => void;
-  onDelete: () => void;
-  formatDate: (dateString: string) => string;
-  isRestoring: boolean;
-  isDeleting: boolean;
-}) {
-  const isDocument = item.entityType?.toLowerCase() === 'document';
-  const isFolder = item.entityType?.toLowerCase() === 'folder';
-  const entityName = item.entityName || 'Unknown';
-
-  return (
-    <tr className="border-b border-ui last:border-b-0 hover:bg-neutral-background/50">
-      <td className="p-4">
-        <input 
-          type="checkbox" 
-          className="rounded border-ui"
-          checked={isSelected}
-          onChange={onSelect}
-        />
-      </td>
-      <td className="p-4">
-        <div className="flex items-center gap-3">
-          <div className={`h-8 w-8 rounded-lg flex items-center justify-center ${
-            isDocument ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'
-          }`}>
-            {isDocument ? <File className="h-4 w-4" /> : <Folder className="h-4 w-4" />}
-          </div>
-          <div>
-            <div className="font-medium text-neutral-text-dark">{entityName}</div>
-            <div className="text-sm text-neutral-text-light capitalize">{item.entityType || 'Unknown'}</div>
-          </div>
-        </div>
-      </td>
-      <td className="p-4">
-        <div className="flex items-center gap-2">
-          <div className={`px-2 py-1 rounded-full text-xs font-medium ${
-            isDocument 
-              ? 'bg-blue-100 text-blue-700' 
-              : 'bg-orange-100 text-orange-700'
-          }`}>
-            {isDocument ? 'Document' : 'Folder'}
-          </div>
-        </div>
-      </td>
-      <td className="p-4">
-        <div className="flex items-center gap-2">
-          {item.deletedBy && (
+            </div>
+          ) : items.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="h-24 w-24 bg-gray-50 rounded-full flex items-center justify-center mb-4">
+                <Trash2 className="h-10 w-10 text-gray-300" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-1">No Deleted Items</h3>
+              <p className="text-gray-500 max-w-sm mx-auto">
+                Your recycle bin is empty. Deleted items will appear here.
+              </p>
+            </div>
+          ) : (
             <>
-              <UserAvatar user={item.deletedBy} size="sm" />
-              <div className="text-sm text-neutral-text-dark">
-                {item.deletedBy.displayName || item.deletedBy.username || item.deletedBy.email || 'Unknown'}
+              <div className="overflow-hidden rounded-xl border border-gray-100 bg-white">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-gray-50/50 hover:bg-gray-50/50 border-b border-gray-100">
+                      <TableHead className="font-semibold text-gray-600 pl-6">Name</TableHead>
+                      <TableHead className="font-semibold text-gray-600">Type</TableHead>
+                      <TableHead className="font-semibold text-gray-600">Deleted By</TableHead>
+                      <TableHead className="font-semibold text-gray-600">Size</TableHead>
+                      <TableHead className="font-semibold text-gray-600">Deleted At</TableHead>
+                      <TableHead className="font-semibold text-gray-600 text-right pr-6">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {tableLoading ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="p-4">
+                          <div className="h-6 w-full bg-gray-100 animate-pulse rounded" />
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      items.map((item) => {
+                        const isDocument = item.entityType?.toLowerCase() === 'document';
+                        const pathSegments = formatFolderPath(item.path);
+                        return (
+                          <TableRow key={item.id} className="group hover:bg-blue-50/30 transition-colors border-b border-gray-50 last:border-0">
+                            <TableCell className="pl-6 py-3">
+                              <div className="flex items-start gap-3">
+                                <div className={`h-10 w-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                                  isDocument ? 'bg-blue-50 text-blue-600' : 'bg-orange-50 text-orange-600'
+                                }`}>
+                                  {isDocument ? getFileIcon(undefined) : <Folder className="h-5 w-5" />}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium text-gray-900 group-hover:text-blue-700 transition-colors">
+                                    {item.entityName || 'Unknown'}
+                                  </div>
+                                  {/* Folder Path */}
+                                  {pathSegments.length > 0 && (
+                                    <button 
+                                      onClick={() => navigateToPath(item.path || '')} 
+                                      className="flex cursor-pointer hover:text-blue-600 hover:underline transition-colors items-center gap-1 text-xs text-gray-400 mt-1 flex-wrap"
+                                    >
+                                      /{pathSegments.join(' / ')}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="text-xs">
+                                {isDocument ? 'Document' : 'Folder'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                {item.deletedBy ? (
+                                  <>
+                                    <UserAvatar user={item.deletedBy} size="sm" />
+                                    <div className="text-sm text-gray-600">
+                                      {item.deletedBy.displayName || item.deletedBy.username || item.deletedBy.email || 'Unknown'}
+                                    </div>
+                                  </>
+                                ) : (
+                                  <div className="text-sm text-gray-500">Unknown</div>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="text-sm text-gray-600">
+                                {item.sizeBytes ? formatFileSize(item.sizeBytes) : '-'}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="text-sm text-gray-600">
+                                {item.deletedAt ? formatDate(item.deletedAt.toString()) : '-'}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right pr-6">
+                              <div className="flex items-center justify-end gap-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => restoreItem(item)}
+                                  disabled={isRestoring === item.id || isDeleting === item.id}
+                                  className="h-8 w-8 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+                                  title="Restore"
+                                >
+                                  {isRestoring === item.id ? (
+                                    <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                  ) : (
+                                    <ArchiveRestore className="h-4 w-4" />
+                                  )}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDeleteClick(item)}
+                                  disabled={isRestoring === item.id || isDeleting === item.id}
+                                  className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  title="Permanently Delete"
+                                >
+                                  {isDeleting === item.id ? (
+                                    <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                  ) : (
+                                    <Trash2 className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
               </div>
             </>
           )}
-          {!item.deletedBy && (
-            <div className="text-sm text-neutral-text-light">Unknown</div>
-          )}
-        </div>
-      </td>
-      <td className="p-4">
-        <div className="flex items-center gap-2">
-          <Calendar className="h-4 w-4 text-neutral-text-light" />
-          <div className="text-sm text-neutral-text-light">{formatDate(item.deletedAt)}</div>
-        </div>
-      </td>
-      <td className="p-4">
-        <div className="flex gap-2">
-          <button 
-            onClick={onRestore}
-            disabled={isRestoring || isDeleting}
-            className="p-2 rounded hover:bg-success/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Restore"
-          >
-            {isRestoring ? (
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-success"></div>
-            ) : (
-              <ArchiveRestore className="h-4 w-4 text-success" />
-            )}
-          </button>
-          <button 
-            onClick={onDelete}
-            disabled={isRestoring || isDeleting}
-            className="p-2 rounded hover:bg-error/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Permanently Delete"
-          >
-            {isDeleting ? (
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-error"></div>
-            ) : (
-              <Trash className="h-4 w-4 text-error" />
-            )}
-          </button>
-        </div>
-      </td>
-    </tr>
+        </CardContent>
+      </Card>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <Pagination
+          currentPage={page}
+          totalPages={totalPages}
+          totalElements={totalElements}
+          pageSize={size}
+          onPageChange={(p) => setPage(p)}
+        />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setItemToDelete(null);
+        }}
+        onConfirm={permanentlyDelete}
+        title="Permanently Delete Item"
+        message={`Are you sure you want to permanently delete "${itemToDelete?.entityName}"? This action cannot be undone and will delete all related data including files from storage.`}
+        confirmText="Delete Permanently"
+        cancelText="Cancel"
+        variant="destructive"
+        loading={isDeleting !== null}
+      />
+
+      {/* Empty Trash Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showEmptyTrashModal}
+        onClose={() => setShowEmptyTrashModal(false)}
+        onConfirm={emptyTrash}
+        title="Empty Trash"
+        message={`Are you sure you want to permanently delete all ${totalElements} items in the trash? This action cannot be undone and will delete all related data including files from storage.`}
+        confirmText="Empty Trash"
+        cancelText="Cancel"
+        variant="destructive"
+        loading={false}
+      />
+    </div>
   );
 }

@@ -12,13 +12,19 @@ import {
   Folder,
   Check,
   ChevronDown,
+  ChevronUp,
+  ChevronRight,
   Plus,
   Trash2,
   AlertTriangle,
   Settings,
   Info,
   Search,
-  Tag
+  Tag,
+  Wand2,
+  AlertCircle,
+  Edit,
+  GripVertical
 } from 'lucide-react';
 import { useNotifications } from '@/hooks/useNotifications';
 import { notificationApiClient } from '@/api/notificationClient';
@@ -48,12 +54,12 @@ interface FileWithMetadata {
   name: string;
   title: string;
   description: string;
-  fileName?: string;
   filingCategory: FilingCategoryResponseDto | null;
   metadata: Record<string, string>;
   metadataErrors: Record<string, string>;
   tags: TagResponseDto[];
   isValid: boolean;
+  convertToPdf?: boolean;
 }
 
 const SUPPORTED_LANGUAGES = [
@@ -85,6 +91,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
   const [dragActive, setDragActive] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0, fileName: '' });
+  const [uploadPercentage, setUploadPercentage] = useState(0); // Byte-based progress percentage
   const [language, setLanguage] = useState<ExtractorLanguage>('ENG' as ExtractorLanguage);
   const [filingCategories, setFilingCategories] = useState<FilingCategoryResponseDto[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(false);
@@ -96,10 +103,22 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
   const [isLoadingTags, setIsLoadingTags] = useState(false);
   const [isCreateTagModalOpen, setIsCreateTagModalOpen] = useState(false);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Metadata extraction from filename states
+  const [separator, setSeparator] = useState<string>('#');
+  const [autoExtractEnabled, setAutoExtractEnabled] = useState<boolean>(false);
+  const [extractionExpanded, setExtractionExpanded] = useState<boolean>(false);
+  const [selectedFields, setSelectedFields] = useState<string[]>([]);
+  const [editingFileIndex, setEditingFileIndex] = useState<number | null>(null);
+  const [editingFileName, setEditingFileName] = useState<string>('');
 
-  // Load filing categories and tags
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const hasFetchedRef = useRef<boolean>(false);
+
+  // Load filing categories and tags ONLY ONCE when modal opens
   useEffect(() => {
+    // Skip if already fetched for this modal session
+    if (hasFetchedRef.current) return;
+
     const loadFilingCategories = async () => {
       try {
         setLoadingCategories(true);
@@ -107,7 +126,6 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
         setFilingCategories(response.content);
       } catch (error) {
         console.error('Error loading filing categories:', error);
-        showError('Failed to load filing categories', 'Please try again later');
       } finally {
         setLoadingCategories(false);
       }
@@ -126,8 +144,21 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
     };
 
     if (isOpen) {
+      if (hasFetchedRef.current) {
+        console.log('[FileUploadModal] Skipping fetch - already loaded');
+        return;
+      }
+      console.log('[FileUploadModal] Loading categories and tags...');
+      hasFetchedRef.current = true;
       loadFilingCategories();
       loadAvailableTags();
+    }
+  }, [isOpen]);
+
+  // Reset the fetch flag when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      hasFetchedRef.current = false;
     }
   }, [isOpen]);
 
@@ -159,18 +190,24 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
 
   const handleFiles = (fileList: FileList) => {
     if (fileList.length > 0) {
-      const newFiles: FileWithMetadata[] = Array.from(fileList).map(file => ({
-        file,
-        name: file.name.replace(/\.[^/.]+$/, ""), // Remove extension for display name
-        title: file.name.replace(/\.[^/.]+$/, ""), // Default title to filename without extension
-        description: '',
-        fileName: file.name, // Set fileName to original filename
-        filingCategory: null,
-        metadata: {},
-        metadataErrors: {},
-        tags: [],
-        isValid: false
-      }));
+      const newFiles: FileWithMetadata[] = Array.from(fileList).map(file => {
+        // Use webkitRelativePath if available (for folder uploads), otherwise fallback to name
+        const relativePath = (file as any).webkitRelativePath || file.name;
+
+        return {
+          file,
+          name: file.name.replace(/\.[^/.]+$/, ""), // Remove extension for display name
+          title: file.name.replace(/\.[^/.]+$/, ""), // Default title to filename without extension
+          description: '',
+          fileName: relativePath, // Send full relative path to backend
+          filingCategory: null,
+          metadata: {},
+          metadataErrors: {},
+          tags: [],
+          isValid: false,
+          convertToPdf: false
+        };
+      });
 
       setFiles(prev => [...prev, ...newFiles]);
       setCurrentFileIndex(0); // Start with the first file
@@ -208,6 +245,28 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
     setCurrentFileIndex(0); // Always show main file configuration
   };
 
+  const moveFileUp = (index: number) => {
+    if (index <= 0) return; // Already at top
+    setFiles(prev => {
+      const newFiles = [...prev];
+      [newFiles[index - 1], newFiles[index]] = [newFiles[index], newFiles[index - 1]];
+      return newFiles;
+    });
+    if (currentFileIndex === index) setCurrentFileIndex(index - 1);
+    else if (currentFileIndex === index - 1) setCurrentFileIndex(index);
+  };
+
+  const moveFileDown = (index: number) => {
+    if (index >= files.length - 1) return; // Already at bottom
+    setFiles(prev => {
+      const newFiles = [...prev];
+      [newFiles[index], newFiles[index + 1]] = [newFiles[index + 1], newFiles[index]];
+      return newFiles;
+    });
+    if (currentFileIndex === index) setCurrentFileIndex(index + 1);
+    else if (currentFileIndex === index + 1) setCurrentFileIndex(index);
+  };
+
   const getCurrentFile = () => files[currentFileIndex] || null;
 
   const updateCurrentFile = (updates: Partial<FileWithMetadata>) => {
@@ -226,11 +285,236 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
 
   // Category selection handler
   const onCategorySelect = (category: FilingCategoryResponseDto) => {
-    updateFile({
-      filingCategory: category,
-      metadata: {},
-      metadataErrors: {}
+    // Check auto-classification permission
+    if (category.autoClassificationEnabled && category.autoClassificationTarget) {
+      if (!category.autoClassificationTarget.hasUploadPermission) {
+        showError(
+          'Access Denied',
+          `You don't have permission to upload to the auto-classification target folder: "${category.autoClassificationTarget.folderName}". You cannot use this document model.`
+        );
+        return;
+      }
+    }
+
+    // Initialize selected fields with all fields from the category
+    const allFields = category.metadataDefinitions?.map(d => d.key) || [];
+    setSelectedFields(allFields);
+
+    // When selecting a category, auto-extract if enabled
+    if (autoExtractEnabled && files.length > 0) {
+      const updatedFiles = files.map((file, index) => {
+        const { metadata, errors, isValid } = extractMetadataFromFilename(
+          file.file.name,
+          category.metadataDefinitions || [],
+          allFields
+        );
+        return index === 0
+          ? { ...file, filingCategory: category, metadata, metadataErrors: errors, isValid }
+          : file;
+      });
+      setFiles(updatedFiles);
+    } else {
+      updateFile({
+        filingCategory: category,
+        metadata: {},
+        metadataErrors: {}
+      });
+    }
+  };
+
+  // Extract metadata from filename based on separator and selected fields
+  const extractMetadataFromFilename = (
+    filename: string,
+    allDefinitions: CategoryMetadataDefinitionDto[],
+    fieldsToExtract?: string[]
+  ): { metadata: Record<string, string>; errors: Record<string, string>; isValid: boolean } => {
+    const nameWithoutExt = filename.replace(/\.[^/.]+$/, "");
+    const parts = nameWithoutExt.split(separator).map(p => p.trim());
+
+    // Use selected fields in order (important: use the passed order, not filter order)
+    const activeFieldKeys = fieldsToExtract || selectedFields;
+
+    const metadata: Record<string, string> = {};
+    const errors: Record<string, string> = {};
+
+    // Iterate over activeFieldKeys in order - this preserves the custom order
+    activeFieldKeys.forEach((fieldKey, index) => {
+      const def = allDefinitions.find(d => d.key === fieldKey);
+      if (!def) return;
+
+      const value = parts[index] || '';
+      metadata[def.key] = value;
+
+      // Validate based on data type
+      if (def.mandatory && !value) {
+        errors[def.key] = `Missing from filename (position ${index + 1})`;
+      } else if (value) {
+        switch (def.dataType) {
+          case MetadataType.DATE:
+          case MetadataType.DATETIME:
+            if (isNaN(Date.parse(value))) {
+              errors[def.key] = 'Invalid date format';
+            }
+            break;
+          case MetadataType.NUMBER:
+            if (!/^\d+$/.test(value)) {
+              errors[def.key] = 'Must be a valid integer';
+            }
+            break;
+          case MetadataType.FLOAT:
+            if (isNaN(Number(value))) {
+              errors[def.key] = 'Must be a valid number';
+            }
+            break;
+          case MetadataType.BOOLEAN:
+            if (value.toLowerCase() !== 'true' && value.toLowerCase() !== 'false') {
+              errors[def.key] = 'Must be true or false';
+            }
+            break;
+        }
+      }
     });
+
+    return { metadata, errors, isValid: Object.keys(errors).length === 0 };
+  };
+
+  // Apply metadata extraction to all files
+  const applyExtractionToAllFiles = () => {
+    const mainFile = files[0];
+    if (!mainFile?.filingCategory?.metadataDefinitions) {
+      showWarning('No model selected', 'Please select a document model first');
+      return;
+    }
+
+    if (selectedFields.length === 0) {
+      showWarning('No fields selected', 'Please select at least one field to extract');
+      return;
+    }
+
+    const allDefinitions = mainFile.filingCategory.metadataDefinitions;
+    const updatedFiles = files.map(file => {
+      const { metadata, errors, isValid } = extractMetadataFromFilename(
+        file.file.name,
+        allDefinitions,
+        selectedFields
+      );
+      return { ...file, metadata, metadataErrors: errors, isValid };
+    });
+
+    setFiles(updatedFiles);
+
+    const validCount = updatedFiles.filter(f => f.isValid).length;
+    const invalidCount = updatedFiles.length - validCount;
+
+    if (invalidCount > 0) {
+      showWarning(
+        'Extraction complete',
+        `${validCount} file(s) valid, ${invalidCount} file(s) have validation errors`
+      );
+    } else {
+      showSuccess('Extraction complete', `All ${validCount} file(s) metadata extracted successfully`);
+    }
+  };
+
+  // Toggle field selection for extraction
+  const toggleFieldSelection = (fieldKey: string) => {
+    setSelectedFields(prev =>
+      prev.includes(fieldKey)
+        ? prev.filter(k => k !== fieldKey)
+        : [...prev, fieldKey]
+    );
+  };
+
+  // Drag and drop state
+  const [draggedField, setDraggedField] = useState<string | null>(null);
+  const [dragOverField, setDragOverField] = useState<string | null>(null);
+
+  // Drag handlers for field reordering
+  const handleFieldDragStart = (e: React.DragEvent, fieldKey: string) => {
+    setDraggedField(fieldKey);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', fieldKey);
+  };
+
+  const handleFieldDragOver = (e: React.DragEvent, fieldKey: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (draggedField && fieldKey !== draggedField) {
+      setDragOverField(fieldKey);
+    }
+  };
+
+  const handleFieldDragLeave = () => {
+    setDragOverField(null);
+  };
+
+  const handleFieldDrop = (e: React.DragEvent, targetFieldKey: string) => {
+    e.preventDefault();
+    if (!draggedField || draggedField === targetFieldKey) {
+      setDraggedField(null);
+      setDragOverField(null);
+      return;
+    }
+
+    setSelectedFields(prev => {
+      const newOrder = [...prev];
+      const draggedIndex = newOrder.indexOf(draggedField);
+      const targetIndex = newOrder.indexOf(targetFieldKey);
+
+      if (draggedIndex === -1 || targetIndex === -1) return prev;
+
+      // Remove dragged item and insert at target position
+      newOrder.splice(draggedIndex, 1);
+      newOrder.splice(targetIndex, 0, draggedField);
+
+      return newOrder;
+    });
+
+    setDraggedField(null);
+    setDragOverField(null);
+  };
+
+  const handleFieldDragEnd = () => {
+    setDraggedField(null);
+    setDragOverField(null);
+  };
+
+  // Start editing filename
+  const startEditingFileName = (index: number) => {
+    setEditingFileIndex(index);
+    setEditingFileName(files[index].file.name.replace(/\.[^/.]+$/, ""));
+  };
+
+  // Save edited filename
+  const saveEditedFileName = (index: number) => {
+    if (editingFileName.trim()) {
+      const originalExt = files[index].file.name.match(/\.[^/.]+$/)?.[0] || '';
+      const newFullName = editingFileName.trim() + originalExt;
+
+      // Create new File object with new name
+      const originalFile = files[index].file;
+      const FileConstructor = window.File;
+      const newFile = new FileConstructor([originalFile], newFullName, { type: originalFile.type });
+
+      setFiles(prev => prev.map((f, i) =>
+        i === index
+          ? {
+            ...f,
+            file: newFile,
+            name: editingFileName.trim(),
+            title: editingFileName.trim()
+          }
+          : f
+      ));
+    }
+    setEditingFileIndex(null);
+    setEditingFileName('');
+  };
+
+  // Cancel editing filename
+  const cancelEditingFileName = () => {
+    setEditingFileIndex(null);
+    setEditingFileName('');
   };
 
   // Tag selection handler
@@ -335,6 +619,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
 
     try {
       setUploading(true);
+      setUploadPercentage(0); // Reset byte progress
 
       const mainFile = files[0];
       const hasCategory = mainFile.filingCategory !== null;
@@ -354,86 +639,180 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
       } : null;
 
       if (hasCategory) {
-        // Scenario 1: User selected a category
-        // First file goes to regular upload endpoint
-        try {
-          setUploadProgress({ current: 1, total: totalFiles, fileName: mainFile.name });
-          await notificationApiClient.uploadDocument(
-            mainFile.file,
-            folderId,
-            mainFile.title,
-            language,
-            filingCategoryDto,
-            mainFile.fileName,
-            mainFile.tags.map(tag => tag.id)
-          );
-          filesToRemove.push(0); // Mark first file for removal
-          successCount++;
-        } catch (error) {
-          console.error('Error uploading main file:', error);
-          showError('Upload failed', `Failed to upload main file: ${mainFile.name}`);
-        }
+        // Scenario 1: User selected a category - Use BULK UPLOAD with filing category
+        if (files.length >= 2) {
+          // Use bulk upload for 2+ files with category
+          try {
+            setUploadProgress({ current: 0, total: totalFiles, fileName: 'Preparing bulk upload with metadata...' });
 
-        // Rest of the files go to unclassified endpoint
-        if (files.length > 1) {
-          for (let i = 1; i < files.length; i++) {
-            const file = files[i];
-            try {
-              setUploadProgress({ current: i + 1, total: totalFiles, fileName: file.name });
-              await notificationApiClient.uploadUnclassifiedDocument(
-                file.file,
-                folderId,
-                mainFile.filingCategory!.id,  // Use same category as main file
-                '', // createdBy will be set from token on backend
-                file.title || file.name,
-                file.fileName
+            // Prepare files array
+            const fileArray = files.map(f => f.file);
+
+            // Prepare metadata list with filing category info per file
+            const metadataList = files.map((f, index) => {
+              const metaDataDtoArray = mainFile.filingCategory?.metadataDefinitions
+                ?.filter(def => f.metadata && f.metadata[def.key])
+                .map((def, idx) => ({
+                  id: def.id || idx + 1,
+                  value: f.metadata[def.key]
+                })) || [];
+
+              return {
+                fileName: f.name,
+                title: f.title || f.name,
+                filingCategoryId: mainFile.filingCategory?.id,
+                metadataJson: metaDataDtoArray.length > 0 ? JSON.stringify(metaDataDtoArray) : undefined,
+                tagsJson: index === 0 && mainFile.tags.length > 0
+                  ? JSON.stringify(mainFile.tags.map(t => t.id))
+                  : undefined,
+                convertToPdf: f.convertToPdf
+              };
+            });
+
+            // Call bulk upload API
+            const response = await notificationApiClient.uploadBulkDocuments(
+              fileArray,
+              folderId,
+              language,
+              metadataList,
+              (current, total, fileName) => {
+                setUploadProgress({ current, total, fileName: `Uploading ${fileName}...` });
+              },
+              (loaded, total, percentage) => {
+                setUploadPercentage(percentage);
+              }
+            );
+
+            successCount = response.successCount;
+
+            // Mark all successful uploads for removal
+            response.results.forEach((result, index) => {
+              if (result.success) {
+                filesToRemove.push(index);
+              }
+            });
+
+            if (response.failedCount > 0) {
+              showWarning(
+                'Partial upload',
+                `${response.successCount} of ${response.totalFiles} files uploaded. ${response.failedCount} failed.`
               );
-              filesToRemove.push(i); // Mark file for removal
-              successCount++;
-            } catch (error) {
-              console.error(`Error uploading file ${file.name}:`, error);
-              showError('Upload failed', `Failed to upload: ${file.name}`);
+            } else {
+              showSuccess(
+                'Upload successful',
+                `${successCount} file${successCount !== 1 ? 's' : ''} uploaded with metadata. OCR processing queued.`
+              );
             }
+
+          } catch (error) {
+            console.error('Bulk upload with category failed:', error);
+            showError('Bulk upload failed', 'Failed to upload files. Please try again.');
+          }
+        } else {
+          // Single file with category - use regular upload
+          try {
+            setUploadProgress({ current: 1, total: totalFiles, fileName: mainFile.name });
+            await notificationApiClient.uploadDocument(
+              mainFile.file,
+              folderId,
+              mainFile.title,
+              language,
+              filingCategoryDto,
+              mainFile.name,
+              mainFile.tags.map(tag => tag.id),
+              mainFile.convertToPdf
+            );
+            filesToRemove.push(0);
+            successCount++;
+            showSuccess('Upload successful', 'Document uploaded successfully with metadata');
+          } catch (error) {
+            console.error('Error uploading main file:', error);
+            showError('Upload failed', `Failed to upload main file: ${mainFile.name}`);
           }
         }
-
-        if (successCount > 0) {
-          showSuccess(
-            'Upload successful',
-            successCount === 1
-              ? 'Document uploaded successfully to repository'
-              : `${successCount} file${successCount !== 1 ? 's' : ''} uploaded successfully`
-          );
-        }
       } else {
-        // Scenario 2: No category selected
-        // All files go to regular upload endpoint sequentially (without category/metadata)
-        for (let i = 0; i < files.length; i++) {
-          const file = files[i];
+        // Scenario 2: No category selected - Use BULK UPLOAD for faster processing
+        // This uses RabbitMQ for background OCR processing
+
+        if (files.length >= 2) {
+          // Use bulk upload endpoint for 2+ files
           try {
-            setUploadProgress({ current: i + 1, total: totalFiles, fileName: file.name });
+            setUploadProgress({ current: 0, total: totalFiles, fileName: 'Preparing bulk upload...' });
+
+            // Prepare files array
+            const fileArray = files.map(f => f.file);
+
+            // Prepare metadata list (titles only since no filing category)
+            const metadataList = files.map((f, index) => ({
+              fileName: f.name,
+              title: f.title || f.name,
+              tagsJson: index === 0 && mainFile.tags.length > 0
+                ? JSON.stringify(mainFile.tags.map(t => t.id))
+                : undefined,
+              convertToPdf: f.convertToPdf
+            }));
+
+            // Call bulk upload API
+            const response = await notificationApiClient.uploadBulkDocuments(
+              fileArray,
+              folderId,
+              language,
+              metadataList,
+              (current, total, fileName) => {
+                setUploadProgress({ current, total, fileName: `Uploading ${fileName}...` });
+              },
+              (loaded, total, percentage) => {
+                setUploadPercentage(percentage);
+              }
+            );
+
+            successCount = response.successCount;
+
+            // Mark all successful uploads for removal
+            response.results.forEach((result, index) => {
+              if (result.success) {
+                filesToRemove.push(index);
+              }
+            });
+
+            if (response.failedCount > 0) {
+              showWarning(
+                'Partial upload',
+                `${response.successCount} of ${response.totalFiles} files uploaded. ${response.failedCount} failed.`
+              );
+            } else {
+              showSuccess(
+                'Upload successful',
+                `${successCount} file${successCount !== 1 ? 's' : ''} uploaded successfully. OCR processing queued.`
+              );
+            }
+
+          } catch (error) {
+            console.error('Bulk upload failed:', error);
+            showError('Bulk upload failed', 'Failed to upload files. Please try again.');
+          }
+        } else {
+          // Single file - use regular upload
+          const file = files[0];
+          try {
+            setUploadProgress({ current: 1, total: 1, fileName: file.name });
             await notificationApiClient.uploadDocument(
               file.file,
               folderId,
               file.title || file.name,
               language,
-              null, // No category
-              file.fileName,
-              i === 0 ? mainFile.tags.map(tag => tag.id) : [] // Only first file gets tags
+              null,
+              file.name,
+              mainFile.tags.map(tag => tag.id),
+              file.convertToPdf
             );
-            filesToRemove.push(i); // Mark file for removal
+            filesToRemove.push(0);
             successCount++;
+            showSuccess('Upload successful', 'Document uploaded successfully to repository');
           } catch (error) {
-            console.error(`Error uploading file ${file.name}:`, error);
+            console.error('Error uploading file:', error);
             showError('Upload failed', `Failed to upload: ${file.name}`);
           }
-        }
-
-        if (successCount > 0) {
-          showSuccess(
-            'Upload successful',
-            `${successCount} file${successCount !== 1 ? 's' : ''} uploaded successfully to repository`
-          );
         }
       }
 
@@ -704,6 +1083,8 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                       {files.map((file, index) => {
                         const isUploading = uploading && uploadProgress.current === index + 1;
                         const isUploaded = uploading && uploadProgress.current > index + 1;
+                        const hasErrors = Object.keys(file.metadataErrors || {}).length > 0;
+                        const isValidFile = file.isValid && !hasErrors;
 
                         return (
                           <div
@@ -712,27 +1093,87 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                               ? 'bg-blue-50 border-blue-300 ring-2 ring-blue-200'
                               : isUploaded
                                 ? 'bg-green-50 border-green-200 opacity-60'
-                                : index === 0
-                                  ? 'bg-green-50 border-green-200'
-                                  : 'bg-white border-gray-300'
+                                : hasErrors
+                                  ? 'bg-red-50 border-red-300'
+                                  : index === 0
+                                    ? 'bg-green-50 border-green-200'
+                                    : isValidFile
+                                      ? 'bg-green-50 border-green-200'
+                                      : 'bg-white border-gray-300'
                               }`}
                           >
                             {isUploading ? (
                               <div className="h-3 w-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
                             ) : isUploaded ? (
                               <Check className="h-4 w-4 text-green-600" />
+                            ) : hasErrors ? (
+                              <AlertCircle className="h-4 w-4 text-red-500" />
+                            ) : isValidFile ? (
+                              <Check className="h-4 w-4 text-green-600" />
                             ) : (
                               getFileIcon(file.file)
                             )}
                             <div className="flex-1 min-w-0">
-                              <div className="font-medium text-gray-900 truncate text-xs">
-                                {file.name}
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {formatFileSize(file.file.size)}
-                                {isUploading && <span className="ml-1 text-blue-600">- Uploading...</span>}
-                                {isUploaded && <span className="ml-1 text-green-600">- ✓ Done</span>}
-                              </div>
+                              {editingFileIndex === index ? (
+                                <div className="flex items-center gap-1">
+                                  <input
+                                    type="text"
+                                    value={editingFileName}
+                                    onChange={(e) => setEditingFileName(e.target.value)}
+                                    className="flex-1 px-1 py-0.5 text-xs border border-blue-400 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    autoFocus
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') saveEditedFileName(index);
+                                      if (e.key === 'Escape') cancelEditingFileName();
+                                    }}
+                                  />
+                                  <button
+                                    onClick={() => saveEditedFileName(index)}
+                                    className="p-0.5 text-green-600 hover:bg-green-50 rounded"
+                                    title="Save"
+                                  >
+                                    <Check className="h-3 w-3" />
+                                  </button>
+                                  <button
+                                    onClick={cancelEditingFileName}
+                                    className="p-0.5 text-gray-500 hover:bg-gray-100 rounded"
+                                    title="Cancel"
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className={`font-medium truncate text-xs ${hasErrors ? 'text-red-700' : 'text-gray-900'}`}>
+                                    {file.name}
+                                    {hasErrors && (
+                                      <button
+                                        onClick={() => startEditingFileName(index)}
+                                        className="ml-1 p-0.5 text-blue-500 hover:bg-blue-50 rounded inline-flex items-center"
+                                        title="Edit filename"
+                                        disabled={uploading}
+                                      >
+                                        <Edit className="h-2.5 w-2.5" />
+                                      </button>
+                                    )}
+                                    {file.filingCategory?.nameStructure && (
+                                      <span className="ml-2 px-1.5 py-0.5 text-xs bg-purple-100 text-purple-700 rounded" title="Filename will be auto-generated based on name structure">
+                                        ✨ Auto-name
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-xs text-gray-500">
+                                    {formatFileSize(file.file.size)}
+                                    {isUploading && <span className="ml-1 text-blue-600">- Uploading...</span>}
+                                    {isUploaded && <span className="ml-1 text-green-600">- ✓ Done</span>}
+                                    {hasErrors && (
+                                      <span className="ml-1 text-red-600" title={Object.values(file.metadataErrors || {}).join(', ')}>
+                                        - {Object.keys(file.metadataErrors || {}).length} error(s)
+                                      </span>
+                                    )}
+                                  </div>
+                                </>
+                              )}
                             </div>
 
                             <div className="flex items-center gap-1">
@@ -749,6 +1190,24 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                                   Set Main
                                 </button>
                               )}
+
+                              {/* Move up/down buttons */}
+                              <button
+                                onClick={() => moveFileUp(index)}
+                                className="p-0.5 text-gray-500 hover:bg-gray-100 rounded transition-colors disabled:opacity-30"
+                                disabled={uploading || index === 0}
+                                title="Move up"
+                              >
+                                <ChevronUp className="h-3 w-3" />
+                              </button>
+                              <button
+                                onClick={() => moveFileDown(index)}
+                                className="p-0.5 text-gray-500 hover:bg-gray-100 rounded transition-colors disabled:opacity-30"
+                                disabled={uploading || index === files.length - 1}
+                                title="Move down"
+                              >
+                                <ChevronDown className="h-3 w-3" />
+                              </button>
 
                               <button
                                 onClick={() => removeFile(index)}
@@ -806,14 +1265,29 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                         <div>
                           <label className="block text-sm font-medium text-neutral-text-dark mb-2">
                             Display Name
+                            {files[0]?.filingCategory?.nameStructure && (
+                              <span className="ml-2 text-xs text-purple-600 font-normal">(Auto-generated)</span>
+                            )}
                           </label>
-                          <input
-                            type="text"
-                            value={files[0]?.name || ''}
-                            onChange={(e) => updateFile({ name: e.target.value })}
-                            className="w-full p-2 border border-ui rounded text-sm bg-surface text-neutral-text-dark"
-                            disabled={uploading}
-                          />
+                          {files[0]?.filingCategory?.nameStructure ? (
+                            <div className="w-full p-2 border border-purple-300 rounded text-sm bg-purple-50 text-purple-700">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-purple-500">Pattern:</span>
+                                <code className="font-mono">{files[0].filingCategory.nameStructure}</code>
+                              </div>
+                              <p className="text-xs text-purple-500 mt-1">
+                                Filename will be auto-generated from metadata values
+                              </p>
+                            </div>
+                          ) : (
+                            <input
+                              type="text"
+                              value={files[0]?.name || ''}
+                              onChange={(e) => updateFile({ name: e.target.value })}
+                              className="w-full p-2 border border-ui rounded text-sm bg-surface text-neutral-text-dark"
+                              disabled={uploading}
+                            />
+                          )}
                         </div>
 
                         <div>
@@ -830,22 +1304,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                           />
                         </div>
 
-                        <div>
-                          <label className="block text-sm font-medium text-neutral-text-dark mb-2">
-                            File Name (Optional)
-                          </label>
-                          <input
-                            type="text"
-                            value={files[0]?.fileName || ''}
-                            onChange={(e) => updateFile({ fileName: e.target.value })}
-                            className="w-full p-2 border border-ui rounded text-sm bg-surface text-neutral-text-dark"
-                            placeholder="Enter custom file name"
-                            disabled={uploading}
-                          />
-                          <p className="text-xs text-neutral-text-light mt-1">
-                            Leave empty to use original filename
-                          </p>
-                        </div>
+
 
                         <div>
                           <label className="block text-sm font-medium text-neutral-text-dark mb-2">
@@ -880,6 +1339,22 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                             disabled={uploading}
                           />
                         </div>
+
+                        {(files[0]?.file.type.startsWith('image/') || /\.(jpg|jpeg|png|tiff|tif|bmp|gif)$/i.test(files[0]?.file.name)) && (
+                          <div className="md:col-span-2 flex items-center gap-2 mt-1">
+                            <input
+                              type="checkbox"
+                              id="convertToPdf"
+                              checked={files[0]?.convertToPdf || false}
+                              onChange={(e) => updateFile({ convertToPdf: e.target.checked })}
+                              className="h-4 w-4 text-ui-primary border-ui rounded focus:ring-ui-primary cursor-pointer"
+                              disabled={uploading}
+                            />
+                            <label htmlFor="convertToPdf" className="text-sm font-medium text-neutral-text-dark select-none cursor-pointer">
+                              Convert to searchable PDF
+                            </label>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -919,10 +1394,11 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                               </div>
                             ) : (
                               <SearchSelect
+                                openUpward={true}
                                 items={filingCategories}
                                 fetchFunction={async (query: string) => {
                                   const response = await notificationApiClient.getAllFilingCategories(
-                                    { size: 100, search: query },
+                                    { size: 100, name: query },
                                     { silent: true }
                                   );
                                   return response.content;
@@ -936,6 +1412,194 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                           </div>
                         </div>
 
+                        {/* Metadata Extraction from Filename Section - Only show when category is selected */}
+                        {files[0]?.filingCategory && files.length > 0 && (
+                          <div className="border-t border-ui pt-4">
+                            <button
+                              type="button"
+                              onClick={() => setExtractionExpanded(!extractionExpanded)}
+                              className="w-full font-medium text-neutral-text-dark flex items-center gap-2 hover:text-primary transition-colors"
+                              disabled={uploading}
+                            >
+                              {extractionExpanded ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
+                              )}
+                              <Wand2 className="h-4 w-4" />
+                              Extract Metadata from Filename
+                              <span className="text-xs text-neutral-text-light font-normal ml-1">
+                                (Optional)
+                              </span>
+                            </button>
+
+                            {extractionExpanded && (
+                              <div className="mt-3 space-y-3 bg-neutral-background/50 p-3 rounded-lg">
+                                {/* Separator and Auto-extract */}
+                                <div className="flex items-center gap-3 flex-wrap">
+                                  <label className="text-sm text-neutral-text-dark whitespace-nowrap">
+                                    Separator:
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={separator}
+                                    onChange={(e) => setSeparator(e.target.value.slice(0, 5))}
+                                    className="w-16 p-1.5 border border-ui rounded text-sm text-center bg-surface"
+                                    placeholder="#"
+                                    disabled={uploading}
+                                  />
+
+                                  <label className="flex items-center gap-2 text-sm text-neutral-text-dark cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={autoExtractEnabled}
+                                      onChange={(e) => setAutoExtractEnabled(e.target.checked)}
+                                      className="rounded border-ui"
+                                      disabled={uploading}
+                                    />
+                                    Auto-extract on model select
+                                  </label>
+                                </div>
+
+                                {/* Field Selection - Customize order and which fields to extract */}
+                                <div className="border-t border-ui/50 pt-3">
+                                  <p className="text-xs text-neutral-text-dark font-medium mb-2">
+                                    Drag fields to reorder extraction order:
+                                  </p>
+                                  <div className="space-y-1">
+                                    {/* Show selected fields in order - draggable */}
+                                    {selectedFields.map((fieldKey, idx) => {
+                                      const def = files[0]?.filingCategory?.metadataDefinitions?.find(d => d.key === fieldKey);
+                                      if (!def) return null;
+                                      const isDragging = draggedField === fieldKey;
+                                      const isDragOver = dragOverField === fieldKey;
+                                      return (
+                                        <div
+                                          key={def.key}
+                                          draggable={!uploading}
+                                          onDragStart={(e) => handleFieldDragStart(e, fieldKey)}
+                                          onDragOver={(e) => handleFieldDragOver(e, fieldKey)}
+                                          onDragLeave={handleFieldDragLeave}
+                                          onDrop={(e) => handleFieldDrop(e, fieldKey)}
+                                          onDragEnd={handleFieldDragEnd}
+                                          className={`flex items-center gap-2 px-2 py-1.5 text-xs rounded border cursor-move transition-all ${isDragging
+                                            ? 'opacity-50 bg-primary/20 border-primary scale-95'
+                                            : isDragOver
+                                              ? 'bg-primary/30 border-primary-dark border-2'
+                                              : 'bg-primary/10 border-primary'
+                                            }`}
+                                        >
+                                          <GripVertical className="h-4 w-4 text-primary/60 cursor-grab active:cursor-grabbing" />
+                                          <span className="w-5 h-5 flex items-center justify-center bg-primary text-white rounded-full text-[10px] font-bold">
+                                            {idx + 1}
+                                          </span>
+                                          <input
+                                            type="checkbox"
+                                            checked={true}
+                                            onChange={() => !def.mandatory && toggleFieldSelection(fieldKey)}
+                                            disabled={uploading || def.mandatory}
+                                            className="h-3 w-3"
+                                            onClick={(e) => e.stopPropagation()}
+                                          />
+                                          <span className={`flex-1 ${def.mandatory ? 'font-medium' : ''} text-primary`}>
+                                            {def.key}
+                                            {def.mandatory && <span className="text-error text-[10px] ml-1">*</span>}
+                                          </span>
+                                          <span className="text-[10px] text-gray-400">({def.dataType})</span>
+                                        </div>
+                                      );
+                                    })}
+
+                                    {/* Show unselected fields */}
+                                    {files[0]?.filingCategory?.metadataDefinitions
+                                      ?.filter(d => !selectedFields.includes(d.key))
+                                      .map((def) => (
+                                        <div
+                                          key={def.key}
+                                          className="flex items-center gap-2 px-2 py-1.5 text-xs rounded border bg-gray-50 border-gray-200 opacity-60"
+                                        >
+                                          <div className="w-4"></div>
+                                          <span className="w-5 h-5 flex items-center justify-center bg-gray-300 text-gray-600 rounded-full text-[10px]">
+                                            —
+                                          </span>
+                                          <input
+                                            type="checkbox"
+                                            checked={false}
+                                            onChange={() => toggleFieldSelection(def.key)}
+                                            disabled={uploading}
+                                            className="h-3 w-3"
+                                          />
+                                          <span className="flex-1 text-gray-500">{def.key}</span>
+                                          <span className="text-[10px] text-gray-400">({def.dataType})</span>
+                                        </div>
+                                      ))}
+                                  </div>
+                                </div>
+
+                                {/* Format Preview - Uses selectedFields order */}
+                                <div className="text-xs text-neutral-text-light border-t border-ui/50 pt-3">
+                                  <p className="mb-1">
+                                    <strong>Expected format:</strong>{' '}
+                                    {selectedFields.map((fieldKey, i) => {
+                                      const def = files[0]?.filingCategory?.metadataDefinitions?.find(d => d.key === fieldKey);
+                                      if (!def) return null;
+                                      return (
+                                        <span key={fieldKey}>
+                                          <span className={def.mandatory ? 'text-error font-medium' : ''}>
+                                            {def.key}
+                                          </span>
+                                          {i < selectedFields.length - 1 && (
+                                            <span className="text-primary font-bold">{separator}</span>
+                                          )}
+                                        </span>
+                                      );
+                                    })}.ext
+                                  </p>
+                                  <p className="text-neutral-text-light/70">
+                                    Example: <code className="bg-gray-200 px-1 rounded">
+                                      {selectedFields.map((fieldKey, i) => {
+                                        const def = files[0]?.filingCategory?.metadataDefinitions?.find(d => d.key === fieldKey);
+                                        if (!def) return null;
+                                        return (
+                                          <span key={fieldKey}>
+                                            {def.dataType === 'DATE' ? '2025-01-15' : def.dataType === 'NUMBER' ? '123' : `value${i + 1}`}
+                                            {i < selectedFields.length - 1 && separator}
+                                          </span>
+                                        );
+                                      })}.pdf
+                                    </code>
+                                  </p>
+                                </div>
+
+                                {/* Apply Button */}
+                                <div className="flex items-center gap-2 border-t border-ui/50 pt-3">
+                                  <button
+                                    type="button"
+                                    onClick={applyExtractionToAllFiles}
+                                    className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary text-white rounded hover:bg-primary-dark transition-colors"
+                                    disabled={uploading || selectedFields.length === 0}
+                                  >
+                                    <Wand2 className="h-3 w-3" />
+                                    Apply to All Files ({files.length})
+                                  </button>
+
+                                  <span className="text-xs text-neutral-text-light">
+                                    {selectedFields.length} of {files[0]?.filingCategory?.metadataDefinitions?.length || 0} fields selected
+                                  </span>
+                                </div>
+
+                                {/* Files Status Summary */}
+                                {files.some(f => Object.keys(f.metadataErrors || {}).length > 0) && (
+                                  <div className="text-xs text-red-600 flex items-center gap-1 border-t border-ui/50 pt-2">
+                                    <AlertCircle className="h-3 w-3" />
+                                    {files.filter(f => Object.keys(f.metadataErrors || {}).length > 0).length} file(s) have validation errors - click ✏️ to edit filename
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         {/* Tags Section */}
                         <div className="border-t border-ui pt-4">
                           <h4 className="font-medium text-neutral-text-dark mb-3 flex items-center gap-2">
@@ -946,6 +1610,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                           {/* Search and Add Tag Interface */}
                           <div className="space-y-2 mb-4">
                             <SearchSelect
+                              openUpward={true}
                               items={availableTags}
                               fetchFunction={async (query: string) => {
                                 const response = await tagService.searchTags(query, 0, 20);
@@ -1044,21 +1709,23 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
         {/* Footer */}
         <div className="border-t border-ui bg-neutral-background">
           {/* Upload Progress Bar */}
-          {uploading && uploadProgress.total > 0 && (
+          {uploading && (
             <div className="px-6 pt-4">
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-neutral-text-dark font-medium">
-                    Uploading file {uploadProgress.current} of {uploadProgress.total}
+                    {uploadProgress.total > 0
+                      ? `Uploading file ${uploadProgress.current} of ${uploadProgress.total}`
+                      : 'Uploading...'}
                   </span>
-                  <span className="text-neutral-text-light">
-                    {Math.round((uploadProgress.current / uploadProgress.total) * 100)}%
+                  <span className="text-neutral-text-light font-semibold">
+                    {uploadPercentage}%
                   </span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
                   <div
-                    className="bg-primary h-full rounded-full transition-all duration-300 ease-out"
-                    style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
+                    className="bg-primary h-full rounded-full transition-all duration-150 ease-out"
+                    style={{ width: `${uploadPercentage}%` }}
                   />
                 </div>
                 <div className="text-xs text-neutral-text-light truncate">

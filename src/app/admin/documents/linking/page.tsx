@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   Link2, 
@@ -51,6 +51,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { linkRuleService } from '@/api/services/linkRuleService';
 import { filingCategoryService } from '@/api/services/filingCategoryService';
 import ServerSearchInput from '@/components/main/ServerSearchInput';
+import Pagination from '@/components/main/Pagination';
+import { useServerSideSearch } from '@/components/main/useServerSideSearch';
 import { SearchSelect } from '@/components/main/SearchSelect';
 import { 
   LinkRuleResponseDto, 
@@ -75,27 +77,49 @@ export default function LinkRulesManagementPage() {
     }
   }, [canView, router]);
   
-  // Main data state
-  const [linkRules, setLinkRules] = useState<LinkRuleResponseDto[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  
-  // Pagination and filtering
-  const [currentPage, setCurrentPage] = useState(0);
-  const [pageSize, setPageSize] = useState(20);
-  const [totalPages, setTotalPages] = useState(0);
-  const [totalElements, setTotalElements] = useState(0);
-  
-  // Search and filters
-  const [searchQuery, setSearchQuery] = useState('');
+  // Filters
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
   const [filterLinkType, setFilterLinkType] = useState<string>('all');
   const [selectedRules, setSelectedRules] = useState<number[]>([]);
 
-  // Smart search state
-  const [localSearchQuery, setLocalSearchQuery] = useState('');
-  const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null);
-  const [isSearching, setIsSearching] = useState(false);
+  const pageSize = 20;
+
+  // Memoize fetch function to prevent infinite loops
+  const fetchFunction = useCallback(async (page: number, searchTerm?: string) => {
+    const filters: { enabled?: boolean; linkType?: string; name?: string } = {};
+    if (filterStatus !== 'all') {
+      filters.enabled = filterStatus === 'active';
+    }
+    if (filterLinkType !== 'all') {
+      filters.linkType = filterLinkType;
+    }
+    if (searchTerm) {
+      filters.name = searchTerm;
+    }
+    return await linkRuleService.getLinkRules(page, pageSize, 'name', 'asc', filters);
+  }, [filterStatus, filterLinkType, pageSize]);
+
+  // Server-side search hook
+  const {
+    displayData: linkRules,
+    searchQuery,
+    setSearchQuery,
+    page: currentPage,
+    setPage: setCurrentPage,
+    totalPages,
+    totalElements,
+    loading,
+    tableLoading,
+    error,
+    fetchData,
+    addItem: addRule,
+    updateItem: updateRule,
+    removeItem: removeRule
+  } = useServerSideSearch<LinkRuleResponseDto>({
+    fetchFunction,
+    searchFields: (rule) => [rule.name, rule.description || '', rule.linkType],
+    debounceMs: 500
+  });
   
   // Statistics and cache
   const [ruleStatistics, setRuleStatistics] = useState<RuleStatistics[]>([]);
@@ -121,99 +145,27 @@ export default function LinkRulesManagementPage() {
   };
   const [importing, setImporting] = useState(false);
 
-  // Smart search with local filtering first, then API call
-  const performSmartSearch = useCallback((query: string) => {
-    // Clear existing timeout
-    if (searchTimeout) {
-      clearTimeout(searchTimeout);
-    }
+  // Track previous filter values to avoid unnecessary refetches
+  const prevFiltersRef = useRef({ filterStatus, filterLinkType });
+  const isFirstRender = useRef(true);
 
-    // First, filter locally for immediate response
-    if (query.trim()) {
-      const localResults = linkRules.filter(rule => 
-        rule.name.toLowerCase().includes(query.toLowerCase()) ||
-        rule.description?.toLowerCase().includes(query.toLowerCase()) ||
-        rule.linkType.toLowerCase().includes(query.toLowerCase())
-      );
-      // Update display with local results immediately
-      setLinkRules(localResults);
-    }
-
-    // Set up delayed API call
-    const timeout = setTimeout(async () => {
-      if (query.trim()) {
-        setIsSearching(true);
-        try {
-          await fetchLinkRulesWithFilters(query);
-        } finally {
-          setIsSearching(false);
-        }
-      }
-    }, 500); // 500ms delay
-
-    setSearchTimeout(timeout);
-  }, [linkRules, searchTimeout]);
-
-  // Fetch link rules with pagination and filters
-  const fetchLinkRulesWithFilters = async (searchQuery?: string) => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const params = {
-        page: currentPage,
-        size: pageSize,
-        enabled: filterStatus === 'all' ? undefined : filterStatus === 'active',
-        linkType: filterLinkType === 'all' ? undefined : filterLinkType,
-        name: searchQuery || localSearchQuery || undefined
-      };
-
-      const response = await linkRuleService.getLinkRules(
-        params.page,
-        params.size,
-        'name',
-        'asc',
-        { enabled: params.enabled, linkType: params.linkType, name: params.name }
-      );
-      
-      if (response && Array.isArray(response.content)) {
-        setLinkRules(response.content);
-        setTotalPages(response.totalPages || 0);
-        setTotalElements(response.totalElements || 0);
-      } else {
-        setLinkRules([]);
-        setTotalPages(0);
-        setTotalElements(0);
-      }
-    } catch (err: any) {
-      console.error('Error fetching link rules:', err);
-      setError(err.message || 'Failed to load link rules');
-      setLinkRules([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Fetch all link rules (fallback)
-  const fetchAllLinkRules = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const page = await linkRuleService.getLinkRules(0, 100);
-      setLinkRules(page.content || []);
-    } catch (err: any) {
-      console.error('Error fetching link rules:', err);
-      setError(err.message || 'Failed to load link rules');
-      setLinkRules([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Load data on component mount
+  // Refetch when filters change (but not on initial mount - hook handles that)
   useEffect(() => {
-    fetchLinkRulesWithFilters();
-  }, [currentPage, pageSize, filterStatus, filterLinkType]);
+    // Skip on first render - hook handles initial fetch
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      prevFiltersRef.current = { filterStatus, filterLinkType };
+      return;
+    }
+
+    // Only refetch if filters actually changed
+    if (prevFiltersRef.current.filterStatus !== filterStatus || 
+        prevFiltersRef.current.filterLinkType !== filterLinkType) {
+      fetchData(false);
+      prevFiltersRef.current = { filterStatus, filterLinkType };
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterStatus, filterLinkType]);
 
   // Load statistics when switching to statistics tab
   useEffect(() => {
@@ -228,15 +180,6 @@ export default function LinkRulesManagementPage() {
       loadCacheStatistics();
     }
   }, [activeTab]);
-
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (searchTimeout) {
-        clearTimeout(searchTimeout);
-      }
-    };
-  }, [searchTimeout]);
 
   // Load rule statistics
   const loadRuleStatistics = async () => {
@@ -264,8 +207,8 @@ export default function LinkRulesManagementPage() {
   const handleCreateRule = async (ruleData: LinkRuleRequestDto) => {
     try {
       const newRule = await linkRuleService.createLinkRule(ruleData);
+      addRule(newRule);
       showNotification('success', 'Success', 'Link rule created successfully');
-      await fetchLinkRulesWithFilters(); // Refresh the list
       setShowCreateModal(false);
     } catch (error) {
       console.error('Error creating link rule:', error);
@@ -277,8 +220,8 @@ export default function LinkRulesManagementPage() {
   const handleUpdateRule = async (ruleId: number, ruleData: LinkRuleRequestDto) => {
     try {
       const updatedRule = await linkRuleService.updateLinkRule(ruleId, ruleData);
+      updateRule(ruleId, () => updatedRule);
       showNotification('success', 'Success', 'Link rule updated successfully');
-      await fetchLinkRulesWithFilters(); // Refresh the list
       setEditingRule(null);
     } catch (error) {
       console.error('Error updating link rule:', error);
@@ -292,8 +235,8 @@ export default function LinkRulesManagementPage() {
     
     try {
         await linkRuleService.deleteLinkRule(ruleId);
+      removeRule(ruleId);
       showNotification('success', 'Success', 'Link rule deleted successfully');
-      await fetchLinkRulesWithFilters(); // Refresh the list
     } catch (error) {
       console.error('Error deleting link rule:', error);
       showNotification('error', 'Error', 'Failed to delete link rule');
@@ -309,7 +252,7 @@ export default function LinkRulesManagementPage() {
         await linkRuleService.toggleLinkRuleStatus(ruleId, false);
         showNotification('success', 'Success', 'Link rule disabled successfully');
       }
-      await fetchLinkRulesWithFilters(); // Refresh the list
+      updateRule(ruleId, (rule) => ({ ...rule, enabled }));
     } catch (error) {
       console.error('Error toggling link rule:', error);
       showNotification('error', 'Error', 'Failed to update link rule status');
@@ -322,7 +265,7 @@ export default function LinkRulesManagementPage() {
       setExecutingRules(prev => new Set(prev).add(ruleId));
       await linkRuleService.executeLinkRule({ ruleId });
       showNotification('success', 'Success', 'Rule execution started successfully');
-      await fetchLinkRulesWithFilters(); // Refresh the list
+      fetchData(false); // Refresh to get updated link counts
     } catch (error) {
       console.error('Error executing rule:', error);
       showNotification('error', 'Error', 'Failed to execute rule');
@@ -344,7 +287,7 @@ export default function LinkRulesManagementPage() {
         await linkRuleService.bulkExecuteLinkRules({ ruleIds: enabled.map(r => r.id) });
       }
       showNotification('success', 'Success', 'All rules reapplication started successfully');
-      await fetchLinkRulesWithFilters(); // Refresh the list
+      fetchData(false); // Refresh to get updated link counts
     } catch (error) {
       console.error('Error reapplying all rules:', error);
       showNotification('error', 'Error', 'Failed to reapply all rules');
@@ -360,9 +303,11 @@ export default function LinkRulesManagementPage() {
     try {
       setBulkOperationLoading(true);
       await linkRuleService.bulkToggleLinkRuleStatus(selectedRules, true);
+      selectedRules.forEach(ruleId => {
+        updateRule(ruleId, (rule) => ({ ...rule, enabled: true }));
+      });
       showNotification('success', 'Success', `${selectedRules.length} rules enabled successfully`);
       setSelectedRules([]);
-      await fetchLinkRulesWithFilters(); // Refresh the list
     } catch (error) {
       console.error('Error bulk enabling rules:', error);
       showNotification('error', 'Error', 'Failed to enable selected rules');
@@ -377,9 +322,11 @@ export default function LinkRulesManagementPage() {
     try {
       setBulkOperationLoading(true);
       await linkRuleService.bulkToggleLinkRuleStatus(selectedRules, false);
+      selectedRules.forEach(ruleId => {
+        updateRule(ruleId, (rule) => ({ ...rule, enabled: false }));
+      });
       showNotification('success', 'Success', `${selectedRules.length} rules disabled successfully`);
       setSelectedRules([]);
-      await fetchLinkRulesWithFilters(); // Refresh the list
     } catch (error) {
       console.error('Error bulk disabling rules:', error);
       showNotification('error', 'Error', 'Failed to disable selected rules');
@@ -396,9 +343,9 @@ export default function LinkRulesManagementPage() {
     try {
       setBulkOperationLoading(true);
       await linkRuleService.bulkDeleteLinkRules(selectedRules);
+      selectedRules.forEach(ruleId => removeRule(ruleId));
       showNotification('success', 'Success', `${selectedRules.length} rules deleted successfully`);
       setSelectedRules([]);
-      await fetchLinkRulesWithFilters(); // Refresh the list
     } catch (error) {
       console.error('Error bulk deleting rules:', error);
       showNotification('error', 'Error', 'Failed to delete selected rules');
@@ -458,12 +405,6 @@ export default function LinkRulesManagementPage() {
     setSelectedRules([]);
   };
 
-  // Handle search input change with smart search
-  const handleSearchInputChange = (value: string) => {
-    setLocalSearchQuery(value);
-    performSmartSearch(value);
-  };
-
   // Handle filter changes
   const handleFilterChange = (filterType: string, value: string) => {
     switch (filterType) {
@@ -478,28 +419,7 @@ export default function LinkRulesManagementPage() {
     }
   };
 
-  // Pagination handlers
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-  };
-
-  const handlePageSizeChange = (size: number) => {
-    setPageSize(size);
-    setCurrentPage(0); // Reset to first page
-  };
-
-  // Memoized filtered rules for local search
-  const filteredRules = useMemo(() => {
-    if (!localSearchQuery.trim()) return linkRules;
-    
-    return linkRules.filter(rule => 
-      rule.name.toLowerCase().includes(localSearchQuery.toLowerCase()) ||
-      rule.description?.toLowerCase().includes(localSearchQuery.toLowerCase()) ||
-      rule.linkType.toLowerCase().includes(localSearchQuery.toLowerCase())
-    );
-  }, [linkRules, localSearchQuery]);
-
-  if (loading && !isSearching) {
+  if (loading) {
     return <LinkRulesSkeleton />;
   }
 
@@ -518,7 +438,7 @@ export default function LinkRulesManagementPage() {
       <Card className="flex flex-col items-center justify-center py-12">
         <CardContent className="text-center">
           <div className="text-destructive text-lg mb-4">{error}</div>
-          <Button onClick={() => fetchLinkRulesWithFilters()}>
+          <Button onClick={() => fetchData(false)}>
             Retry
           </Button>
         </CardContent>
@@ -609,28 +529,18 @@ export default function LinkRulesManagementPage() {
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="rules">Rules Management</TabsTrigger>
           <TabsTrigger value="statistics">Statistics</TabsTrigger>
-          <TabsTrigger value="cache">Cache Management</TabsTrigger>
+          <TabsTrigger value="cache">Link Statistics</TabsTrigger>
         </TabsList>
 
         <TabsContent value="rules" className="space-y-4">
       {/* Search and Filters */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-3">
-          <div className="relative w-64">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-            <Input
-              type="text"
-              placeholder="Search rules..."
-                  value={localSearchQuery}
-                  onChange={(e) => handleSearchInputChange(e.target.value)}
-              className="pl-10"
-            />
-                {isSearching && (
-                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
-                  </div>
-                )}
-          </div>
+          <ServerSearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search rules by name, description, or link type..."
+          />
           
               <Select 
                 value={filterStatus} 
@@ -709,7 +619,7 @@ export default function LinkRulesManagementPage() {
 
       {/* Rules List */}
       <div className="space-y-4">
-        {filteredRules.map((rule) => (
+        {linkRules.map((rule) => (
           <Card key={rule.id} className="hover:shadow-md transition-shadow">
             <CardHeader className="pb-3">
               <div className="flex items-start justify-between">
@@ -784,7 +694,7 @@ export default function LinkRulesManagementPage() {
                   </div>
                   <div>
                     <label className="text-sm font-medium text-muted-foreground">Conditions</label>
-                    <p className="text-sm">{rule.conditions.length} condition(s)</p>
+                    <p className="text-sm">{rule.conditions?.length || 0} condition(s)</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-muted-foreground">Active Links</label>
@@ -814,6 +724,30 @@ export default function LinkRulesManagementPage() {
                         </div>
                       </div>
                 </div>
+
+                {/* Categories Info */}
+                {(rule.sourceCategory || rule.targetCategory) && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t">
+                    {rule.sourceCategory && (
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">Source Category</label>
+                        <p className="text-sm font-medium">{rule.sourceCategory.name}</p>
+                        {rule.sourceCategory.description && (
+                          <p className="text-xs text-muted-foreground">{rule.sourceCategory.description}</p>
+                        )}
+                      </div>
+                    )}
+                    {rule.targetCategory && (
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">Target Category</label>
+                        <p className="text-sm font-medium">{rule.targetCategory.name}</p>
+                        {rule.targetCategory.description && (
+                          <p className="text-xs text-muted-foreground">{rule.targetCategory.description}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Status and Actions */}
                 <div className="flex items-center justify-between">
@@ -858,10 +792,17 @@ export default function LinkRulesManagementPage() {
                   </div>
                 </div>
 
-                {/* Created Info */}
-                <div className="text-xs text-muted-foreground">
-                  Created by {rule.createdBy.firstName} {rule.createdBy.lastName} on{' '}
-                  {new Date(rule.createdAt).toLocaleDateString()}
+                {/* Created/Updated Info */}
+                <div className="text-xs text-muted-foreground space-y-1">
+                  <div>
+                    Created by {rule.createdBy?.firstName || ''} {rule.createdBy?.lastName || ''} on{' '}
+                    {rule.createdAt ? new Date(rule.createdAt).toLocaleDateString() : 'N/A'}
+                  </div>
+                  {rule.updatedAt && rule.updatedAt !== rule.createdAt && (
+                    <div>
+                      Last updated on {new Date(rule.updatedAt).toLocaleDateString()}
+                    </div>
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -870,57 +811,21 @@ export default function LinkRulesManagementPage() {
       </div>
 
           {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-muted-foreground">
-                Showing {currentPage * pageSize + 1} to {Math.min((currentPage + 1) * pageSize, totalElements)} of {totalElements} rules
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handlePageChange(currentPage - 1)}
-                  disabled={currentPage === 0}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  Previous
-                </Button>
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                    const page = i;
-                    return (
-                      <Button
-                        key={page}
-                        variant={currentPage === page ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => handlePageChange(page)}
-                        className="w-8 h-8 p-0"
-                      >
-                        {page + 1}
-                      </Button>
-                    );
-                  })}
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handlePageChange(currentPage + 1)}
-                  disabled={currentPage >= totalPages - 1}
-                >
-                  Next
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          )}
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalElements={totalElements}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+          />
 
-          {filteredRules.length === 0 && !loading && (
+          {linkRules.length === 0 && !loading && !tableLoading && (
         <Card className="flex flex-col items-center justify-center py-12">
           <CardContent className="text-center">
             <Link2 className="h-16 w-16 text-muted-foreground mb-4" />
             <h3 className="text-lg font-medium mb-2">No link rules found</h3>
             <p className="text-muted-foreground mb-4">
-                  {localSearchQuery || filterStatus !== 'all' || filterLinkType !== 'all'
+                  {searchQuery || filterStatus !== 'all' || filterLinkType !== 'all'
                 ? 'No rules match your current filters.' 
                 : 'Create your first link rule to get started.'
               }
@@ -1051,29 +956,80 @@ function StatisticsTab({
       {ruleStatistics.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Rule Performance</CardTitle>
+            <CardTitle>Rule Performance Details</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {ruleStatistics.map((stat) => (
-                <div key={stat.ruleId} className="flex items-center justify-between p-3 border rounded-lg">
-                  <div>
-                    <div className="font-medium">{stat.ruleName}</div>
-                    <div className="text-sm text-muted-foreground">
-                      {stat.totalExecutions} executions • {stat.linksCreated} links created
+              {ruleStatistics.map((stat) => {
+                const linksCreated = stat.linksCreated ?? stat.totalLinksCreated ?? 0;
+                return (
+                  <div key={stat.ruleId} className="p-4 border rounded-lg hover:bg-slate-50 transition-colors">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="font-semibold text-lg">{stat.ruleName}</div>
+                          {stat.enabled !== undefined && (
+                            <Badge variant={stat.enabled ? 'default' : 'secondary'}>
+                              {stat.enabled ? 'Enabled' : 'Disabled'}
+                            </Badge>
+                          )}
+                          {stat.linkType && (
+                            <Badge variant="outline">{stat.linkType}</Badge>
+                          )}
+                        </div>
+                        {stat.ruleDescription && (
+                          <p className="text-sm text-muted-foreground mb-2">{stat.ruleDescription}</p>
+                        )}
+                      </div>
                     </div>
+                    
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                      <div>
+                        <div className="text-xs text-muted-foreground mb-1">Links Created</div>
+                        <div className="text-xl font-bold text-blue-600">{linksCreated}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-muted-foreground mb-1">Executions</div>
+                        <div className="text-xl font-bold">{stat.totalExecutions || 0}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-muted-foreground mb-1">Success Rate</div>
+                        <div className="text-xl font-bold text-green-600">
+                          {Math.round((stat.successRate || 0) * 100)}%
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-muted-foreground mb-1">Avg Time</div>
+                        <div className="text-xl font-bold">
+                          {stat.averageExecutionTime ? `${stat.averageExecutionTime}ms` : 'N/A'}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {stat.lastExecutedAt && (
+                      <div className="mt-3 pt-3 border-t text-xs text-muted-foreground">
+                        Last executed: {new Date(stat.lastExecutedAt).toLocaleString()}
+                      </div>
+                    )}
+                    
+                    {stat.conditionsCount !== undefined && (
+                      <div className="mt-2 text-xs text-muted-foreground">
+                        {stat.conditionsCount} condition{stat.conditionsCount !== 1 ? 's' : ''} • 
+                        {stat.bidirectional ? ' Bidirectional' : ' Unidirectional'}
+                      </div>
+                    )}
                   </div>
-                  <div className="text-right">
-                    <div className="text-sm font-medium">
-                      {Math.round(stat.successRate * 100)}% success rate
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {stat.averageExecutionTime}ms avg
-                    </div>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
+          </CardContent>
+        </Card>
+      )}
+      
+      {ruleStatistics.length === 0 && (
+        <Card>
+          <CardContent className="text-center py-8">
+            <div className="text-muted-foreground">No rule statistics available</div>
           </CardContent>
         </Card>
       )}
@@ -1099,7 +1055,7 @@ function CacheManagementTab({
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-xl font-semibold">Cache Management</h2>
+        <h2 className="text-xl font-semibold">Link Statistics</h2>
         <Button onClick={onRefresh} variant="outline" className="gap-2">
           <RefreshCw className="h-4 w-4" />
           Refresh
@@ -1107,49 +1063,122 @@ function CacheManagementTab({
       </div>
 
       {cacheStatistics ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Cached Links</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{cacheStatistics.totalCachedLinks}</div>
-              <p className="text-xs text-muted-foreground">Total cached</p>
-            </CardContent>
-          </Card>
+        <>
+          {/* Overview Statistics */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Total Links</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-blue-600">{cacheStatistics.totalLinks}</div>
+                <p className="text-xs text-muted-foreground">All document links</p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Active Rules</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{cacheStatistics.activeRules}</div>
-              <p className="text-xs text-muted-foreground">In cache</p>
-            </CardContent>
-          </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Automatic Links</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-green-600">{cacheStatistics.automaticLinks}</div>
+                <p className="text-xs text-muted-foreground">Created by rules</p>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Cache Hit Rate</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{Math.round(cacheStatistics.cacheHitRate * 100)}%</div>
-              <p className="text-xs text-muted-foreground">Efficiency</p>
-            </CardContent>
-          </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Manual Links</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-orange-600">{cacheStatistics.manualLinks}</div>
+                <p className="text-xs text-muted-foreground">Created manually</p>
+              </CardContent>
+            </Card>
 
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Average Links/Rule</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{cacheStatistics.averageLinksPerRule}</div>
+                <p className="text-xs text-muted-foreground">Per rule average</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Rules Statistics */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Total Rules</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{cacheStatistics.totalRules}</div>
+                <p className="text-xs text-muted-foreground">All link rules</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Enabled Rules</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-green-600">{cacheStatistics.enabledRules}</div>
+                <p className="text-xs text-muted-foreground">Currently active</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Disabled Rules</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-gray-600">{cacheStatistics.disabledRules}</div>
+                <p className="text-xs text-muted-foreground">Currently inactive</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Links by Type */}
           <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Last Revalidation</CardTitle>
+            <CardHeader>
+              <CardTitle>Links by Type</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-sm font-medium">
-                {cacheStatistics.lastRevalidation ? new Date(cacheStatistics.lastRevalidation).toLocaleDateString() : '—'}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="flex items-center justify-between p-3 border rounded-lg">
+                  <div>
+                    <div className="text-sm font-medium text-muted-foreground">RELATED</div>
+                    <div className="text-2xl font-bold">{cacheStatistics.linksByType.RELATED}</div>
+                  </div>
+                  <Link2 className="h-5 w-5 text-blue-500" />
+                </div>
+                <div className="flex items-center justify-between p-3 border rounded-lg">
+                  <div>
+                    <div className="text-sm font-medium text-muted-foreground">SUPERSEDES</div>
+                    <div className="text-2xl font-bold">{cacheStatistics.linksByType.SUPERSEDES}</div>
+                  </div>
+                  <Link2 className="h-5 w-5 text-orange-500" />
+                </div>
+                <div className="flex items-center justify-between p-3 border rounded-lg">
+                  <div>
+                    <div className="text-sm font-medium text-muted-foreground">REFERENCES</div>
+                    <div className="text-2xl font-bold">{cacheStatistics.linksByType.REFERENCES}</div>
+                  </div>
+                  <Link2 className="h-5 w-5 text-purple-500" />
+                </div>
+                <div className="flex items-center justify-between p-3 border rounded-lg">
+                  <div>
+                    <div className="text-sm font-medium text-muted-foreground">CONTAINS</div>
+                    <div className="text-2xl font-bold">{cacheStatistics.linksByType.CONTAINS}</div>
+                  </div>
+                  <Link2 className="h-5 w-5 text-green-500" />
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground">Last update</p>
             </CardContent>
           </Card>
-        </div>
+        </>
       ) : (
         <Card>
           <CardContent className="text-center py-8">
@@ -1160,13 +1189,13 @@ function CacheManagementTab({
 
       <Card>
         <CardHeader>
-          <CardTitle>Cache Actions</CardTitle>
+          <CardTitle>Actions</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2">
-            <Button onClick={onClearAllCache} variant="destructive" className="gap-2">
-              <Trash2 className="h-4 w-4" />
-              Clear All Cache
+            <Button onClick={onClearAllCache} variant="outline" className="gap-2">
+              <RefreshCw className="h-4 w-4" />
+              Refresh Statistics
             </Button>
               <Button
                 variant="outline"
@@ -1215,7 +1244,7 @@ function CacheManagementTab({
             </Button>
           </div>
           <div className="text-sm text-muted-foreground">
-            Cache management helps optimize rule execution performance. Clear cache when rules are updated or when experiencing performance issues.
+            Statistics show the current state of document links and link rules. Automatic links are created by rules, while manual links are created by users.
           </div>
         </CardContent>
       </Card>
@@ -1627,23 +1656,59 @@ function RuleDetailsModal({
             <div className="text-sm text-muted-foreground mb-2">Conditions ({rule.conditions?.length || 0})</div>
             <div className="space-y-2">
               {(rule.conditions || []).map((c, idx) => (
-                <div key={idx} className="p-2 border rounded text-sm">
-                  <div className="flex flex-wrap gap-2 items-center">
-                    <span className="px-2 py-0.5 rounded bg-gray-100">
-                      source: {c.sourceMetadata?.metadataName || c.sourceMetadata?.metadataId || 'N/A'}
-                    </span>
-                    <span className="text-gray-500">{c.operator}</span>
-                    <span className="px-2 py-0.5 rounded bg-gray-100">
-                      target: {c.targetMetadata?.metadataName || c.targetMetadata?.metadataId || 'N/A'}
-                    </span>
+                <div key={c.id || idx} className="p-3 border rounded text-sm">
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <div className="px-2 py-1 rounded bg-blue-50">
+                        <div className="text-xs text-muted-foreground">Source</div>
+                        <div className="font-medium">
+                          {c.sourceMetadata?.categoryName || 'N/A'} / {c.sourceMetadata?.metadataName || c.sourceMetadata?.metadataId || 'N/A'}
+                        </div>
+                        {c.sourceMetadata?.metadataType && (
+                          <div className="text-xs text-muted-foreground">Type: {c.sourceMetadata.metadataType}</div>
+                        )}
+                      </div>
+                      <span className="text-gray-500 font-medium">{c.operator}</span>
+                      <div className="px-2 py-1 rounded bg-green-50">
+                        <div className="text-xs text-muted-foreground">Target</div>
+                        <div className="font-medium">
+                          {c.targetMetadata?.categoryName || 'N/A'} / {c.targetMetadata?.metadataName || c.targetMetadata?.metadataId || 'N/A'}
+                        </div>
+                        {c.targetMetadata?.metadataType && (
+                          <div className="text-xs text-muted-foreground">Type: {c.targetMetadata.metadataType}</div>
+                        )}
+                      </div>
+                    </div>
                     {c.caseSensitive && (
-                      <span className="ml-2 text-xs text-gray-600">case sensitive</span>
+                      <div className="text-xs text-gray-600">Case sensitive</div>
                     )}
                   </div>
                 </div>
               ))}
             </div>
           </div>
+          {(rule.sourceCategory || rule.targetCategory) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t">
+              {rule.sourceCategory && (
+                <div>
+                  <div className="text-sm text-muted-foreground mb-1">Source Category</div>
+                  <div className="font-medium">{rule.sourceCategory.name}</div>
+                  {rule.sourceCategory.description && (
+                    <div className="text-xs text-muted-foreground mt-1">{rule.sourceCategory.description}</div>
+                  )}
+                </div>
+              )}
+              {rule.targetCategory && (
+                <div>
+                  <div className="text-sm text-muted-foreground mb-1">Target Category</div>
+                  <div className="font-medium">{rule.targetCategory.name}</div>
+                  {rule.targetCategory.description && (
+                    <div className="text-xs text-muted-foreground mt-1">{rule.targetCategory.description}</div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
           <div className="text-xs text-muted-foreground">
             Created by {rule.createdBy?.firstName} {rule.createdBy?.lastName} on {new Date(rule.createdAt).toLocaleString()}
           </div>

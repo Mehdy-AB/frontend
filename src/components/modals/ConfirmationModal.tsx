@@ -16,6 +16,7 @@ interface ConfirmationModalProps {
   // Optional: For specific item deletion
   itemName?: string;
   itemType?: 'folder' | 'document' | 'user' | 'role' | 'group';
+  children?: React.ReactNode;
 }
 
 export default function ConfirmationModal({
@@ -29,7 +30,8 @@ export default function ConfirmationModal({
   variant = 'default',
   loading = false,
   itemName,
-  itemType
+  itemType,
+  children
 }: ConfirmationModalProps) {
   if (!isOpen) return null;
 
@@ -46,7 +48,7 @@ export default function ConfirmationModal({
               {title}
             </h2>
           </div>
-          <button 
+          <button
             onClick={onClose}
             className="p-2 rounded-lg hover:bg-neutral-background transition-colors text-neutral-text-light"
             disabled={loading}
@@ -77,16 +79,18 @@ export default function ConfirmationModal({
             </p>
           )}
 
+          {children}
+
           {/* Actions */}
           <div className="flex justify-end gap-3">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={onClose}
               disabled={loading}
             >
               {cancelText}
             </Button>
-            <Button 
+            <Button
               onClick={onConfirm}
               disabled={loading}
               variant={variant === 'destructive' ? 'destructive' : 'default'}

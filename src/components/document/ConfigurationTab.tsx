@@ -1,12 +1,12 @@
 // components/document/ConfigurationTab.tsx
 'use client';
 
-import { 
-  Info, 
-  Settings, 
-  Copy, 
-  Share2, 
-  MessageSquare, 
+import {
+  Info,
+  Settings,
+  Copy,
+  Share2,
+  MessageSquare,
   Star,
   Globe,
   Lock,
@@ -33,13 +33,13 @@ interface ConfigurationTabProps {
   isFavorite: boolean;
 }
 
-export default function ConfigurationTab({ 
-  document, 
-  isLoading, 
-  onCopyLink, 
-  onShare, 
-  onToggleFavorite, 
-  isFavorite 
+export default function ConfigurationTab({
+  document,
+  isLoading,
+  onCopyLink,
+  onShare,
+  onToggleFavorite,
+  isFavorite
 }: ConfigurationTabProps) {
   if (isLoading) {
     return (
@@ -120,8 +120,8 @@ export default function ConfigurationTab({
             <div className="flex items-center gap-3 p-2 bg-neutral-background rounded-lg">
               <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
                 {document.ownedBy.imageUrl && document.ownedBy.imageUrl.trim() !== '' ? (
-                  <img 
-                    src={document.ownedBy.imageUrl} 
+                  <img
+                    src={document.ownedBy.imageUrl}
                     alt={document.ownedBy.username}
                     className="w-full h-full object-cover"
                     onError={(e) => {
@@ -157,8 +157,8 @@ export default function ConfigurationTab({
             <div className="flex items-center gap-3 p-2 bg-neutral-background rounded-lg">
               <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
                 {document.createdBy.imageUrl && document.createdBy.imageUrl.trim() !== '' ? (
-                  <img 
-                    src={document.createdBy.imageUrl} 
+                  <img
+                    src={document.createdBy.imageUrl}
                     alt={document.createdBy.username}
                     className="w-full h-full object-cover"
                     onError={(e) => {
@@ -227,13 +227,12 @@ export default function ConfigurationTab({
                   {document.workflowInstance.workflowName}
                 </span>
               </div>
-              <span className={`px-2 py-1 rounded text-xs font-medium ${
-                document.workflowInstance.workflowStatus === 'ACTIVE' 
-                  ? 'bg-primary/20 text-primary' 
-                  : document.workflowInstance.workflowStatus === 'COMPLETED'
+              <span className={`px-2 py-1 rounded text-xs font-medium ${document.workflowInstance.workflowStatus === 'ACTIVE'
+                ? 'bg-primary/20 text-primary'
+                : document.workflowInstance.workflowStatus === 'COMPLETED'
                   ? 'bg-success/20 text-success'
                   : 'bg-neutral-ui text-neutral-text-light'
-              }`}>
+                }`}>
                 {document.workflowInstance.workflowStatus}
               </span>
             </div>
@@ -256,11 +255,9 @@ export default function ConfigurationTab({
                   )}
                 </div>
                 <div className="text-sm text-neutral-text-dark mb-2">
-                  {document.workflowInstance.currentStepOrder && (
-                    <span className="text-neutral-text-light mr-2">
-                      Step {document.workflowInstance.currentStepOrder}:
-                    </span>
-                  )}
+                  <span className="text-neutral-text-light mr-2">
+                    Node:
+                  </span>
                   {document.workflowInstance.currentStepName}
                 </div>
 
@@ -273,14 +270,14 @@ export default function ConfigurationTab({
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {document.workflowInstance.assignedUsers.map((user) => (
-                        <div 
-                          key={user.id} 
+                        <div
+                          key={user.id}
                           className="flex items-center gap-2 px-2 py-1 bg-ui rounded text-xs"
                         >
                           <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
                             {user.imageUrl && user.imageUrl.trim() !== '' ? (
-                              <img 
-                                src={user.imageUrl} 
+                              <img
+                                src={user.imageUrl}
                                 alt={user.username}
                                 className="w-full h-full object-cover"
                                 onError={(e) => {
@@ -305,11 +302,10 @@ export default function ConfigurationTab({
                   <div className="mt-3 flex items-center gap-2 text-xs">
                     <Calendar className="h-3 w-3 text-neutral-text-light" />
                     <span className="text-neutral-text-light">Due:</span>
-                    <span className={`font-medium ${
-                      new Date(document.workflowInstance.currentStepDueDate) < new Date()
-                        ? 'text-error'
-                        : 'text-neutral-text-dark'
-                    }`}>
+                    <span className={`font-medium ${new Date(document.workflowInstance.currentStepDueDate) < new Date()
+                      ? 'text-error'
+                      : 'text-neutral-text-dark'
+                      }`}>
                       {formatDate(document.workflowInstance.currentStepDueDate)}
                       {new Date(document.workflowInstance.currentStepDueDate) < new Date() && (
                         <AlertCircle className="h-3 w-3 inline ml-1 text-error" />
@@ -384,27 +380,26 @@ export default function ConfigurationTab({
       <div>
         <h3 className="font-medium text-neutral-text-dark mb-3">Quick Actions</h3>
         <div className="grid grid-cols-2 gap-2">
-          <button 
+          <button
             onClick={onCopyLink}
             className="p-2 border border-ui rounded text-xs hover:bg-neutral-background transition-colors"
           >
             <Copy className="h-4 w-4 mx-auto mb-1" />
             Copy Link
           </button>
-          <button 
+          <button
             onClick={onShare}
             className="p-2 border border-ui rounded text-xs hover:bg-neutral-background transition-colors"
           >
             <Share2 className="h-4 w-4 mx-auto mb-1" />
             Manage Permissions
           </button>
-          <button 
+          <button
             onClick={onToggleFavorite}
-            className={`p-2 border rounded text-xs transition-colors ${
-              isFavorite 
-                ? 'border-warning bg-warning/10 text-warning' 
-                : 'border-ui hover:bg-neutral-background'
-            }`}
+            className={`p-2 border rounded text-xs transition-colors ${isFavorite
+              ? 'border-warning bg-warning/10 text-warning'
+              : 'border-ui hover:bg-neutral-background'
+              }`}
           >
             <Star className={`h-4 w-4 mx-auto mb-1 ${isFavorite ? 'fill-current' : ''}`} />
             {isFavorite ? 'Favorited' : 'Add to Favorites'}

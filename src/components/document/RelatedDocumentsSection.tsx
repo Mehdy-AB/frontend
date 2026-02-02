@@ -217,7 +217,7 @@ export default function RelatedDocumentsSection({
                             <span className={`inline-flex items-center px-1 py-0.5 rounded text-xs font-medium ${getLinkTypeColor(doc.linkType)}`}>
                               {doc.linkType}
                             </span>
-                            {doc.isManual ? (
+                            {doc.manual ? (
                               <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
                                 <Settings className="h-2.5 w-2.5" />
                                 Manual
@@ -244,9 +244,9 @@ export default function RelatedDocumentsSection({
                           )}
                           {canEdit && (
                             <button
-                              onClick={() => handleDeleteLinkClick(doc.linkId, doc.documentName, doc.isManual)}
+                              onClick={() => handleDeleteLinkClick(doc.linkId, doc.documentName, doc.manual)}
                               className="p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-600"
-                              title={doc.isManual ? "Remove Manual Link" : "Remove Auto Link"}
+                              title={doc.manual ? "Remove Manual Link" : "Remove Auto Link"}
                             >
                               <Trash2 className="h-3 w-3" />
                             </button>

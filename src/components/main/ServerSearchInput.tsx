@@ -28,6 +28,7 @@ interface ServerSearchInputProps {
   placeholder?: string;
   className?: string;
   onFocus?: () => void;
+  disabled?: boolean;
 }
 
 export default function ServerSearchInput({
@@ -35,24 +36,26 @@ export default function ServerSearchInput({
   onChange,
   placeholder = 'Search...',
   className = '',
-  onFocus
+  onFocus,
+  disabled = false
 }: ServerSearchInputProps) {
   return (
-    <div className={`relative ${className}`}>
-      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+    <div className={`relative items-center justify-center flex ${className}`}>
+      <Search className={`absolute left-6 top-1/2 transform -translate-y-1/2 h-4 w-4 ${disabled ? 'text-muted-foreground/50' : 'text-muted-foreground'}`} />
       <Input
         type="text"
         placeholder={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onFocus={onFocus}
-        className="pl-10"
+        className="pl-10 "
+        disabled={disabled}
       />
-      {value && (
+      {value && !disabled && (
         <button
           type="button"
           onClick={() => onChange('')}
-          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          className="absolute right-6 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
           aria-label="Clear search"
         >
           <X className="h-4 w-4" />

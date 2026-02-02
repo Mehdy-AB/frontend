@@ -19,6 +19,12 @@ const SUPPORTED_LANGUAGES = [
   { value: 'ARA', label: 'Arabic' }
 ];
 
+const MODIFICATION_TYPES = [
+  { value: 'MAJOR', label: 'Major', description: 'Breaking changes, complete rewrites', color: 'bg-red-100 text-red-700 border-red-300' },
+  { value: 'MINOR', label: 'Minor', description: 'New features, significant updates', color: 'bg-yellow-100 text-yellow-700 border-yellow-300' },
+  { value: 'PATCH', label: 'Patch', description: 'Bug fixes, minor corrections', color: 'bg-gray-100 text-gray-700 border-gray-300' }
+] as const;
+
 const getFileIcon = (file: File) => {
   const type = file.type;
   if (type.startsWith('image/')) return <Image className="h-8 w-8 text-blue-500" />;
@@ -48,6 +54,8 @@ export default function UploadVersionModal({
   const [error, setError] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [language, setLanguage] = useState<'ENG' | 'FRA' | 'ARA'>('ENG');
+  const [modificationType, setModificationType] = useState<'MAJOR' | 'MINOR' | 'PATCH'>('MINOR');
+  const [versionComment, setVersionComment] = useState('');
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -63,7 +71,7 @@ export default function UploadVersionModal({
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    
+
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       setSelectedFile(e.dataTransfer.files[0]);
       setError(null);
@@ -101,16 +109,19 @@ export default function UploadVersionModal({
       // Close modal immediately for better UX
       onClose();
 
-      // Upload in background
+      // Upload in background with semantic versioning
       await notificationApiClient.uploadDocumentVersion(
         selectedFile,
         documentId,
-        language.toLowerCase() as 'eng' | 'fra' | 'ara' 
+        language.toLowerCase() as 'eng' | 'fra' | 'ara',
+        undefined, // filingCategory
+        modificationType,
+        versionComment || undefined
       );
 
       setSelectedFile(null);
       setError(null);
-      
+
       if (onSuccess) {
         onSuccess();
       }
@@ -147,7 +158,7 @@ export default function UploadVersionModal({
               Document ID: {documentId}
             </p>
           </div>
-          <button 
+          <button
             onClick={handleClose}
             className="p-2 rounded-lg hover:bg-neutral-background transition-colors text-neutral-text-light"
             disabled={isUploading}
@@ -162,9 +173,8 @@ export default function UploadVersionModal({
             {/* File Drop Area */}
             {!selectedFile && (
               <div
-                className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-                  dragActive ? 'border-primary bg-primary-light' : 'border-ui'
-                }`}
+                className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${dragActive ? 'border-primary bg-primary-light' : 'border-ui'
+                  }`}
                 onDragEnter={handleDrag}
                 onDragLeave={handleDrag}
                 onDragOver={handleDrag}
@@ -184,8 +194,8 @@ export default function UploadVersionModal({
                   id="version-file-input"
                   disabled={isUploading}
                 />
-                <label 
-                  htmlFor="version-file-input" 
+                <label
+                  htmlFor="version-file-input"
                   className="inline-flex items-center gap-2 bg-primary text-surface px-4 py-2 rounded-lg hover:bg-primary-dark transition-colors cursor-pointer disabled:opacity-50"
                 >
                   <Upload className="h-4 w-4" />
@@ -201,7 +211,7 @@ export default function UploadVersionModal({
                   <h3 className="text-lg font-medium text-neutral-text-dark">
                     Selected File
                   </h3>
-                  <button 
+                  <button
                     onClick={removeFile}
                     className="p-2 text-error hover:bg-error/10 rounded transition-colors"
                     disabled={isUploading}
@@ -225,11 +235,51 @@ export default function UploadVersionModal({
 
                   <div className="p-4">
                     <div className="space-y-4">
+                      {/* Modification Type */}
+                      <div>
+                        <label className="block text-sm font-medium text-neutral-text-dark mb-2">
+                          Version Type
+                        </label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {MODIFICATION_TYPES.map((type) => (
+                            <button
+                              key={type.value}
+                              type="button"
+                              onClick={() => setModificationType(type.value)}
+                              disabled={isUploading}
+                              className={`p-3 rounded-lg border-2 text-center transition-all ${modificationType === type.value
+                                  ? `${type.color} border-current font-semibold`
+                                  : 'bg-white border-gray-200 hover:border-gray-300'
+                                }`}
+                            >
+                              <div className="font-medium text-sm">{type.label}</div>
+                              <div className="text-xs opacity-75 mt-1">{type.description}</div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Version Comment */}
+                      <div>
+                        <label className="block text-sm font-medium text-neutral-text-dark mb-2">
+                          Version Comment <span className="text-neutral-text-light font-normal">(optional)</span>
+                        </label>
+                        <textarea
+                          value={versionComment}
+                          onChange={(e) => setVersionComment(e.target.value)}
+                          disabled={isUploading}
+                          placeholder="Describe what changed in this version..."
+                          className="w-full p-3 border border-ui rounded-lg text-sm resize-none focus:ring-2 focus:ring-primary focus:border-primary"
+                          rows={3}
+                        />
+                      </div>
+
+                      {/* Document Language */}
                       <div>
                         <label className="block text-sm font-medium text-neutral-text-dark mb-2">
                           Document Language
                         </label>
-                        <Select 
+                        <Select
                           value={language}
                           onValueChange={(value) => setLanguage(value as 'ENG' | 'FRA' | 'ARA')}
                           disabled={isUploading}

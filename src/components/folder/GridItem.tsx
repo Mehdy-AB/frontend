@@ -96,7 +96,7 @@ export function GridItem({
       <div className="flex items-center justify-between text-xs text-neutral-text-light mb-2">
         <span>{formatFileSize(size)}</span>
         <div className="flex items-center gap-1">
-          {item.isPublic ? (
+          {!isFolder && item.isPublic ? (
             <Globe className="h-3 w-3 text-success" />
           ) : (
             <Lock className="h-3 w-3 text-neutral-text-light" />

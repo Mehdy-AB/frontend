@@ -157,19 +157,13 @@ export default function SignInContent() {
         {/* Left Side - Branding */}
         <div className="hidden lg:block space-y-8">
           <div className="space-y-4">
-            <div className="flex items-center space-x-3">
-              <div className="flex items-center justify-center">
+            <div className="flex justify-center items-center space-x-3">
                 <img
                   src="/logo.svg"
                   alt="Logo"
-                  className="h-40 w-40"
+                  className="h-80 w-80"
                 />
               </div>
-              <div>
-                <h1 className="text-3xl font-bold text-foreground">Gi doc</h1>
-                <p className="text-muted-foreground">Fast. Secure. Reliable DMS.</p>
-              </div>
-            </div>
           </div>
 
           <div className="space-y-6">

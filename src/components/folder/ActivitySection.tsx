@@ -1,9 +1,9 @@
 import React from 'react';
-import { 
-  History as HistoryIcon, 
-  ChevronDown, 
-  ChevronUp, 
-  User 
+import {
+  History as HistoryIcon,
+  ChevronDown,
+  ChevronUp,
+  User
 } from 'lucide-react';
 import { AuditLog } from '@/types/api';
 
@@ -14,6 +14,7 @@ interface ActivitySectionProps {
   isLoadingAuditLogs: boolean;
   formatDate: (dateString: string) => string;
   isLoading?: boolean;
+  isModal?: boolean;
 }
 
 export function ActivitySection({
@@ -22,22 +23,25 @@ export function ActivitySection({
   auditLogs,
   isLoadingAuditLogs,
   formatDate,
-  isLoading = false
+  isLoading = false,
+  isModal = false
 }: ActivitySectionProps) {
   return (
     <div>
-      <button
-        onClick={onToggleActivitySection}
-        className="flex items-center gap-2 w-full text-left hover:bg-white p-2 rounded-md transition-colors"
-      >
-        <h3 className="text-sm font-semibold text-gray-900">Recent Activity</h3>
-        {showActivitySection ? (
-          <ChevronUp className="h-4 w-4 text-gray-500 ml-auto" />
-        ) : (
-          <ChevronDown className="h-4 w-4 text-gray-500 ml-auto" />
-        )}
-      </button>
-      
+      {!isModal && (
+        <button
+          onClick={onToggleActivitySection}
+          className="flex items-center gap-2 w-full text-left hover:bg-white p-2 rounded-md transition-colors"
+        >
+          <h3 className="text-sm font-semibold text-gray-900">Recent Activity</h3>
+          {showActivitySection ? (
+            <ChevronUp className="h-4 w-4 text-gray-500 ml-auto" />
+          ) : (
+            <ChevronDown className="h-4 w-4 text-gray-500 ml-auto" />
+          )}
+        </button>
+      )}
+
       {showActivitySection && (
         <div className="mt-4">
           {isLoading ? (

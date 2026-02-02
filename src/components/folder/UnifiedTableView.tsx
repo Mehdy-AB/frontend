@@ -21,31 +21,35 @@ interface UnifiedTableViewProps {
   onShare?: (item: TableItem) => void;
   onCopyLink?: (item: TableItem) => void;
   onView?: (item: TableItem) => void;
+  onChangeDescription?: (item: TableItem) => void;
   openDropdownId: string | null;
   setOpenDropdownId: (id: string | null) => void;
   showLoadingRows?: boolean;
+  showOwner?: boolean;
 }
 
-export function UnifiedTableView({ 
-  items, 
-  formatFileSize, 
-  formatDate, 
-  currentFolderId, 
-  onEditPermissions, 
-  onEditFolderPermissions, 
-  onMove, 
-  onRename, 
-  onDelete, 
+export function UnifiedTableView({
+  items,
+  formatFileSize,
+  formatDate,
+  currentFolderId,
+  onEditPermissions,
+  onEditFolderPermissions,
+  onMove,
+  onRename,
+  onDelete,
   onShowComments,
   onDownload,
   onShare,
   onCopyLink,
   onView,
-  openDropdownId, 
-  setOpenDropdownId, 
-  showLoadingRows = false 
+  onChangeDescription,
+  openDropdownId,
+  setOpenDropdownId,
+  showLoadingRows = false,
+  showOwner = true
 }: UnifiedTableViewProps) {
-  if (items.length === 0) {
+  if (items.length === 0 && !showLoadingRows) {
     return (
       <div className="text-center py-12 bg-white">
         <FolderOpen className="h-16 w-16 text-gray-300 mx-auto mb-4" />
@@ -60,21 +64,21 @@ export function UnifiedTableView({
       <table className="w-full relative" style={{ zIndex: 1 }}>
         <thead className="bg-gray-50 border-b border-gray-200">
           <tr>
-            <th className="text-left p-4 text-xs font-medium text-gray-500 uppercase tracking-wide">Name</th>
-            <th className="text-left p-4 text-xs font-medium text-gray-500 uppercase tracking-wide">Owner</th>
+            <th className="text-left p-4 text-xs font-medium text-gray-500 uppercase tracking-wide w-[300px]">Name</th>
+            {showOwner && <th className="text-left p-4 text-xs font-medium text-gray-500 uppercase tracking-wide">Owner</th>}
+            <th className="text-left p-4 text-xs font-medium text-gray-500 uppercase tracking-wide">Creator</th>
             <th className="text-left p-4 text-xs font-medium text-gray-500 uppercase tracking-wide">Size</th>
+            <th className="text-left p-4 text-xs font-medium text-gray-500 uppercase tracking-wide">Created At</th>
             <th className="text-left p-4 text-xs font-medium text-gray-500 uppercase tracking-wide">Last Modified</th>
-            <th className="text-left p-4 text-xs font-medium text-gray-500 uppercase tracking-wide">Version</th>
-            <th className="text-left p-4 text-xs font-medium text-gray-500 uppercase tracking-wide">Visibility</th>
             <th className="text-left p-4 text-xs font-medium text-gray-500 uppercase tracking-wide">Actions</th>
           </tr>
         </thead>
         <tbody>
           {items.map((item) => (
-            <TableRow 
+            <TableRow
               key={item.type === 'folder' ? `folder-${item.id}` : `document-${item.documentId}`}
-              item={item} 
-              formatFileSize={formatFileSize} 
+              item={item}
+              formatFileSize={formatFileSize}
               formatDate={formatDate}
               currentFolderId={currentFolderId}
               onEditPermissions={onEditPermissions}
@@ -87,8 +91,10 @@ export function UnifiedTableView({
               onShare={onShare}
               onCopyLink={onCopyLink}
               onView={onView}
+              onChangeDescription={onChangeDescription}
               openDropdownId={openDropdownId}
               setOpenDropdownId={setOpenDropdownId}
+              showOwner={showOwner}
             />
           ))}
           {/* Loading skeleton rows */}
@@ -103,9 +109,11 @@ export function UnifiedTableView({
                   </div>
                 </div>
               </td>
-              <td className="p-4">
-                <div className="h-4 bg-neutral-ui rounded w-20 animate-pulse"></div>
-              </td>
+              {showOwner && (
+                <td className="p-4">
+                  <div className="h-4 bg-neutral-ui rounded w-20 animate-pulse"></div>
+                </td>
+              )}
               <td className="p-4">
                 <div className="h-4 bg-neutral-ui rounded w-16 animate-pulse"></div>
               </td>

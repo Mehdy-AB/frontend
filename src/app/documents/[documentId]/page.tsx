@@ -20,9 +20,12 @@ import {
 } from '../../../components/document';
 import WorkflowStepAction from '../../../components/document/WorkflowStepAction';
 import ConfirmationModal from '../../../components/modals/ConfirmationModal';
-import FolderActionModal from '../../../components/modals/FolderActionModal';
-import { workflowService } from '../../../api/services';
-import { WorkflowStepInstanceResponse } from '../../../types/api';
+import RenameModal from '@/components/modals/RenameModal';
+import { workflowService, documentService, stampService } from '../../../api/services';
+import { WorkflowNodeInstanceResponse, StampResponse } from '../../../types/api';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { useNotifications } from '@/hooks/useNotifications';
 
 export default function DocumentViewPage() {
   const { t } = useLanguage();
@@ -45,12 +48,17 @@ export default function DocumentViewPage() {
   const [showMoveDocument, setShowMoveDocument] = useState<boolean>(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
   const [showRenameDocument, setShowRenameDocument] = useState<boolean>(false);
+  const [showAddStamp, setShowAddStamp] = useState<boolean>(false);
+  const [stamps, setStamps] = useState<StampResponse[]>([]);
+  const [loadingStamps, setLoadingStamps] = useState<boolean>(false);
+  const [selectedStampId, setSelectedStampId] = useState<number | null>(null);
   const [versions, setVersions] = useState<any[]>([]);
   const [optimisticFile, setOptimisticFile] = useState<File | null>(null);
   const [currentVersion, setCurrentVersion] = useState<number | null>(null);
   const [fileViewerKey, setFileViewerKey] = useState<number>(0);
   const fileViewerRefreshRef = useRef<(() => void) | null>(null);
-  const [pendingStep, setPendingStep] = useState<WorkflowStepInstanceResponse | null>(null);
+  const [pendingStep, setPendingStep] = useState<WorkflowNodeInstanceResponse | null>(null);
+  const { showSuccess, showError } = useNotifications();
 
   // Use custom hook for document operations
   const {
@@ -76,7 +84,7 @@ export default function DocumentViewPage() {
       try {
         const steps = await workflowService.getDocumentSteps(parseInt(documentId));
         // Get the first actionable step
-        const actionableStep = steps.find(step => step.isActionable);
+        const actionableStep = steps.find(step => step.status === 'ACTIVE');
         setPendingStep(actionableStep || null);
       } catch (error) {
         // Silently fail - workflow steps are optional
@@ -92,12 +100,12 @@ export default function DocumentViewPage() {
   // Fetch document versions
   const fetchVersions = useCallback(async () => {
     if (!documentId) return;
-    
+
     try {
       const versions = await notificationApiClient.getDocumentVersionsList(parseInt(documentId)) as unknown as DocumentVersionResponseDto[];
       // Sort versions by version number
       const sortedVersions = versions.sort((a, b) => a.versionNumber - b.versionNumber);
-      
+
       const versionInfos = sortedVersions.map((version, index) => ({
         versionId: version.id,
         versionNumber: version.versionNumber,
@@ -117,33 +125,33 @@ export default function DocumentViewPage() {
   // Fetch document from API
   const fetchDocument = useCallback(async () => {
     if (!documentId) return;
-    
+
     try {
       setLoading(true);
       setError(null);
-      
+
       // Fetch document data and download URL in parallel
       const versionToFetch = versionParam ? parseInt(versionParam) : null;
-      
+
       // If no version param, just fetch without version (backend returns active version automatically)
       // If version param exists, fetch that specific version
       const [docData, downloadUrl] = await Promise.all([
         notificationApiClient.getDocument(parseInt(documentId), { silent: true }),
         notificationApiClient.downloadDocument(
-          parseInt(documentId), 
-          versionToFetch || undefined, 
+          parseInt(documentId),
+          versionToFetch || undefined,
           { silent: true }
         )
       ]);
-      
+
       // Set current version from URL param or from the document's active version
       setCurrentVersion(versionToFetch || docData.activeVersion || null);
-      
+
       // Extend the document with viewing-specific data
       const documentView: DocumentViewDto = {
         ...docData,
         contentUrl: downloadUrl,
-        thumbnailUrl: `${process.env.NEXT_PUBLIC_API_URL}/api/v1/document/${docData.documentId}/thumbnail`,
+        thumbnailUrl: `${(typeof window !== 'undefined' && (window as any).ENV?.API_URL) || 'http://localhost:8080'}/api/v1/document/${docData.documentId}/thumbnail`,
         modelConfigurations: [
           {
             id: 1,
@@ -193,9 +201,9 @@ export default function DocumentViewPage() {
           }
         ]
       };
-      
+
       setDocument(documentView);
-      
+
       // Fetch additional data in background (don't block main loading)
       fetchAuditLogs(parseInt(documentId));
       fetchComments(parseInt(documentId));
@@ -226,6 +234,66 @@ export default function DocumentViewPage() {
     setShowUploadVersion(true);
   };
 
+  // Handle add stamp
+  const handleAddStamp = async () => {
+    if (!document) return;
+
+    try {
+      setLoadingStamps(true);
+      // Fetch active stamps
+      const response = await stampService.getAllStamps(0, 100, undefined, undefined, undefined, true);
+      setStamps(response.content || []);
+      setShowAddStamp(true);
+    } catch (error) {
+      console.error('Error fetching stamps:', error);
+      showError('Error', 'Failed to load stamps. Please try again.');
+    } finally {
+      setLoadingStamps(false);
+    }
+  };
+
+  // Handle apply stamp
+  const handleApplyStamp = async () => {
+    if (!document || !selectedStampId) return;
+
+    try {
+      setIsUpdatingDocument(true);
+      const versionId = currentVersion || document.versionId;
+      await documentService.setStampOnVersion(document.documentId, versionId, selectedStampId);
+      showSuccess('Success', 'Stamp has been applied to the document version successfully.');
+      setShowAddStamp(false);
+      setSelectedStampId(null);
+      // Refresh document to show the stamp
+      fetchDocument();
+    } catch (error) {
+      console.error('Error applying stamp:', error);
+      showError('Error', 'Failed to apply stamp. Please try again.');
+    } finally {
+      setIsUpdatingDocument(false);
+    }
+  };
+
+  // Handle remove stamp
+  const handleRemoveStamp = async () => {
+    if (!document) return;
+
+    try {
+      setIsUpdatingDocument(true);
+      const versionId = currentVersion || document.versionId;
+      await documentService.setStampOnVersion(document.documentId, versionId);
+      showSuccess('Success', 'Stamp has been removed from the document version successfully.');
+      setShowAddStamp(false);
+      setSelectedStampId(null);
+      // Refresh document
+      fetchDocument();
+    } catch (error) {
+      console.error('Error removing stamp:', error);
+      showError('Error', 'Failed to remove stamp. Please try again.');
+    } finally {
+      setIsUpdatingDocument(false);
+    }
+  };
+
   // Handle rename success
   const handleRenameSuccess = async (updatedItem?: { id: number; name: string; type: 'folder' | 'document'; action: 'rename' | 'move' }) => {
     if (updatedItem && updatedItem.type === 'document') {
@@ -238,7 +306,7 @@ export default function DocumentViewPage() {
   // Set active version
   const handleSetActiveVersion = async (versionId: number) => {
     if (!document) return;
-    
+
     try {
       setIsUpdatingDocument(true);
       // Update URL to show the selected version
@@ -254,7 +322,7 @@ export default function DocumentViewPage() {
   // Revert to old version
   const handleRevertToVersion = async (versionId: number) => {
     if (!document) return;
-    
+
     try {
       setIsUpdatingDocument(true);
       // Update URL to show the reverted version
@@ -279,25 +347,25 @@ export default function DocumentViewPage() {
   // Handle download
   const handleDownload = async () => {
     if (!document) return;
-    
+
     try {
       // Download the current version (use versionId if available, otherwise latest)
       // Pass versionId directly as second parameter (not as object)
       const downloadUrl = await notificationApiClient.downloadDocument(
-        document.documentId, 
+        document.documentId,
         currentVersion || undefined
       );
-      
+
       // Log the download operation
       try {
         await notificationApiClient.fileDownloaded(
-          document.documentId, 
+          document.documentId,
           currentVersion || undefined
         );
       } catch (logError) {
         console.warn('Failed to log download operation:', logError);
       }
-      
+
       // Create download link that starts in browser download section
       const link = window.document.createElement('a');
       link.href = downloadUrl;
@@ -334,11 +402,11 @@ export default function DocumentViewPage() {
   // Handle delete document
   const handleDeleteDocument = async () => {
     if (!document) return;
-    
+
     try {
       setIsUpdatingDocument(true);
       await notificationApiClient.deleteDocument(document.documentId);
-      
+
       // Redirect to parent folder or home after successful deletion
       if (document.folderId) {
         router.push(`/folders/${document.folderId}`);
@@ -357,27 +425,27 @@ export default function DocumentViewPage() {
   // Handle restore version
   const handleRestoreVersion = async (versionId: number, versionNumber: number): Promise<void> => {
     if (!document) return;
-    
+
     try {
       setIsUpdatingDocument(true);
-      
+
       // Call API to set the version as active (this sets it in the backend)
       await notificationApiClient.setActiveVersion(document.documentId, versionId);
-      
+
       // Fetch the specific version content with version parameter
       const newDownloadUrl = await notificationApiClient.downloadDocument(
-        document.documentId, 
+        document.documentId,
         versionId, // Explicitly fetch the restored version
         { silent: true }
       );
-      
+
       // Update local state with the restored version
       setCurrentVersion(versionId);
       setOptimisticFile(null);
-      
+
       // Find the version info from versions list
       const version = versions.find(v => v.versionId === versionId);
-      
+
       // Update document state with restored version info
       setDocument(prev => prev ? {
         ...prev,
@@ -388,17 +456,17 @@ export default function DocumentViewPage() {
         updatedAt: new Date().toISOString(),
         contentUrl: newDownloadUrl
       } : null);
-      
+
       // Force FileViewer to re-render with new content
       setFileViewerKey(prev => prev + 1);
-      
+
       // Manually trigger FileViewer refresh
       setTimeout(() => {
         if (fileViewerRefreshRef.current) {
           fileViewerRefreshRef.current();
         }
       }, 100);
-      
+
     } catch (error) {
       console.error('Error restoring version:', error);
       setError('Failed to restore version');
@@ -415,13 +483,13 @@ export default function DocumentViewPage() {
     return (
       <div className="flex items-center justify-center h-screen bg-neutral-background">
         <div className="text-center">
-        <div className="text-error text-lg mb-4">{error || 'Document not found'}</div>
-        <button 
-          onClick={() => router.back()}
-          className="bg-primary text-surface px-4 py-2 rounded-lg hover:bg-primary-dark transition-colors"
-        >
-          Go Back
-        </button>
+          <div className="text-error text-lg mb-4">{error || 'Document not found'}</div>
+          <button
+            onClick={() => router.back()}
+            className="bg-primary text-surface px-4 py-2 rounded-lg hover:bg-primary-dark transition-colors"
+          >
+            Go Back
+          </button>
         </div>
       </div>
     );
@@ -453,9 +521,9 @@ export default function DocumentViewPage() {
 
         {/* Document Content Area */}
         <div className="flex-1 overflow-hidden">
-          <FileViewer 
+          <FileViewer
             key={`${document.documentId}-${currentVersion || 'latest'}-${fileViewerKey}`}
-            document={document} 
+            document={document}
             downloadUrl={document.contentUrl}
             onError={(error) => setError(error)}
             optimisticFile={optimisticFile || undefined}
@@ -469,13 +537,6 @@ export default function DocumentViewPage() {
 
       {/* Sidebar - Document Configuration */}
       <div className="w-80 bg-surface border-l border-ui flex flex-col">
-        {/* Sidebar Header */}
-        <div className="p-4 border-b border-ui">
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-neutral-text-dark">Document Details</h2>
-          </div>
-        </div>
-
         {/* Sidebar Tabs */}
         <DocumentTabs
           activeTab={activeTab}
@@ -485,7 +546,7 @@ export default function DocumentViewPage() {
         {/* Tab Content */}
         <DocumentContent
           activeTab={activeTab}
-          document={document} 
+          document={document}
           auditLogs={auditLogs}
           isLoadingConfig={isLoadingConfig}
           isLoadingModels={isLoadingModels}
@@ -528,18 +589,18 @@ export default function DocumentViewPage() {
               notificationApiClient.getDocument(parseInt(documentId), { silent: true }),
               notificationApiClient.downloadDocument(parseInt(documentId), undefined, { silent: true })
             ]);
-            
+
             // Update document with new data
             setDocument(prev => prev ? {
               ...prev,
               ...docData,
               contentUrl: downloadUrl,
-              thumbnailUrl: `${process.env.NEXT_PUBLIC_API_URL}/api/v1/document/${docData.documentId}/thumbnail`
+              thumbnailUrl: `${(typeof window !== 'undefined' && (window as any).ENV?.API_URL) || 'http://localhost:8080'}/api/v1/document/${docData.documentId}/thumbnail`
             } : null);
-            
+
             // Update current version based on activeVersion from response
             setCurrentVersion(docData.activeVersion || null);
-            
+
             // Now clear optimistic file and refresh versions
             setOptimisticFile(null);
             fetchVersions();
@@ -575,15 +636,122 @@ export default function DocumentViewPage() {
 
       {/* Rename Document Modal */}
       {showRenameDocument && document && (
-        <FolderActionModal
+        <RenameModal
           isOpen={showRenameDocument}
           onClose={() => setShowRenameDocument(false)}
-          folder={null}
-          document={document}
-          action="rename"
+          item={document}
+          itemType="document"
           onSuccess={handleRenameSuccess}
         />
       )}
+
+      {/* Add Stamp Modal */}
+      <Dialog open={showAddStamp} onOpenChange={setShowAddStamp}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Select Stamp</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {loadingStamps ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              </div>
+            ) : stamps.length === 0 ? (
+              <div className="text-center py-8 text-neutral-text-light">
+                <p>No active stamps available.</p>
+                <p className="text-sm mt-2">Create a stamp in the admin section to use it here.</p>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-4 max-h-96 overflow-y-auto">
+                  {stamps.map((stamp) => (
+                    <button
+                      key={stamp.id}
+                      onClick={() => setSelectedStampId(stamp.id === selectedStampId ? null : stamp.id)}
+                      className={`p-4 border-2 rounded-lg transition-all text-left ${selectedStampId === stamp.id
+                        ? 'border-primary bg-primary/10'
+                        : 'border-ui hover:border-primary/50'
+                        }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        {stamp.stampType === 'IMAGE' && stamp.imageUrl && (
+                          <img
+                            src={stamp.imageUrl}
+                            alt={stamp.name}
+                            className="w-16 h-16 object-contain rounded"
+                          />
+                        )}
+                        {stamp.stampType === 'TEXT' && (
+                          <div
+                            className="w-16 h-16 flex items-center justify-center rounded text-xs font-bold"
+                            style={{
+                              color: stamp.color || '#000',
+                              backgroundColor: stamp.backgroundColor || 'transparent',
+                              border: stamp.borderColor ? `2px solid ${stamp.borderColor}` : 'none',
+                            }}
+                          >
+                            {stamp.content || 'TEXT'}
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-semibold text-sm text-neutral-text-dark truncate">
+                            {stamp.name}
+                          </h3>
+                          {stamp.description && (
+                            <p className="text-xs text-neutral-text-light mt-1 line-clamp-2">
+                              {stamp.description}
+                            </p>
+                          )}
+                          <div className="flex items-center gap-2 mt-2">
+                            <span className="text-xs px-2 py-0.5 bg-neutral-background rounded">
+                              {stamp.stampType}
+                            </span>
+                            {stamp.category && (
+                              <span className="text-xs px-2 py-0.5 bg-neutral-background rounded">
+                                {stamp.category}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center justify-between pt-4 border-t border-ui">
+                  <div className="flex items-center gap-2">
+                    {document.stamp && (
+                      <Button
+                        variant="outline"
+                        onClick={handleRemoveStamp}
+                        disabled={isUpdatingDocument}
+                      >
+                        Remove Current Stamp
+                      </Button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setShowAddStamp(false);
+                        setSelectedStampId(null);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleApplyStamp}
+                      disabled={!selectedStampId || isUpdatingDocument}
+                    >
+                      {isUpdatingDocument ? 'Applying...' : 'Apply Stamp'}
+                    </Button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Workflow Step Action - Fixed at bottom */}
       {pendingStep && (
@@ -593,7 +761,7 @@ export default function DocumentViewPage() {
             // Refresh pending steps after completion
             workflowService.getDocumentSteps(parseInt(documentId))
               .then(steps => {
-                const actionableStep = steps.find(step => step.isActionable);
+                const actionableStep = steps.find(step => step.status === 'ACTIVE');
                 setPendingStep(actionableStep || null);
               })
               .catch(() => setPendingStep(null));

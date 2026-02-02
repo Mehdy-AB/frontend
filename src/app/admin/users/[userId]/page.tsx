@@ -24,7 +24,9 @@ import {
   Plus,
   X,
   Camera,
-  Save
+  Save,
+  Folder,
+  ExternalLink
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -48,6 +50,7 @@ import { Permissions } from '@/constants/permissions';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useNotification } from '@/contexts/NotificationContext';
 import { ImageCropDialog } from '@/components/ui/image-crop-dialog';
+import RepositoryBrowser from '@/components/main/RepositoryBrowser';
 
 interface UserStatistics {
   userId: string;
@@ -96,18 +99,22 @@ export default function UserDetailPage() {
   const [activityLogs, setActivityLogs] = useState<AuditLog[]>([]);
   const [activityTotal, setActivityTotal] = useState(0);
   const [userRoles, setUserRoles] = useState<string[]>([]);
-  const [userGroups, setUserGroups] = useState<string[]>([]);
+  const [userGroups, setUserGroups] = useState<GroupDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
-  
+
   // Permission checks
   const canViewUser = hasPermission(Permissions.USER_READ);
   const canUpdateUser = hasPermission(Permissions.USER_UPDATE);
   const canDeleteUser = hasPermission(Permissions.USER_DELETE);
   const canAssignRole = hasPermission(Permissions.USER_ASSIGN_ROLE);
   const canViewRepository = hasPermission(Permissions.FOLDER_READ);
-  
+  const canViewRoles = hasPermission(Permissions.ROLE_READ);
+  const canViewGroups = hasPermission(Permissions.GROUP_READ);
+  const canViewAudit = hasPermission(Permissions.AUDIT_READ);
+  const canViewSessions = hasPermission(Permissions.USER_READ); // Sessions are part of user read
+
   // Modal states
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isResetPasswordModalOpen, setIsResetPasswordModalOpen] = useState(false);
@@ -126,7 +133,7 @@ export default function UserDetailPage() {
   const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
   const [profilePhotoPreview, setProfilePhotoPreview] = useState<string | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
-  
+
   // Crop dialog state
   const [cropDialogOpen, setCropDialogOpen] = useState(false);
   const [imageToCrop, setImageToCrop] = useState<string | null>(null);
@@ -459,7 +466,7 @@ export default function UserDetailPage() {
       router.push('/admin/users');
       return;
     }
-    
+
     if (activeTab === 'sessions') {
       fetchSessions();
     } else if (activeTab === 'documents') {
@@ -473,7 +480,7 @@ export default function UserDetailPage() {
 
   const parseUserAgent = (userAgent: string) => {
     if (!userAgent) return { browser: 'Unknown', os: 'Unknown', device: 'desktop' };
-    
+
     // Parse browser
     let browser = 'Unknown';
     if (userAgent.includes('Chrome')) browser = 'Chrome';
@@ -481,7 +488,7 @@ export default function UserDetailPage() {
     else if (userAgent.includes('Safari')) browser = 'Safari';
     else if (userAgent.includes('Edge')) browser = 'Edge';
     else if (userAgent.includes('Opera')) browser = 'Opera';
-    
+
     // Parse OS
     let os = 'Unknown';
     if (userAgent.includes('Windows')) os = 'Windows';
@@ -489,12 +496,12 @@ export default function UserDetailPage() {
     else if (userAgent.includes('Linux')) os = 'Linux';
     else if (userAgent.includes('Android')) os = 'Android';
     else if (userAgent.includes('iOS')) os = 'iOS';
-    
+
     // Parse device type
     let device = 'desktop';
     if (userAgent.includes('Mobile')) device = 'mobile';
     else if (userAgent.includes('Tablet')) device = 'tablet';
-    
+
     return { browser, os, device };
   };
 
@@ -711,8 +718,8 @@ export default function UserDetailPage() {
           <Tooltip>
             <TooltipTrigger asChild>
               <div>
-                <TabsTrigger 
-                  value="edit" 
+                <TabsTrigger
+                  value="edit"
                   disabled={!canUpdateUser}
                   className={!canUpdateUser ? 'opacity-50 cursor-not-allowed' : ''}
                 >
@@ -727,28 +734,73 @@ export default function UserDetailPage() {
               </TooltipContent>
             )}
           </Tooltip>
-          <TabsTrigger value="roles" disabled={!canAssignRole}>
-            <Shield className="h-4 w-4 mr-2" />
-            Roles
-          </TabsTrigger>
-          <TabsTrigger value="groups" disabled={!canAssignRole}>
-            <UsersIcon className="h-4 w-4 mr-2" />
-            Groups
-          </TabsTrigger>
-          <TabsTrigger value="sessions">
-            <LogOut className="h-4 w-4 mr-2" />
-            Sessions
-          </TabsTrigger>
           <Tooltip>
             <TooltipTrigger asChild>
               <div>
-                <TabsTrigger 
-                  value="documents" 
+                <TabsTrigger
+                  value="roles"
+                  disabled={!canViewRoles}
+                  className={!canViewRoles ? 'opacity-50 cursor-not-allowed' : ''}
+                >
+                  <Shield className="h-4 w-4 mr-2" />
+                  Roles
+                </TabsTrigger>
+              </div>
+            </TooltipTrigger>
+            {!canViewRoles && (
+              <TooltipContent>
+                <p>You don't have permission to view roles (role:read required)</p>
+              </TooltipContent>
+            )}
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div>
+                <TabsTrigger
+                  value="groups"
+                  disabled={!canViewGroups}
+                  className={!canViewGroups ? 'opacity-50 cursor-not-allowed' : ''}
+                >
+                  <UsersIcon className="h-4 w-4 mr-2" />
+                  Groups
+                </TabsTrigger>
+              </div>
+            </TooltipTrigger>
+            {!canViewGroups && (
+              <TooltipContent>
+                <p>You don't have permission to view groups (group:read required)</p>
+              </TooltipContent>
+            )}
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div>
+                <TabsTrigger
+                  value="sessions"
+                  disabled={!canViewSessions}
+                  className={!canViewSessions ? 'opacity-50 cursor-not-allowed' : ''}
+                >
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Sessions
+                </TabsTrigger>
+              </div>
+            </TooltipTrigger>
+            {!canViewSessions && (
+              <TooltipContent>
+                <p>You don't have permission to view user sessions (user:read required)</p>
+              </TooltipContent>
+            )}
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div>
+                <TabsTrigger
+                  value="folders"
                   disabled={!canViewRepository}
                   className={!canViewRepository ? 'opacity-50 cursor-not-allowed' : ''}
                 >
-                  <FileText className="h-4 w-4 mr-2" />
-                  Documents
+                  <Folder className="h-4 w-4 mr-2" />
+                  Folders
                 </TabsTrigger>
               </div>
             </TooltipTrigger>
@@ -758,10 +810,25 @@ export default function UserDetailPage() {
               </TooltipContent>
             )}
           </Tooltip>
-          <TabsTrigger value="activity">
-            <Activity className="h-4 w-4 mr-2" />
-            Activity
-          </TabsTrigger>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div>
+                <TabsTrigger
+                  value="activity"
+                  disabled={!canViewAudit}
+                  className={!canViewAudit ? 'opacity-50 cursor-not-allowed' : ''}
+                >
+                  <Activity className="h-4 w-4 mr-2" />
+                  Activity
+                </TabsTrigger>
+              </div>
+            </TooltipTrigger>
+            {!canViewAudit && (
+              <TooltipContent>
+                <p>You don't have permission to view activity logs (audit:read required)</p>
+              </TooltipContent>
+            )}
+          </Tooltip>
         </TabsList>
 
         {/* Overview Tab */}
@@ -978,8 +1045,8 @@ export default function UserDetailPage() {
                 </div>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button 
-                      size="sm" 
+                    <Button
+                      size="sm"
                       onClick={() => setIsRolesModalOpen(true)}
                       disabled={!canAssignRole}
                     >
@@ -1047,8 +1114,8 @@ export default function UserDetailPage() {
                 </div>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button 
-                      size="sm" 
+                    <Button
+                      size="sm"
                       onClick={() => setIsGroupsModalOpen(true)}
                       disabled={!canAssignRole}
                     >
@@ -1069,17 +1136,17 @@ export default function UserDetailPage() {
                 {userGroups && userGroups.length > 0 ? (
                   <div className="space-y-2">
                     {userGroups.map(group => (
-                      <div key={group} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div key={group.id} className="flex items-center justify-between p-3 border rounded-lg">
                         <div className="flex items-center gap-2">
                           <UsersIcon className="h-4 w-4 text-primary" />
-                          <span className="font-medium">{group}</span>
+                          <span className="font-medium">{group.name}</span>
                         </div>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
                               size="sm"
                               variant="ghost"
-                              onClick={() => canAssignRole && handleRemoveGroup(group)}
+                              onClick={() => canAssignRole && handleRemoveGroup(group.id)}
                               disabled={!canAssignRole}
                             >
                               <X className="h-4 w-4" />
@@ -1132,7 +1199,7 @@ export default function UserDetailPage() {
                   {sessions.map((session) => {
                     const { browser, os, device } = parseUserAgent(session.userAgent || session.deviceInfo || '');
                     const isCurrentSession = session.isActive;
-                    
+
                     return (
                       <div key={session.id} className={`p-5 border rounded-lg ${isCurrentSession ? 'border-primary bg-primary/5' : ''}`}>
                         <div className="flex items-start justify-between">
@@ -1150,7 +1217,7 @@ export default function UserDetailPage() {
                                   {device}
                                 </Badge>
                               </div>
-                              
+
                               <div className="grid grid-cols-2 gap-3 text-sm">
                                 <div>
                                   <span className="text-muted-foreground">IP Address:</span>
@@ -1169,7 +1236,7 @@ export default function UserDetailPage() {
                                   <p className="font-medium">{formatDate(session.lastAccessedAt || session.createdAt)}</p>
                                 </div>
                               </div>
-                              
+
                               {session.userAgent && (
                                 <details className="mt-3">
                                   <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
@@ -1182,7 +1249,7 @@ export default function UserDetailPage() {
                               )}
                             </div>
                           </div>
-                          
+
                           <Button
                             size="sm"
                             variant="ghost"
@@ -1207,22 +1274,25 @@ export default function UserDetailPage() {
           </Card>
         </TabsContent>
 
-        {/* Documents Tab */}
-        <TabsContent value="documents">
+        {/* Folders Tab */}
+        <TabsContent value="folders">
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle>User Repository</CardTitle>
+                  <CardTitle className="flex items-center gap-2">
+                    <Folder className="h-5 w-5" />
+                    User Repository
+                  </CardTitle>
                   <CardDescription>
-                    Access user's document repository and folders
+                    Browse and manage user's folders and documents
                   </CardDescription>
                 </div>
-                {repository && canViewRepository && (
+                {canViewRepository && (
                   <Button
-                    onClick={() => window.open(`/folders/${repository.rootFolderId}`, '_blank')}
+                    onClick={() => router.push(`/folders?userId=${userId}`)}
                   >
-                    <FileText className="h-4 w-4 mr-2" />
+                    <ExternalLink className="h-4 w-4 mr-2" />
                     Open Repository
                   </Button>
                 )}
@@ -1231,92 +1301,14 @@ export default function UserDetailPage() {
             <CardContent>
               {!canViewRepository ? (
                 <div className="text-center py-12">
-                  <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
+                  <Folder className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
                   <p className="text-lg font-medium text-muted-foreground mb-2">Permission Required</p>
                   <p className="text-sm text-muted-foreground">
                     You don't have permission to view user repositories. The folder:read permission is required.
                   </p>
                 </div>
-              ) : repository ? (
-                <div className="space-y-6">
-                  {/* Repository Card */}
-                  <div 
-                    className={`p-6 border-2 border-primary/20 rounded-lg transition-colors bg-gradient-to-br from-primary/5 to-transparent ${
-                      canViewRepository ? 'hover:border-primary/40 cursor-pointer' : 'opacity-50 cursor-not-allowed'
-                    }`}
-                    onClick={() => canViewRepository && window.open(`/folders/${repository.rootFolderId}`, '_blank')}
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="p-4 bg-primary/10 rounded-xl">
-                        <FileText className="h-8 w-8 text-primary" />
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="text-xl font-semibold mb-1">{repository.folderName}</h3>
-                        <p className="text-sm text-muted-foreground mb-3">
-                          User's root repository folder
-                        </p>
-                        <div className="flex items-center gap-6">
-                          <div className="flex items-center gap-2">
-                            <div className="p-1.5 bg-muted rounded">
-                              <FileText className="h-4 w-4 text-primary" />
-                            </div>
-                            <div>
-                              <p className="text-lg font-semibold">{repository.documentCount}</p>
-                              <p className="text-xs text-muted-foreground">Documents</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div className="p-1.5 bg-muted rounded">
-                              <UsersIcon className="h-4 w-4 text-primary" />
-                            </div>
-                            <div>
-                              <p className="text-lg font-semibold">{repository.folderCount}</p>
-                              <p className="text-xs text-muted-foreground">Subfolders</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex flex-col gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            window.open(`/folders/${repository.rootFolderId}`, '_blank');
-                          }}
-                        >
-                          Open in New Tab
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            router.push(`/folders/${repository.rootFolderId}`);
-                          }}
-                        >
-                          Open Here
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Info */}
-                  <div className="p-4 bg-muted/30 rounded-lg">
-                    <p className="text-sm text-muted-foreground">
-                      <strong>Note:</strong> Click the repository card or use the buttons to browse this user's files and folders. 
-                      Opening in a new tab allows you to explore the repository without leaving this page.
-                    </p>
-                  </div>
-                </div>
               ) : (
-                <div className="text-center py-12">
-                  <FileText className="h-16 w-16 text-muted-foreground mx-auto mb-4 opacity-50" />
-                  <p className="text-lg font-medium text-muted-foreground mb-2">No Repository Found</p>
-                  <p className="text-sm text-muted-foreground">
-                    This user doesn't have a repository set up yet
-                  </p>
-                </div>
+                <RepositoryBrowser userId={userId} />
               )}
             </CardContent>
           </Card>
@@ -1396,9 +1388,8 @@ export default function UserDetailPage() {
 
       {/* Password Reset Modal */}
       <div
-        className={`fixed inset-0 bg-black/50 flex items-center justify-center z-50 ${
-          isResetPasswordModalOpen ? '' : 'hidden'
-        }`}
+        className={`fixed inset-0 bg-black/50 flex items-center justify-center z-50 ${isResetPasswordModalOpen ? '' : 'hidden'
+          }`}
       >
         <Card className="w-full max-w-md">
           <CardHeader>
@@ -1485,7 +1476,7 @@ export default function UserDetailPage() {
         onSubmit={handleAssignGroups}
         userId={userId}
         userName={user.displayName}
-        currentGroups={userGroups}
+        currentGroups={userGroups.map(g => g.id)}
       />
 
       {/* Image Crop Dialog */}

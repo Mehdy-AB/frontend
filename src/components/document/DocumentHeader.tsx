@@ -59,20 +59,20 @@ export default function DocumentHeader({
       <div className="flex items-start justify-between">
         {/* Left Section - Navigation and Basic Info */}
         <div className="flex items-start gap-3 flex-1 min-w-0">
-          <button 
+          <button
             onClick={onBack}
             className="p-1 rounded hover:bg-gray-100 transition-colors flex-shrink-0 mt-1"
           >
             <ArrowLeft className="h-4 w-4 text-gray-600" />
           </button>
-          
+
           {/* File Extension Badge */}
           <div className="h-10 w-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm">
             <span className="text-xs font-bold text-white">
               {fileExtension || 'FILE'}
             </span>
           </div>
-          
+
           {/* Document Info */}
           <div className="flex-1 min-w-0 space-y-2">
             {/* Title and Filename */}

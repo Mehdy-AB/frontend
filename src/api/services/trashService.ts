@@ -22,12 +22,14 @@ export class TrashService {
     sortBy?: string;
     sortDir?: 'asc' | 'desc';
     entityType?: string;
+    query?: string;
   }): Promise<PageResponse<TrashItemDto>> {
     const page = opts?.page ?? 0;
     const size = opts?.size ?? 20;
     const sortBy = opts?.sortBy ?? 'deletedAt';
     const sortDir = opts?.sortDir ?? 'desc';
     const entityType = opts?.entityType;
+    const query = opts?.query;
 
     const params = new URLSearchParams({
       page: page.toString(),
@@ -38,6 +40,10 @@ export class TrashService {
 
     if (entityType) {
       params.append('entityType', entityType);
+    }
+
+    if (query && query.trim()) {
+      params.append('query', query.trim());
     }
 
     return apiClient.get<PageResponse<TrashItemDto>>(`${this.baseUrl}?${params}`);

@@ -2,10 +2,10 @@
 
 import React, { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { workflowService } from '@/api/services/workflowService';
+import { workflowAdminService } from '@/api/services/workflowAdminService';
 import {
   WorkflowInstanceResponse,
-  WorkflowStepInstanceResponse,
+  WorkflowNodeInstanceResponse,
   CompleteStepRequest,
   RejectStepRequest,
   UserDto
@@ -74,7 +74,7 @@ export default function DocumentWorkflowTab({
   const fetchAllWorkflows = async () => {
     setLoading(true);
     try {
-      const instances = await workflowService.getAllWorkflowInstancesForDocument(documentId);
+      const instances = await workflowAdminService.getAllWorkflowInstancesForDocument(documentId);
       setWorkflows(instances);
 
       // Auto-select the first active workflow or the most recent one
@@ -98,7 +98,7 @@ export default function DocumentWorkflowTab({
 
   const fetchTimeline = async (instanceId: number) => {
     try {
-      const data = await workflowService.getInstanceTimeline(instanceId);
+      const data = await workflowAdminService.getInstanceTimeline(instanceId);
       setTimeline(data);
     } catch (error: any) {
       console.error('Failed to fetch timeline:', error);
@@ -115,7 +115,7 @@ export default function DocumentWorkflowTab({
   const handleAction = async (action: 'APPROVE' | 'REJECT' | 'REQUEST_REVISION') => {
     if (!timeline) return;
 
-    const currentStep = timeline.steps.find((s) => s.status === 'ACTIVE');
+    const currentStep = timeline.nodes.find((s) => s.status === 'ACTIVE');
     if (!currentStep) {
       showError('No active step found');
       return;
@@ -125,11 +125,11 @@ export default function DocumentWorkflowTab({
     try {
       if (action === 'APPROVE') {
         const request: CompleteStepRequest = { comment };
-        await workflowService.completeStep(currentStep.stepInstanceId, request);
+        await workflowAdminService.completeStep(currentStep.id, request);
         showSuccess('Step completed successfully');
       } else if (action === 'REJECT') {
         const request: RejectStepRequest = { rejectionReason: comment || 'Rejected' };
-        await workflowService.rejectStep(currentStep.stepInstanceId, request);
+        await workflowAdminService.rejectStep(currentStep.id, request);
         showSuccess('Step rejected');
       }
 
@@ -151,7 +151,7 @@ export default function DocumentWorkflowTab({
   const handleReassign = async (userIds: string[], reason: string) => {
     if (!timeline || !selectedStepId) return;
 
-    const currentStep = timeline.steps.find((s) => s.stepInstanceId === selectedStepId);
+    const currentStep = timeline.nodes.find((s) => s.id === selectedStepId);
     if (!currentStep) {
       showError('Step not found');
       return;
@@ -166,7 +166,7 @@ export default function DocumentWorkflowTab({
         reason
       };
 
-      await workflowService.reassignStep(timeline.instanceId, selectedStepId, request);
+      await workflowAdminService.reassignStep(timeline.instanceId, selectedStepId, request);
       showSuccess('Step reassigned successfully');
       setShowReassignDialog(false);
       setSelectedStepId(null);
@@ -199,15 +199,15 @@ export default function DocumentWorkflowTab({
   const isUserAssignedToCurrentStep = (): boolean => {
     if (!timeline || !currentUserId) return false;
 
-    const currentStep = timeline.steps.find((s) => s.status === 'ACTIVE');
+    const currentStep = timeline.nodes.find((s) => s.status === 'ACTIVE');
     if (!currentStep) return false;
 
     // Check if user is in the assigned users list
-    return currentStep.assignedUsers?.some(u => u.id === currentUserId) || false;
+    return currentStep.assignments?.some(a => a.user?.id === currentUserId) || false;
   };
 
   const selectedWorkflow = workflows.find(w => w.id === selectedWorkflowId);
-  const currentStep = timeline?.steps.find((s) => s.status === 'ACTIVE');
+  const currentStep = timeline?.nodes.find((s) => s.status === 'ACTIVE');
   const isTerminal = timeline?.status === 'COMPLETED' || timeline?.status === 'CANCELLED' || timeline?.status === 'FAILED';
   const canTakeAction = isUserAssignedToCurrentStep();
 
@@ -328,35 +328,32 @@ export default function DocumentWorkflowTab({
                     <Clock className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
                     <div className="flex-1 min-w-0">
                       <h4 className="font-semibold text-xs text-gray-900">Current Step</h4>
-                      <p className="text-xs text-gray-700 mt-0.5">{currentStep.stepName}</p>
-                      {currentStep.stepDescription && (
-                        <p className="text-[10px] text-gray-600 mt-0.5 line-clamp-2">{currentStep.stepDescription}</p>
-                      )}
+                      <p className="text-xs text-gray-700 mt-0.5">{currentStep.nodeName}</p>
 
                       {/* Assigned users */}
-                      {currentStep.assignedUsers && currentStep.assignedUsers.length > 0 && (
+                      {currentStep.assignments && currentStep.assignments.length > 0 && (
                         <div className="mt-2 space-y-1">
                           <div className="flex items-center gap-1">
                             <Users className="w-3 h-3 text-gray-500" />
                             <span className="text-[10px] text-gray-600">Assigned:</span>
                           </div>
                           <div className="flex flex-wrap items-center gap-1.5">
-                            {currentStep.assignedUsers.slice(0, 2).map((u) => (
-                              <div key={u.id} className="flex items-center gap-1">
+                            {currentStep.assignments.filter(a => a.user).slice(0, 2).map((a) => (
+                              <div key={a.id} className="flex items-center gap-1">
                                 <Avatar className="h-4 w-4">
-                                  <AvatarImage src={u.imgUrl} />
+                                  <AvatarImage src={a.user?.imgUrl} />
                                   <AvatarFallback className="text-[8px]">
-                                    {u.firstName?.[0]}{u.lastName?.[0]}
+                                    {a.user?.firstName?.[0]}{a.user?.lastName?.[0]}
                                   </AvatarFallback>
                                 </Avatar>
                                 <span className="text-[10px] text-gray-700">
-                                  {u.firstName} {u.lastName}
+                                  {a.user?.firstName} {a.user?.lastName}
                                 </span>
                               </div>
                             ))}
-                            {currentStep.assignedUsers.length > 2 && (
+                            {currentStep.assignments.filter(a => a.user).length > 2 && (
                               <span className="text-[10px] text-gray-500">
-                                +{currentStep.assignedUsers.length - 2}
+                                +{currentStep.assignments.filter(a => a.user).length - 2}
                               </span>
                             )}
                             <Button
@@ -364,7 +361,7 @@ export default function DocumentWorkflowTab({
                               size="sm"
                               className="h-6 px-2 text-[10px] ml-auto"
                               onClick={() => {
-                                setSelectedStepId(currentStep.stepInstanceId);
+                                setSelectedStepId(currentStep.id);
                                 setShowReassignDialog(true);
                               }}
                             >

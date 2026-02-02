@@ -1,14 +1,13 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import ImageGallery from 'react-image-gallery';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
-import { 
-  FileText, 
-  File, 
-  Download, 
+import {
+  FileText,
+  File,
+  Download,
   AlertCircle
 } from 'lucide-react';
 import { DocumentResponseDto } from '../../types/api';
@@ -28,19 +27,26 @@ interface FileContent {
   error?: string;
 }
 
-export default function FileViewer({ document, downloadUrl, onError, optimisticFile, refreshTrigger, onRef }: FileViewerProps) {
+export default function FileViewer({
+  document,
+  downloadUrl,
+  onError,
+  optimisticFile,
+  refreshTrigger,
+  onRef
+}: FileViewerProps) {
   const [fileContent, setFileContent] = useState<FileContent | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   // Manual refresh function
   const refreshContent = useCallback(() => {
     console.log('Manual refresh triggered');
-    // Clear current content first
     setFileContent(null);
     setLoading(true);
     setError(null);
-    
+
     if (optimisticFile) {
       loadOptimisticFileContent(optimisticFile);
     } else {
@@ -78,10 +84,7 @@ export default function FileViewer({ document, downloadUrl, onError, optimisticF
         const imageUrl = URL.createObjectURL(file);
         content = {
           type: 'image',
-          content: [{
-            original: imageUrl,
-            thumbnail: imageUrl
-          }]
+          content: imageUrl
         };
       } else if (mimeType.includes('text/plain') || mimeType.includes('text/csv')) {
         const text = await file.text();
@@ -104,8 +107,8 @@ export default function FileViewer({ document, downloadUrl, onError, optimisticF
           type: 'docx',
           content: result.value
         };
-      } else if (mimeType.includes('excel') || mimeType.includes('spreadsheet') || 
-                 mimeType.includes('xlsx') || mimeType.includes('xls')) {
+      } else if (mimeType.includes('excel') || mimeType.includes('spreadsheet') ||
+        mimeType.includes('xlsx') || mimeType.includes('xls')) {
         const arrayBuffer = await file.arrayBuffer();
         const workbook = XLSX.read(arrayBuffer, { type: 'array' });
         const sheets = workbook.SheetNames.map(name => ({
@@ -159,10 +162,7 @@ export default function FileViewer({ document, downloadUrl, onError, optimisticF
         const imageUrl = URL.createObjectURL(blob);
         content = {
           type: 'image',
-          content: [{
-            original: imageUrl,
-            thumbnail: imageUrl
-          }]
+          content: imageUrl
         };
       } else if (mimeType.includes('text/plain') || mimeType.includes('text/csv')) {
         const text = await response.text();
@@ -185,8 +185,8 @@ export default function FileViewer({ document, downloadUrl, onError, optimisticF
           type: 'docx',
           content: result.value
         };
-      } else if (mimeType.includes('excel') || mimeType.includes('spreadsheet') || 
-                 mimeType.includes('xlsx') || mimeType.includes('xls')) {
+      } else if (mimeType.includes('excel') || mimeType.includes('spreadsheet') ||
+        mimeType.includes('xlsx') || mimeType.includes('xls')) {
         const arrayBuffer = await response.arrayBuffer();
         const workbook = XLSX.read(arrayBuffer, { type: 'array' });
         const sheets = workbook.SheetNames.map(name => ({
@@ -223,7 +223,7 @@ export default function FileViewer({ document, downloadUrl, onError, optimisticF
     link.download = document.name;
     window.document.body.appendChild(link);
     link.click();
-    window.document.body.removeChild(link);
+    window.document.removeChild(link);
   };
 
   if (loading) {
@@ -268,39 +268,31 @@ export default function FileViewer({ document, downloadUrl, onError, optimisticF
 
   return (
     <div className="h-full flex flex-col">
-      {/* Toolbar */}
-
-
       {/* Content Area */}
-      <div className="flex-1 overflow-auto p-4">
+      <div ref={contentRef} className="flex-1 overflow-auto p-4">
+        {/* File Content */}
         {fileContent.type === 'pdf' && (
           <div className="flex justify-center h-full">
-            <div className="w-full h-full">
-              <iframe
-                key={fileContent.content}
-                src={fileContent.content}
-                className="pdf-viewer-iframe"
-                title={`PDF Viewer - ${document.name}`}
-                onLoad={() => setLoading(false)}
-                onError={() => {
-                  setError('Failed to load PDF. Please try downloading the file.');
-                  setLoading(false);
-                }}
-              />
-            </div>
+            <iframe
+              key={fileContent.content}
+              src={`${fileContent.content}#view=FitH`}
+              className="pdf-viewer-iframe w-full h-full"
+              title={`PDF Viewer - ${document.name}`}
+              onLoad={() => setLoading(false)}
+              onError={() => {
+                setError('Failed to load PDF. Please try downloading the file.');
+                setLoading(false);
+              }}
+            />
           </div>
         )}
 
         {fileContent.type === 'image' && (
-          <div className="flex justify-center">
-            <ImageGallery
-              key={JSON.stringify(fileContent.content)}
-              items={fileContent.content}
-              showThumbnails={true}
-              showFullscreenButton={true}
-              showPlayButton={false}
-              showNav={true}
-              autoPlay={false}
+          <div className="flex justify-center items-start">
+            <img
+              src={fileContent.content}
+              alt={document.name}
+              className="max-w-full h-auto rounded-lg shadow-lg"
             />
           </div>
         )}
@@ -315,7 +307,7 @@ export default function FileViewer({ document, downloadUrl, onError, optimisticF
 
         {fileContent.type === 'docx' && (
           <div className="max-w-4xl mx-auto">
-            <div 
+            <div
               key={fileContent.content}
               className="prose max-w-none p-6 rounded-lg border border-ui shadow-sm"
               dangerouslySetInnerHTML={{ __html: fileContent.content }}
@@ -332,28 +324,28 @@ export default function FileViewer({ document, downloadUrl, onError, optimisticF
                     <h3 className="font-semibold text-neutral-text-dark">{sheet.name}</h3>
                   </div>
                   <div className="overflow-auto">
-                <table className="viewer-table">
-                  <thead>
-                    <tr>
-                      {Object.keys(sheet.data[0] || {}).map((header, i) => (
-                        <th key={i}>
-                          {header}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sheet.data.slice(0, 100).map((row: any, i: number) => (
-                      <tr key={i}>
-                        {Object.values(row).map((cell: any, j: number) => (
-                          <td key={j}>
-                            {String(cell)}
-                          </td>
+                    <table className="viewer-table">
+                      <thead>
+                        <tr>
+                          {Object.keys(sheet.data[0] || {}).map((header, i) => (
+                            <th key={i}>
+                              {header}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sheet.data.slice(0, 100).map((row: any, i: number) => (
+                          <tr key={i}>
+                            {Object.values(row).map((cell: any, j: number) => (
+                              <td key={j}>
+                                {String(cell)}
+                              </td>
+                            ))}
+                          </tr>
                         ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                      </tbody>
+                    </table>
                     {sheet.data.length > 100 && (
                       <div className="p-4 text-center text-neutral-text-light">
                         Showing first 100 rows of {sheet.data.length} total rows
@@ -426,7 +418,6 @@ export default function FileViewer({ document, downloadUrl, onError, optimisticF
           </div>
         )}
       </div>
-
     </div>
   );
 }

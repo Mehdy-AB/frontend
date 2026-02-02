@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  Share2, 
+import {
+  Share2,
   RefreshCw,
   ChevronDown,
   ChevronUp,
@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { notificationApiClient } from '@/api/notificationClient';
+import { folderService } from '@/api/services/folderService';
 import { FolderRepoResDto, FolderResDto, DocumentResponseDto, SortFields } from '@/types/api';
 import Pagination from '@/components/main/Pagination';
 import ServerSearchInput from '@/components/main/ServerSearchInput';
@@ -41,33 +42,33 @@ type SortOption = 'name' | 'createdAt' | 'updatedAt' | 'size';
 // Helper function to format path (remove UUID prefix for folders)
 const formatPath = (path: string | undefined): string => {
   if (!path) return '';
-  
+
   const pathSegments = path.split('.').filter(segment => segment.trim() !== '');
-  
+
   // Check if first segment is a UUID (supports both dash and underscore formats)
   const uuidPatternDash = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const uuidPatternUnderscore = /^[0-9a-f]{8}_[0-9a-f]{4}_[0-9a-f]{4}_[0-9a-f]{4}_[0-9a-f]{12}$/i;
-  const firstSegmentIsUuid = pathSegments.length > 0 && 
+  const firstSegmentIsUuid = pathSegments.length > 0 &&
     (uuidPatternDash.test(pathSegments[0]) || uuidPatternUnderscore.test(pathSegments[0]));
-  
+
   // Skip the UUID segment if it exists
   const folderSegments = firstSegmentIsUuid ? pathSegments.slice(1) : pathSegments;
-  
+
   return folderSegments.join(' › ');
 };
 
 // Helper function to format path with username replacement for documents
 const formatPathWithUsername = (path: string | undefined, username: string | undefined): { hasPath: boolean; username: string | null; restPath: string } => {
   if (!path) return { hasPath: false, username: null, restPath: '' };
-  
+
   const pathSegments = path.split('.').filter(segment => segment.trim() !== '');
-  
+
   // Check if first segment is a UUID (supports both dash and underscore formats)
   const uuidPatternDash = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const uuidPatternUnderscore = /^[0-9a-f]{8}_[0-9a-f]{4}_[0-9a-f]{4}_[0-9a-f]{4}_[0-9a-f]{12}$/i;
-  const firstSegmentIsUuid = pathSegments.length > 0 && 
+  const firstSegmentIsUuid = pathSegments.length > 0 &&
     (uuidPatternDash.test(pathSegments[0]) || uuidPatternUnderscore.test(pathSegments[0]));
-  
+
   if (firstSegmentIsUuid && username) {
     // Replace UUID with username
     const folderSegments = pathSegments.slice(1);
@@ -77,7 +78,7 @@ const formatPathWithUsername = (path: string | undefined, username: string | und
       restPath: folderSegments.length > 0 ? folderSegments.join(' › ') : ''
     };
   }
-  
+
   // No UUID or no username, just return the path segments
   const folderSegments = firstSegmentIsUuid ? pathSegments.slice(1) : pathSegments;
   return {
@@ -88,10 +89,10 @@ const formatPathWithUsername = (path: string | undefined, username: string | und
 };
 
 // Custom TableRow component for shared items with path and creator info
-function SharedTableRow({ 
-  item, 
-  formatFileSize, 
-  formatDate, 
+function SharedTableRow({
+  item,
+  formatFileSize,
+  formatDate,
   onEditPermissions,
   onEditFolderPermissions,
   onMove,
@@ -102,8 +103,8 @@ function SharedTableRow({
   onShare,
   onCopyLink,
   onView,
-  openDropdownId, 
-  setOpenDropdownId 
+  openDropdownId,
+  setOpenDropdownId
 }: {
   item: TableItem;
   formatFileSize: (bytes: number) => string;
@@ -129,7 +130,7 @@ function SharedTableRow({
   const updatedAt = isFolder ? item.updatedAt : item.updatedAt;
   const path = item.path;
   const owner = item.ownedBy;
-  
+
   // Format path differently for folders vs documents
   const formattedPath = isFolder ? formatPath(path) : null;
   const pathWithUsername = !isFolder ? formatPathWithUsername(path, owner.username) : null;
@@ -207,7 +208,7 @@ function SharedTableRow({
       </td>
       <td className="p-4">
         <div className="flex items-center gap-1">
-          {item.isPublic ? (
+          {!isFolder && item.isPublic ? (
             <>
               <Globe className="h-4 w-4 text-success" />
               <span className="text-sm text-neutral-text-light">Public</span>
@@ -222,17 +223,17 @@ function SharedTableRow({
       </td>
       <td className="p-4">
         <div className="relative" style={{ zIndex: 10 }}>
-          <button 
+          <button
             ref={buttonRef}
             onClick={() => setOpenDropdownId(showMenu ? null : itemId)}
             className="p-1 item-menu-dropdown rounded hover:bg-ui transition-opacity"
           >
             <MoreVertical className="h-4 w-4 text-neutral-text-light" />
           </button>
-          
+
           {showMenu && (
-            <ItemMenu 
-              item={item} 
+            <ItemMenu
+              item={item}
               onEditPermissions={onEditPermissions}
               onEditFolderPermissions={onEditFolderPermissions}
               onMove={onMove}
@@ -274,24 +275,24 @@ export default function SharedPage() {
   const [showEditDocumentModal, setShowEditDocumentModal] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState<DocumentResponseDto | null>(null);
   const [selectedFolder, setSelectedFolder] = useState<FolderResDto | null>(null);
-  
+
   // Ref to prevent multiple simultaneous fetches
   const isFetchingRef = useRef(false);
 
   // Combine folders and documents for unified table (memoized)
   const tableItems = useMemo(() => {
     if (!data) return [];
-    
+
     const folderItems: TableItem[] = (data.folders || []).map(folder => ({
       ...folder,
       type: 'folder' as const
     }));
-    
+
     const documentItems: TableItem[] = (data.documents || []).map(doc => ({
       ...doc,
       type: 'document' as const
     }));
-    
+
     return [...folderItems, ...documentItems];
   }, [data]);
 
@@ -313,12 +314,12 @@ export default function SharedPage() {
     if (!query.trim()) {
       return allItems;
     }
-    
+
     const lowerQuery = query.toLowerCase();
     return allItems.filter(item => {
       const matchesName = item.name.toLowerCase().includes(lowerQuery);
-      const matchesDescription = item.type === 'folder' && (item as any).description 
-        ? (item as any).description.toLowerCase().includes(lowerQuery) 
+      const matchesDescription = item.type === 'folder' && (item as any).description
+        ? (item as any).description.toLowerCase().includes(lowerQuery)
         : false;
       const matchesPath = item.path ? formatPath(item.path).toLowerCase().includes(lowerQuery) : false;
       return matchesName || matchesDescription || matchesPath;
@@ -347,7 +348,7 @@ export default function SharedPage() {
     if (isFetchingRef.current) {
       return;
     }
-    
+
     isFetchingRef.current = true;
     try {
       if (isSearchRequest) {
@@ -356,7 +357,7 @@ export default function SharedPage() {
         setLoading(true);
       }
       setError(null);
-      
+
       const response = await notificationApiClient.getSharedFolders({
         page: currentPage,
         size: 20,
@@ -365,7 +366,7 @@ export default function SharedPage() {
         sort: mapSortOptionToApiField(sortBy),
         desc: sortDesc
       });
-      
+
       setData(response);
     } catch (err: any) {
       console.error('Error fetching shared data:', err);
@@ -408,7 +409,7 @@ export default function SharedPage() {
     setIsLocalFiltering(true);
     const localResults = filterTableItemsLocally(searchQuery, allTableItems);
     setLocalSearchResults(localResults);
-    
+
     // Clear local filtering after debounced search completes (handled by API fetch effect)
   }, [searchQuery, allTableItems]);
 
@@ -440,11 +441,11 @@ export default function SharedPage() {
     prevPage.current = currentPage;
 
     // Determine if this is the initial load
-    const isInitialLoad = currentPage === 0 && 
-                         sortBy === 'name' && 
-                         sortDesc === false && 
-                         !debouncedSearchQuery &&
-                         !data;
+    const isInitialLoad = currentPage === 0 &&
+      sortBy === 'name' &&
+      sortDesc === false &&
+      !debouncedSearchQuery &&
+      !data;
 
     // Fetch data
     fetchSharedData(!isInitialLoad);
@@ -457,7 +458,7 @@ export default function SharedPage() {
     if (data && data !== prevDataRef.current && debouncedSearchQuery && isLocalFiltering) {
       // New data arrived from API search, clear local filtering to show API results
       setIsLocalFiltering(false);
-          setLocalSearchResults([]);
+      setLocalSearchResults([]);
     }
     prevDataRef.current = data;
   }, [data, debouncedSearchQuery, isLocalFiltering]);
@@ -534,6 +535,12 @@ export default function SharedPage() {
       } catch (error) {
         console.error('Error downloading document:', error);
       }
+    } else if (item.type === 'folder') {
+      try {
+        await folderService.downloadFolder(item.id, item.name);
+      } catch (error) {
+        console.error('Error downloading folder:', error);
+      }
     }
   };
 
@@ -567,10 +574,10 @@ export default function SharedPage() {
   if (error) {
     return (
       <Card className="flex flex-col items-center justify-center py-12">
-          <div className="text-destructive text-lg mb-4">{error}</div>
-          <Button onClick={() => window.location.reload()}>
-            Retry
-          </Button>
+        <div className="text-destructive text-lg mb-4">{error}</div>
+        <Button onClick={() => window.location.reload()}>
+          Retry
+        </Button>
       </Card>
     );
   }
@@ -598,7 +605,7 @@ export default function SharedPage() {
                 </p>
               </div>
             </div>
-            
+
             {/* Stats */}
             <div className="flex items-center gap-6 text-sm">
               <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/5 rounded-lg">
@@ -608,7 +615,7 @@ export default function SharedPage() {
               </div>
             </div>
           </div>
-          
+
           {/* Action Buttons */}
           <div className="flex items-center gap-3">
             <Button
@@ -634,7 +641,7 @@ export default function SharedPage() {
                 onChange={setSearchQuery}
                 placeholder="Search shared folders and documents..."
               />
-          </div>
+            </div>
 
             {/* Sort Controls */}
             <div className="flex items-center gap-2">
@@ -679,7 +686,7 @@ export default function SharedPage() {
           <div className="p-12 text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
             <p className="text-muted-foreground">Loading shared items...</p>
-                </div>
+          </div>
         ) : displayItems.length === 0 ? (
           <div className="p-12 text-center">
             <Share2 className="h-16 w-16 text-gray-300 mx-auto mb-4" />
@@ -687,8 +694,8 @@ export default function SharedPage() {
             <p className="text-muted-foreground">
               {searchQuery ? `No items found matching "${searchQuery}"` : "No folders or documents have been shared with you yet"}
             </p>
-        </div>
-      ) : (
+          </div>
+        ) : (
           <div className="bg-white">
             <table className="w-full relative" style={{ zIndex: 1 }}>
               <thead className="bg-gray-50 border-b border-gray-200">
@@ -707,7 +714,7 @@ export default function SharedPage() {
                   <SharedTableRow
                     key={item.type === 'folder' ? `folder-${item.id}` : `document-${item.documentId}`}
                     item={item}
-                    formatFileSize={formatFileSize} 
+                    formatFileSize={formatFileSize}
                     formatDate={formatDate}
                     onEditPermissions={handleEditDocumentPermissions}
                     onEditFolderPermissions={handleEditFolderPermissions}
@@ -794,8 +801,8 @@ export default function SharedPage() {
             setSelectedDocument(null);
             fetchSharedData(); // Refresh data after closing
           }}
-            />
+        />
       )}
-        </div>
+    </div>
   );
 }

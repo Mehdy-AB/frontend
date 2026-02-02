@@ -2,9 +2,9 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  Shield, 
-  Plus, 
+import {
+  Shield,
+  Plus,
   Edit,
   Trash2,
   Key,
@@ -41,19 +41,21 @@ import ManageRolePermissionsModal from '@/components/modals/ManageRolePermission
 import ViewRoleUsersModal from '@/components/modals/ViewRoleUsersModal';
 import ConfirmationModal from '@/components/modals/ConfirmationModal';
 import { useAdminPagePermissions } from '@/hooks/useAdminPagePermissions';
+import { exportToCSV, exportSelected, ROLE_EXPORT_COLUMNS } from '@/lib/exportUtils';
+import { Download, Upload } from 'lucide-react';
 
 export default function RolesPage() {
   const router = useRouter();
   const { canView, canCreate, canUpdate, canDelete, canAssign } = useAdminPagePermissions();
-  const pageSize = 20;
-  
+  const [pageSize, setPageSize] = useState(20);
+
   // Redirect if user doesn't have view permission
   useEffect(() => {
     if (!canView) {
       router.push('/');
     }
   }, [canView, router]);
-  
+
   // Use the server-side search hook
   const {
     displayData: displayRoles,
@@ -88,7 +90,7 @@ export default function RolesPage() {
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [permissions, setPermissions] = useState<PermissionDto[]>([]);
   const [expandedRoles, setExpandedRoles] = useState<string[]>([]);
-  
+
   // Modal states
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -127,6 +129,26 @@ export default function RolesPage() {
     setPage(newPage);
   }, [page, setPage]);
 
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize);
+    setPage(0);
+  };
+
+  const handleExportAll = () => {
+    exportToCSV(displayRoles, {
+      filename: `roles_export_${new Date().toISOString().split('T')[0]}`,
+      columns: ROLE_EXPORT_COLUMNS
+    });
+  };
+
+  const handleExportSelected = () => {
+    if (selectedItems.length === 0) return;
+    exportSelected(displayRoles, selectedItems, {
+      filename: `roles_selected_${new Date().toISOString().split('T')[0]}`,
+      columns: ROLE_EXPORT_COLUMNS
+    });
+  };
+
   const toggleRoleExpansion = (roleId: string) => {
     setExpandedRoles(prev =>
       prev.includes(roleId)
@@ -151,7 +173,7 @@ export default function RolesPage() {
         name: data.name,
         description: data.description
       });
-      
+
       // Assign permissions if provided
       if (data.permissionKeys && data.permissionKeys.length > 0) {
         await notificationApiClient.assignPermissionsToRole(newRole.name || data.name, data.permissionKeys);
@@ -165,7 +187,7 @@ export default function RolesPage() {
         // Add the new role to local state
         addItem(newRole);
       }
-      
+
       setIsCreateModalOpen(false);
     } catch (error) {
       console.error('Error creating role:', error);
@@ -198,7 +220,7 @@ export default function RolesPage() {
 
   const handleDeleteConfirm = async () => {
     if (!roleToDelete) return;
-    
+
     try {
       await notificationApiClient.deleteRole(roleToDelete.id);
       // Remove from local state
@@ -217,7 +239,7 @@ export default function RolesPage() {
 
   const handleAssignConfirm = async (userIds: string[]) => {
     if (!roleToAssign) return;
-    
+
     try {
       setIsAssignLoading(true);
       // Assign role to all selected users
@@ -241,34 +263,29 @@ export default function RolesPage() {
 
   const handleManageConfirm = async (data: UpdateRoleData) => {
     if (!roleToManage) return;
-    
+
     try {
       setIsManageLoading(true);
-      
-      // Check if role is system role
-      const isSystemRole = (roleToManage as any).isSystem;
-      
+
       let updatedName = roleToManage.name;
       let updatedDescription = roleToManage.description;
-      
-      // Update role name and description only if not a system role
-      if (!isSystemRole) {
-        try {
-          await notificationApiClient.updateRole(roleToManage.id, {
-            name: data.name,
-            description: data.description
-          });
-          updatedName = data.name;
-          updatedDescription = data.description;
-        } catch (error) {
-          console.warn('Could not update role name/description (may be a system role):', error);
-          // Continue with permission update even if name/description update fails
-        }
+
+      // Update role name and description
+      try {
+        await notificationApiClient.updateRole(roleToManage.id, {
+          name: data.name,
+          description: data.description
+        });
+        updatedName = data.name;
+        updatedDescription = data.description;
+      } catch (error) {
+        console.warn('Could not update role name/description:', error);
+        // Continue with permission update even if name/description update fails
       }
-      
+
       // Always update permissions (this is the main purpose of the modal)
       await notificationApiClient.assignPermissionsToRole(roleToManage.name, data.permissionKeys);
-      
+
       // Update local state - map permission keys to PermissionDto objects
       const rolePermissions = permissions.filter(p => data.permissionKeys.includes(p.key));
       updateItem(roleToManage.id, (item) => ({
@@ -277,7 +294,7 @@ export default function RolesPage() {
         description: updatedDescription,
         permissions: rolePermissions
       }));
-      
+
       setIsManageModalOpen(false);
       setRoleToManage(null);
     } catch (error) {
@@ -294,7 +311,7 @@ export default function RolesPage() {
 
   const handleEditConfirm = async (data: EditRoleData) => {
     if (!roleToEdit) return;
-    
+
     try {
       setIsEditLoading(true);
       await notificationApiClient.updateRole(roleToEdit.id, {
@@ -323,7 +340,7 @@ export default function RolesPage() {
 
   const handlePermissionsConfirm = async (permissionKeys: string[]) => {
     if (!roleToManagePermissions) return;
-    
+
     try {
       setIsPermissionsLoading(true);
       await notificationApiClient.assignPermissionsToRole(roleToManagePermissions.name, permissionKeys);
@@ -384,28 +401,54 @@ export default function RolesPage() {
   return (
     <div className="space-y-6 p-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold">Role Management</h1>
           <p className="text-muted-foreground">Manage system roles and permissions</p>
         </div>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button 
-              className="gap-2" 
-              onClick={() => setIsCreateModalOpen(true)}
-              disabled={!canCreate}
-            >
-              <Plus className="h-4 w-4" />
-              Add Role
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex bg-muted/50 p-1 rounded-lg gap-1 border">
+            <Button variant="ghost" size="sm" className="h-8 gap-2" onClick={handleExportAll}>
+              <Download className="h-4 w-4" />
+              <span className="hidden sm:inline">Export All</span>
             </Button>
-          </TooltipTrigger>
-          {!canCreate && (
-            <TooltipContent>
-              <p>You don't have permission to create roles</p>
-            </TooltipContent>
-          )}
-        </Tooltip>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-2"
+              onClick={handleExportSelected}
+              disabled={selectedItems.length === 0}
+            >
+              <Download className="h-4 w-4" />
+              <span className="hidden sm:inline">Selected ({selectedItems.length})</span>
+            </Button>
+            <Button variant="ghost" size="sm" className="h-8 gap-2" disabled>
+              <Upload className="h-4 w-4" />
+              <span className="hidden sm:inline">Import</span>
+            </Button>
+          </div>
+
+          <div className="h-8 w-px bg-border mx-1 hidden sm:block"></div>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                className="gap-2"
+                onClick={() => setIsCreateModalOpen(true)}
+                disabled={!canCreate}
+              >
+                <Plus className="h-4 w-4" />
+                Add Role
+              </Button>
+            </TooltipTrigger>
+            {!canCreate && (
+              <TooltipContent>
+                <p>You don't have permission to create roles</p>
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </div>
       </div>
 
       {/* Search and Filters */}
@@ -429,16 +472,16 @@ export default function RolesPage() {
                 {selectedItems.length} selected
               </Badge>
             )}
-    </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
-      <table className="w-full">
+            <table className="w-full">
               <thead className="bg-muted">
                 <tr>
                   <th className="text-left p-4">
-                    <input 
-                      type="checkbox" 
+                    <input
+                      type="checkbox"
                       className="rounded border-ui cursor-pointer"
                       checked={selectedItems.length === displayRoles.length && displayRoles.length > 0}
                       onChange={(e) => {
@@ -449,50 +492,43 @@ export default function RolesPage() {
                         }
                       }}
                     />
-            </th>
+                  </th>
                   <th className="text-left p-4 text-sm font-medium">Role</th>
                   <th className="text-left p-4 text-sm font-medium">Description</th>
                   <th className="text-left p-4 text-sm font-medium">Permissions</th>
                   <th className="text-left p-4 text-sm font-medium">Status</th>
                   <th className="text-left p-4 text-sm font-medium">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {displayRoles.map((role: RoleDto) => {
-            const isExpanded = expandedRoles.includes(role.id);
+                </tr>
+              </thead>
+              <tbody>
+                {displayRoles.map((role: RoleDto) => {
+                  const isExpanded = expandedRoles.includes(role.id);
 
-            return (
+                  return (
                     <React.Fragment key={role.id}>
                       <tr className="border-b hover:bg-muted/50 transition-colors">
-                  <td className="p-4">
-                          <input 
-                            type="checkbox" 
+                        <td className="p-4">
+                          <input
+                            type="checkbox"
                             className="rounded border-ui cursor-pointer"
                             checked={selectedItems.includes(role.id)}
                             onChange={() => toggleSelectRole(role.id)}
                           />
-                  </td>
-                  <td className="p-4">
-                    <div className="flex items-center gap-3">
-                      <button 
-                        onClick={() => toggleRoleExpansion(role.id)}
+                        </td>
+                        <td className="p-4">
+                          <div className="flex items-center gap-3">
+                            <button
+                              onClick={() => toggleRoleExpansion(role.id)}
                               className="p-1 rounded hover:bg-muted transition-colors"
-                      >
-                        {isExpanded ? (
-                          <ChevronDown className="h-4 w-4" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4" />
-                        )}
-                      </button>
-                            <div className="h-10 w-10 bg-primary-light rounded-full flex items-center justify-center flex-shrink-0 relative">
-                        <Shield className="h-5 w-5 text-primary" />
-                              {(role as any).isSystem && (
-                                <div className="absolute -bottom-1 -right-1">
-                                  <Badge className="h-4 px-1.5 text-[9px] bg-success text-success-foreground">
-                                    System
-                                  </Badge>
-                                </div>
+                            >
+                              {isExpanded ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
                               )}
+                            </button>
+                            <div className="h-10 w-10 bg-primary-light rounded-full flex items-center justify-center flex-shrink-0 relative">
+                              <Shield className="h-5 w-5 text-primary" />
                             </div>
                             <div className="min-w-0">
                               <div className="font-medium truncate flex items-center gap-2">
@@ -500,18 +536,18 @@ export default function RolesPage() {
                                 {(role as any).isDefault && (
                                   <Badge variant="outline" className="text-[10px] px-1.5 py-0">Default</Badge>
                                 )}
-                      </div>
+                              </div>
                               <div className="text-sm text-muted-foreground truncate">{role.id}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="p-4">
+                            </div>
+                          </div>
+                        </td>
+                        <td className="p-4">
                           <div className="text-sm text-muted-foreground truncate max-w-xs">
                             {role.description || <span className="text-muted-foreground italic">No description</span>}
                           </div>
-                  </td>
-                  <td className="p-4">
-                    <div className="flex flex-wrap gap-1">
+                        </td>
+                        <td className="p-4">
+                          <div className="flex flex-wrap gap-1">
                             {(role as any).rolePermissions && Array.isArray((role as any).rolePermissions) && (role as any).rolePermissions.length > 0 ? (
                               <>
                                 {(role as any).rolePermissions.slice(0, 3).map((rolePerm: any, idx: number) => {
@@ -529,10 +565,10 @@ export default function RolesPage() {
                               </>
                             ) : (
                               <Badge variant="secondary" className="text-xs">No permissions</Badge>
-                      )}
-                    </div>
-                  </td>
-                  <td className="p-4">
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-4">
                           {role.deletedAt ? (
                             <Badge variant="secondary" className="text-xs">
                               Disabled
@@ -542,8 +578,8 @@ export default function RolesPage() {
                               Active
                             </Badge>
                           )}
-                  </td>
-                  <td className="p-4">
+                        </td>
+                        <td className="p-4">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
@@ -551,7 +587,7 @@ export default function RolesPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-56">
-                              <DropdownMenuItem 
+                              <DropdownMenuItem
                                 onClick={() => canUpdate && handleEditClick(role)}
                                 disabled={!canUpdate}
                                 className={!canUpdate ? 'opacity-50 cursor-not-allowed' : ''}
@@ -560,7 +596,7 @@ export default function RolesPage() {
                                 <Edit className="h-4 w-4 mr-2" />
                                 Edit Role
                               </DropdownMenuItem>
-                              <DropdownMenuItem 
+                              <DropdownMenuItem
                                 onClick={() => canAssign && handlePermissionsClick(role)}
                                 disabled={!canAssign}
                                 className={!canAssign ? 'opacity-50 cursor-not-allowed' : ''}
@@ -574,7 +610,7 @@ export default function RolesPage() {
                                 <UsersIcon className="h-4 w-4 mr-2" />
                                 View Users
                               </DropdownMenuItem>
-                              <DropdownMenuItem 
+                              <DropdownMenuItem
                                 onClick={() => canAssign && handleAssignClick(role)}
                                 disabled={!canAssign}
                                 className={!canAssign ? 'opacity-50 cursor-not-allowed' : ''}
@@ -585,9 +621,9 @@ export default function RolesPage() {
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               {!role.deletedAt && (
-                                <DropdownMenuItem 
+                                <DropdownMenuItem
                                   onClick={() => canUpdate && handleToggleStatus(role)}
-                                  disabled={!canUpdate || (role as any).isSystem}
+                                  disabled={!canUpdate}
                                   className={!canUpdate ? 'opacity-50 cursor-not-allowed' : ''}
                                   title={!canUpdate ? "You don't have permission to update roles" : undefined}
                                 >
@@ -596,9 +632,9 @@ export default function RolesPage() {
                                 </DropdownMenuItem>
                               )}
                               {role.deletedAt && (
-                                <DropdownMenuItem 
+                                <DropdownMenuItem
                                   onClick={() => canUpdate && handleToggleStatus(role)}
-                                  disabled={!canUpdate || (role as any).isSystem}
+                                  disabled={!canUpdate}
                                   className={!canUpdate ? 'opacity-50 cursor-not-allowed' : ''}
                                   title={!canUpdate ? "You don't have permission to update roles" : undefined}
                                 >
@@ -606,9 +642,9 @@ export default function RolesPage() {
                                   Enable Role
                                 </DropdownMenuItem>
                               )}
-                              <DropdownMenuItem 
-                                onClick={() => canDelete && handleDeleteClick(role)} 
-                                disabled={!canDelete || (role as any).isSystem || (role as any).isDefault}
+                              <DropdownMenuItem
+                                onClick={() => canDelete && handleDeleteClick(role)}
+                                disabled={!canDelete || (role as any).isDefault}
                                 className={`${!canDelete ? 'opacity-50 cursor-not-allowed' : 'text-destructive'}`}
                                 title={!canDelete ? "You don't have permission to delete roles" : undefined}
                               >
@@ -617,14 +653,14 @@ export default function RolesPage() {
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
-                  </td>
-                </tr>
+                        </td>
+                      </tr>
 
-                {isExpanded && (
+                      {isExpanded && (
                         <tr className="bg-muted/30">
                           <td colSpan={6} className="p-4 pl-20">
                             <div className="grid grid-cols-2 gap-6">
-                        <div>
+                              <div>
                                 <p className="text-sm font-semibold mb-3 flex items-center gap-2">
                                   <Key className="h-4 w-4" />
                                   All Permissions ({(role as any).rolePermissions?.length || 0})
@@ -642,7 +678,7 @@ export default function RolesPage() {
                                         acc[permCategory].push(rolePerm);
                                         return acc;
                                       }, {});
-                                      
+
                                       return (Object.entries(permissionsByCategory) as [string, any[]][]).map(([category, perms]) => (
                                         <div key={category} className="border rounded-lg p-3 bg-muted/20">
                                           <div className="flex items-center gap-2 mb-2 pb-2 border-b">
@@ -680,8 +716,8 @@ export default function RolesPage() {
                                   ) : (
                                     <p className="text-sm text-muted-foreground">No permissions assigned</p>
                                   )}
-                          </div>
-                        </div>
+                                </div>
+                              </div>
                               <div>
                                 <p className="text-sm font-semibold mb-3 flex items-center gap-2">
                                   <UsersIcon className="h-4 w-4" />
@@ -698,31 +734,31 @@ export default function RolesPage() {
                                       {formatDate(role.createdAt)}
                                     </span>
                                   </div>
-                        <div>
+                                  <div>
                                     <span className="font-medium">Updated:</span>
                                     <span className="ml-2 text-muted-foreground">
                                       {formatDate(role.updatedAt)}
                                     </span>
+                                  </div>
+                                </div>
                               </div>
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
                     </React.Fragment>
-            );
-          })}
-        </tbody>
-      </table>
-            
+                  );
+                })}
+              </tbody>
+            </table>
+
             {displayRoles.length === 0 && !tableLoading && (
               <div className="text-center py-12">
                 <Shield className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                 <p className="text-muted-foreground">
                   {searchQuery ? 'No roles match your search' : 'No roles found'}
                 </p>
-        </div>
+              </div>
             )}
 
             {/* Loading indicator */}
@@ -732,7 +768,7 @@ export default function RolesPage() {
                 {isLocalFiltering ? 'Fetching comprehensive results...' : 'Loading roles...'}
               </div>
             )}
-      </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -742,6 +778,7 @@ export default function RolesPage() {
         totalElements={totalElements}
         pageSize={pageSize}
         onPageChange={handlePageChange}
+        onPageSizeChange={handlePageSizeChange}
       />
 
       {/* Modals */}

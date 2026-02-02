@@ -115,6 +115,14 @@ export const Permissions = {
   TAG_UPDATE: 'tag:update',
   TAG_DELETE: 'tag:delete',
   TAG_ASSIGN: 'tag:assign',
+
+  // Form Management
+  FORM_READ: 'form:read',
+  FORM_CREATE: 'form:create',
+  FORM_UPDATE: 'form:update',
+  FORM_DELETE: 'form:delete',
+  FORM_PUBLISH: 'form:publish',
+  FORM_VIEW_SUBMISSIONS: 'form:view-submissions',
 } as const;
 
 /**
@@ -215,7 +223,9 @@ export const AdminPagePermissions: Record<string, {
   },
   '/admin/documents/linking': {
     view: Permissions.DOCUMENT_READ,
+    create: Permissions.DOCUMENT_WRITE,
     update: Permissions.DOCUMENT_UPDATE,
+    delete: Permissions.DOCUMENT_DELETE,
   },
   '/admin/documents/tags': {
     view: Permissions.TAG_READ,
@@ -248,6 +258,23 @@ export const AdminPagePermissions: Record<string, {
   '/admin/workflow/working-hours': {
     view: Permissions.WORKFLOW_VIEW_HISTORY,
     update: Permissions.WORKFLOW_ASSIGN,
+  },
+
+  // Forms pages
+  '/admin/forms': {
+    view: Permissions.FORM_READ,
+    create: Permissions.FORM_CREATE,
+    update: Permissions.FORM_UPDATE,
+    delete: Permissions.FORM_DELETE,
+  },
+  '/admin/forms/create': {
+    view: Permissions.FORM_CREATE,
+    create: Permissions.FORM_CREATE,
+  },
+  // Dynamic form edit page - matches /admin/forms/[id]/edit
+  '/admin/forms/edit': {
+    view: Permissions.FORM_UPDATE,
+    update: Permissions.FORM_UPDATE,
   },
 };
 

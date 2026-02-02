@@ -54,7 +54,15 @@ class AuthService {
   private baseURL: string;
 
   constructor() {
-    this.baseURL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://105.107.29.176:8080';
+    // Dynamically resolve URL based on environment
+    if (typeof window === 'undefined') {
+      // Server-side: use INTERNAL_API_URL for Docker internal network calls
+      // Falls back to CLIENT_API_URL then defaults
+      this.baseURL = process.env.INTERNAL_API_URL || process.env.CLIENT_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+    } else {
+      // Client-side: use injected window.ENV from layout.tsx
+      this.baseURL = (window as any).ENV?.API_URL || 'http://localhost:8080';
+    }
   }
 
   /**
@@ -71,10 +79,10 @@ class AuthService {
         withCredentials: true, // Important: Send cookies for CORS
       }
     );
-    
+
     // Normalize response to handle both camelCase and snake_case
     const data = response.data;
-    
+
     return {
       accessToken: data.access_token || data.accessToken,
       refreshToken: data.refresh_token || data.refreshToken,
@@ -106,7 +114,7 @@ class AuthService {
     if (refreshToken) {
       url.searchParams.append('refresh_token', refreshToken);
     }
-    
+
     const response: AxiosResponse<any> = await axios.post(
       url.toString(),
       {}, // Empty body since token is in URL params
@@ -117,10 +125,10 @@ class AuthService {
         withCredentials: true, // Important: Send cookies
       }
     );
-    
+
     // Normalize response
     const data = response.data;
-    
+
     return {
       accessToken: data.access_token || data.accessToken,
       refreshToken: data.refresh_token || data.refreshToken,

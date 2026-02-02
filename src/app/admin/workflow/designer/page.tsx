@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   ReactFlow,
@@ -19,8 +19,10 @@ import {
   Position,
   BaseEdge,
   EdgeProps,
-  getSmoothStepPath,
+  getBezierPath,
+
   ConnectionMode,
+  ConnectionLineType,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
@@ -37,6 +39,14 @@ import {
   Trash2,
   Shield,
   MoreVertical,
+  Zap,
+  Timer,
+  Globe,
+  Variable,
+  FileCode,
+  ScanText,
+  Archive,
+  Trash,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -52,7 +62,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useLanguage } from '../../../../contexts/LanguageContext';
-import { workflowService } from '@/api/services/workflowService';
+import { workflowAdminService } from '@/api/services/workflowAdminService';
 import { notificationApiClient } from '@/api/notificationClient';
 import { useNotifications } from '@/hooks/useNotifications';
 import { RoleDto, CreateStepAssignmentRequest, AddWorkflowAdminRequest, WorkflowTriggerResponse, AddWorkflowTriggerRequest, FilingCategoryResponseDto } from '@/types/api';
@@ -73,333 +83,175 @@ import {
 } from '@/components/ui/dropdown-menu';
 import ConfirmationModal from '@/components/modals/ConfirmationModal';
 import ApplyWorkflowChangesDialog from '@/components/modals/ApplyWorkflowChangesDialog';
+import { ReactFlowProvider, useReactFlow } from '@xyflow/react';
+import WorkflowStepNode from './nodes/WorkflowStepNode';
+import StartNode from './nodes/StartNode';
+import FinishNode from './nodes/FinishNode';
+import ConditionalNode from './nodes/ConditionalNode';
+import StampNode from './nodes/StampNode';
+import NotificationNode from './nodes/NotificationNode';
+import DelayNode from './nodes/DelayNode';
+import MoveDocumentNode from './nodes/MoveDocumentNode';
+import EmailNode from './nodes/EmailNode';
+import TriggerNode from './nodes/TriggerNode';
+import EndSuccessNode from './nodes/EndSuccessNode';
+import EndFailureNode from './nodes/EndFailureNode';
+import SlaNode from './nodes/SlaNode';
+import ApiCallNode from './nodes/ApiCallNode';
+import SubWorkflowNode from './nodes/SubWorkflowNode';
+import SetVariableNode from './nodes/SetVariableNode';
+import ScriptNode from './nodes/ScriptNode';
+import OcrNode from './nodes/OcrNode';
+import ArchiveNode from './nodes/ArchiveNode';
+import DeleteNode from './nodes/DeleteNode';
+// New node imports for full backend alignment
+import ReviewNode from './nodes/ReviewNode';
+import ManualTaskNode from './nodes/ManualTaskNode';
+import SplitNode from './nodes/SplitNode';
+import JoinNode from './nodes/JoinNode';
+import UpdateMetadataNode from './nodes/UpdateMetadataNode';
+import ChangeStatusNode from './nodes/ChangeStatusNode';
+import NewVersionNode from './nodes/NewVersionNode';
+import LockDocumentNode from './nodes/LockDocumentNode';
+import UnlockDocumentNode from './nodes/UnlockDocumentNode';
+import EndNode from './nodes/EndNode';
+import CancelNode from './nodes/CancelNode';
+import ErrorHandlerNode from './nodes/ErrorHandlerNode';
+import GetContextNode from './nodes/GetContextNode';
+import ApprovalNode from './nodes/ApprovalNode';
+import { WorkflowNodeData } from './nodes/types';
+import { useRef } from 'react';
+// Import node configuration modals
+import DelayNodeModal from './modals/DelayNodeModal';
+import StampNodeModal from './modals/StampNodeModal';
+import MoveDocumentNodeModal from './modals/MoveDocumentNodeModal';
+import NotificationNodeModal from './modals/NotificationNodeModal';
+import EmailNodeModal from './modals/EmailNodeModal';
+import ConditionNodeModal from './modals/ConditionNodeModal';
+import TriggerNodeModal from './modals/TriggerNodeModal';
+import SlaNodeModal from './modals/SlaNodeModal';
+import ApiCallNodeModal from './modals/ApiCallNodeModal';
+import SubWorkflowNodeModal from './modals/SubWorkflowNodeModal';
+import SetVariableNodeModal from './modals/SetVariableNodeModal';
+import ArchiveNodeModal from './modals/ArchiveNodeModal';
+import DeleteNodeModal from './modals/DeleteNodeModal';
+import ReviewNodeModal from './modals/ReviewNodeModal';
+import ManualTaskNodeModal from './modals/ManualTaskNodeModal';
+import SplitNodeModal from './modals/SplitNodeModal';
+import JoinNodeModal from './modals/JoinNodeModal';
+import UpdateMetadataNodeModal from './modals/UpdateMetadataNodeModal';
+import ChangeStatusNodeModal from './modals/ChangeStatusNodeModal';
+import NewVersionNodeModal from './modals/NewVersionNodeModal';
+import LockDocumentNodeModal from './modals/LockDocumentNodeModal';
+import UnlockDocumentNodeModal from './modals/UnlockDocumentNodeModal';
+// Additional missing modal imports
+import ScriptNodeModal from './modals/ScriptNodeModal';
+import OcrNodeModal from './modals/OcrNodeModal';
+import CancelNodeModal from './modals/CancelNodeModal';
+import ErrorHandlerNodeModal from './modals/ErrorHandlerNodeModal';
+import GetContextNodeModal from './modals/GetContextNodeModal';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import InstancesTab from './tabs/InstancesTab';
+import StatisticsTab from './tabs/StatisticsTab';
+import HistoryTab from './tabs/HistoryTab';
+import useWorkflowValidation from './hooks/useWorkflowValidation';
+import ValidationPanel from './components/ValidationPanel';
+import CustomEdge from './components/CustomEdge';
+import NodesPalette from './components/NodesPalette';
+// Custom Node Components are imported from ./nodes/ directory
 
-// Custom Node Component for Workflow Steps
-const WorkflowStepNode = ({ data, selected, id }: { data: any; selected?: boolean; id: string }) => {
-  const isFirstStep = data.isFirstStep || false;
-  const hasLeftHandle = !isFirstStep;
-
-  return (
-    <div
-      className={`px-4 py-3 rounded-xl border-2 min-w-[240px] bg-white relative shadow-sm transition-all duration-200 hover:shadow-md ${selected ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200 hover:border-blue-300'
-        }`}
-    >
-      {/* Priority Indicator */}
-      {data.priority && (
-        <div className={`absolute top-0 left-0 w-1 h-full rounded-l-xl ${data.priority === 'HIGH' ? 'bg-red-500' :
-          data.priority === 'MEDIUM' ? 'bg-yellow-500' :
-            'bg-blue-500'
-          }`} />
-      )}
-      {/* Action Icons - Top Right */}
-      <div className="absolute top-2 right-2 flex items-center gap-1 z-10">
-        <button
-          className="p-1.5 rounded-md hover:bg-gray-100 transition-colors"
-          onClick={(e) => {
-            e.stopPropagation();
-            if (data.onEdit) {
-              data.onEdit();
-            }
-          }}
-          title="Edit Step"
-        >
-          <Edit className="w-4 h-4 text-gray-600 hover:text-blue-600" />
-        </button>
-        <button
-          className="p-1.5 rounded-md hover:bg-red-50 transition-colors"
-          onClick={(e) => {
-            e.stopPropagation();
-            if (data.onDelete) {
-              data.onDelete();
-            }
-          }}
-          title="Delete Step"
-        >
-          <Trash2 className="w-4 h-4 text-gray-600 hover:text-red-600" />
-        </button>
-      </div>
-
-      {/* Source Handle - for outgoing connections (right) */}
-      <Handle
-        type="source"
-        position={Position.Right}
-        className="w-7 h-7 bg-blue-500 border-3 border-white hover:bg-blue-600"
-        style={{
-          borderRadius: '50%',
-          top: '50%',
-          transform: 'translateY(-50%)',
-          border: '3px solid white',
-          boxShadow: '0 0 0 2px #3b82f6',
-          padding: '2px'
-        }}
-      />
-
-      {/* Target Handle - for incoming connections (left) - only if not first step */}
-      {hasLeftHandle && (
-        <Handle
-          type="target"
-          position={Position.Left}
-          className="w-7 h-7 bg-blue-500 border-3 border-white hover:bg-blue-600"
-          style={{
-            borderRadius: '50%',
-            top: '50%',
-            transform: 'translateY(-50%)',
-            border: '3px solid white',
-            boxShadow: '0 0 0 2px #3b82f6',
-            padding: '2px'
-          }}
-        />
-      )}
-
-      {/* Step Name */}
-      <div className="font-semibold text-sm mb-1 pr-16">{data.label || 'Step'}</div>
-
-      {/* Description */}
-      {data.description && (
-        <div className="text-xs text-gray-600 line-clamp-2 mb-2">{data.description}</div>
-      )}
-
-      {/* Duration */}
-      {data.expirationDays > 0 && (
-        <div className="text-xs text-orange-600 mb-1 flex items-center gap-1">
-          <Clock className="w-3 h-3" />
-          {data.expirationDays} day{data.expirationDays > 1 ? 's' : ''}
-        </div>
-      )}
-
-      {/* Parallel Approvals */}
-      {data.allowParallelApproval && data.minApprovalsNeeded > 1 && (
-        <div className="text-xs text-purple-600 mb-1 flex items-center gap-1 bg-purple-50 px-2 py-0.5 rounded-full w-fit">
-          <Users className="w-3 h-3" />
-          {data.minApprovalsNeeded} approvals
-        </div>
-      )}
-
-      {/* Priority Badge */}
-      {data.priority && (
-        <div className={`text-[10px] font-bold uppercase tracking-wider mb-1 flex items-center gap-1 px-2 py-0.5 rounded-full w-fit ${data.priority === 'HIGH' ? 'text-red-700 bg-red-50' :
-          data.priority === 'MEDIUM' ? 'text-yellow-700 bg-yellow-50' :
-            'text-blue-700 bg-blue-50'
-          }`}>
-          {data.priority} Priority
-        </div>
-      )}
-
-      {/* Assignments Count */}
-      {(data.assignments?.length || 0) > 0 && (
-        <div className="text-xs text-gray-500 mt-1">
-          {data.assignments.length} assignee{data.assignments.length > 1 ? 's' : ''}
-        </div>
-      )}
-    </div>
-  );
-};
-
-// First Step Node Component (special node that can't be deleted)
-const FirstStepNode = ({ data, selected, id }: { data: any; selected?: boolean; id: string }) => {
-  return (
-    <div
-      className={`px-4 py-3 rounded-lg border-2 min-w-[220px] bg-gradient-to-r from-green-50 to-blue-50 relative ${selected ? 'border-green-500 shadow-lg' : 'border-green-300'
-        }`}
-    >
-      {/* Edit Icon - Top Right */}
-      <button
-        className="absolute top-2 right-2 p-1.5 rounded-md hover:bg-gray-100 transition-colors z-10"
-        onClick={(e) => {
-          e.stopPropagation();
-          if (data.onEdit) {
-            data.onEdit();
-          }
-        }}
-        title="Edit Step"
-      >
-        <SquarePen className="w-4 h-4 text-gray-600 hover:text-blue-600" />
-      </button>
-
-      {/* Source Handle - only on right for first step */}
-      <Handle
-        type="source"
-        position={Position.Right}
-        className="w-7 h-7 bg-green-500 border-3 border-white hover:bg-green-600"
-        style={{
-          borderRadius: '50%',
-          top: '50%',
-          transform: 'translateY(-50%)',
-          border: '3px solid white',
-          boxShadow: '0 0 0 2px #10b981',
-          padding: '2px'
-        }}
-      />
-
-      {/* First Step Badge */}
-      <div className="flex items-center gap-1 mb-1">
-        <Play className="w-3 h-3 text-green-600" />
-        <span className="text-xs font-semibold text-green-700">START</span>
-      </div>
-
-      {/* Step Name */}
-      <div className="font-semibold text-sm mb-1 pr-6">{data.label || 'First Step'}</div>
-
-      {/* Description */}
-      {data.description && (
-        <div className="text-xs text-gray-600 line-clamp-2 mb-2">{data.description}</div>
-      )}
-
-      {/* Duration */}
-      {data.expirationDays > 0 && (
-        <div className="text-xs text-orange-600 mb-1 flex items-center gap-1">
-          <Clock className="w-3 h-3" />
-          {data.expirationDays} day{data.expirationDays > 1 ? 's' : ''}
-        </div>
-      )}
-
-      {/* Parallel Approvals */}
-      {data.allowParallelApproval && data.minApprovalsNeeded > 1 && (
-        <div className="text-xs text-purple-600 mb-1 flex items-center gap-1">
-          <Users className="w-3 h-3" />
-          {data.minApprovalsNeeded} parallel approvals needed
-        </div>
-      )}
-
-      {/* Assignments Count */}
-      {(data.assignments?.length || 0) > 0 && (
-        <div className="text-xs text-gray-500 mt-1">
-          {data.assignments.length} assignee{data.assignments.length > 1 ? 's' : ''}
-        </div>
-      )}
-    </div>
-  );
-};
-
-// Start Node Component (circular, simple design)
-const StartNode = ({ data, selected, id }: { data: any; selected?: boolean; id: string }) => {
-  return (
-    <div className="relative">
-      <Handle
-        type="source"
-        position={Position.Right}
-        className="w-5 h-5 bg-green-500 border-2 border-white hover:bg-green-600"
-        style={{
-          borderRadius: '50%',
-          top: '50%',
-          transform: 'translateY(-50%)',
-          border: '2px solid white',
-        }}
-      />
-      <div
-        className={`w-14 h-14 rounded-full bg-gradient-to-br from-green-500 to-green-600 border-2 border-white flex items-center justify-center ${selected ? 'ring-2 ring-green-300' : ''
-          }`}
-        style={{ boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)' }}
-      >
-        <Play className="w-6 h-6 text-white" fill="white" />
-      </div>
-      <div className="absolute -bottom-5 left-1/2 transform -translate-x-1/2 text-xs font-medium text-gray-600 whitespace-nowrap">
-        Start
-      </div>
-    </div>
-  );
-};
-
-// Finish Node Component (circular, simple design)
-const FinishNode = ({ data, selected, id }: { data: any; selected?: boolean; id: string }) => {
-  return (
-    <div className="relative">
-      <Handle
-        type="target"
-        position={Position.Left}
-        className="w-5 h-5 bg-blue-500 border-2 border-white hover:bg-blue-600"
-        style={{
-          borderRadius: '50%',
-          top: '50%',
-          transform: 'translateY(-50%)',
-          border: '2px solid white',
-        }}
-      />
-      <div
-        className={`w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 border-2 border-white flex items-center justify-center ${selected ? 'ring-2 ring-blue-300' : ''
-          }`}
-        style={{ boxShadow: '0 2px 8px rgba(59, 130, 246, 0.3)' }}
-      >
-        <CheckCircle className="w-6 h-6 text-white" fill="white" />
-      </div>
-      <div className="absolute -bottom-5 left-1/2 transform -translate-x-1/2 text-xs font-medium text-gray-600 whitespace-nowrap">
-        Finish
-      </div>
-    </div>
-  );
-};
-
-// Custom Edge Component with delete and add buttons on hover
-const CustomEdge = ({ id, sourceX, sourceY, targetX, targetY, selected, source, target }: EdgeProps) => {
-  const [edgePath, labelX, labelY] = getSmoothStepPath({
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-  });
-  const [isHovered, setIsHovered] = useState(false);
-
-  // Check if this is the start-finish edge
-  const isStartFinishEdge = source === 'start-node' && target === 'finish-node';
-
-  return (
-    <>
-      <BaseEdge
-        id={id}
-        path={edgePath}
-        style={{ stroke: '#3b82f6', strokeWidth: 2.5 }}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-      />
-      {isHovered && (
-        <g>
-          <foreignObject
-            x={labelX - (isStartFinishEdge ? 60 : 30)}
-            y={labelY - 12}
-            width={isStartFinishEdge ? 120 : 60}
-            height={24}
-            className="overflow-visible pointer-events-auto"
-          >
-            <div className="flex items-center gap-1.5">
-              {isStartFinishEdge && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    const event = new CustomEvent('addStepToEdge', { detail: { edgeId: id } });
-                    window.dispatchEvent(event);
-                  }}
-                  className="bg-blue-500 hover:bg-blue-600 text-white rounded-full w-9 h-9 flex items-center justify-center shadow-md hover:shadow-lg transition-all z-50"
-                  title="Add step"
-                >
-                  <Plus className="w-4 h-4" />
-                </button>
-              )}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                  const event = new CustomEvent('deleteEdge', { detail: { edgeId: id } });
-                  window.dispatchEvent(event);
-                }}
-                className="bg-red-500 hover:bg-red-600 text-white rounded-full w-9 h-9 flex items-center justify-center shadow-md hover:shadow-lg transition-all z-50"
-                title="Delete connection"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-          </foreignObject>
-        </g>
-      )}
-    </>
-  );
+// Mapping from frontend node type to backend WorkflowNodeType
+const nodeTypeToBackendType: Record<string, string> = {
+  startNode: 'START',
+  triggerNode: 'START',
+  approvalNode: 'APPROVAL',
+  workflowStep: 'APPROVAL',
+  firstStep: 'APPROVAL',
+  reviewNode: 'REVIEW',
+  manualTaskNode: 'MANUAL_TASK',
+  conditionalNode: 'CONDITION',
+  splitNode: 'SPLIT',
+  joinNode: 'JOIN',
+  delayNode: 'DELAY',
+  slaNode: 'SLA',
+  moveDocumentNode: 'MOVE_DOCUMENT',
+  updateMetadataNode: 'UPDATE_METADATA',
+  changeStatusNode: 'CHANGE_STATUS',
+  newVersionNode: 'NEW_VERSION',
+  lockDocumentNode: 'LOCK_DOCUMENT',
+  unlockDocumentNode: 'UNLOCK_DOCUMENT',
+  archiveNode: 'ARCHIVE_DOCUMENT',
+  deleteNode: 'DELETE_DOCUMENT',
+  stampNode: 'STAMP',
+  notificationNode: 'NOTIFICATION',
+  emailNode: 'NOTIFICATION',
+  apiCallNode: 'API_CALL',
+  scriptNode: 'SCRIPT',
+  ocrNode: 'OCR_PROCESS',
+  subWorkflowNode: 'SUB_WORKFLOW',
+  setVariableNode: 'SET_VARIABLE',
+  getContextNode: 'GET_CONTEXT',
+  endNode: 'END',
+  cancelNode: 'CANCEL',
+  errorHandlerNode: 'ERROR_HANDLER',
+  finishNode: 'END',
+  endSuccessNode: 'END',
+  endFailureNode: 'END',
 };
 
 const nodeTypes: NodeTypes = {
-  workflowStep: WorkflowStepNode,
-  firstStep: FirstStepNode,
+  // Entry
   startNode: StartNode,
+  triggerNode: TriggerNode,
+
+  // Human Tasks
+  approvalNode: ApprovalNode,
+  workflowStep: WorkflowStepNode, // Alias for APPROVAL
+  firstStep: WorkflowStepNode,
+  reviewNode: ReviewNode,
+  manualTaskNode: ManualTaskNode,
+
+  // Logic / Flow
+  conditionalNode: ConditionalNode,
+  splitNode: SplitNode,
+  joinNode: JoinNode,
+
+  // Time / Scheduling
+  delayNode: DelayNode,
+  slaNode: SlaNode,
+
+  // Document Actions
+  moveDocumentNode: MoveDocumentNode,
+  updateMetadataNode: UpdateMetadataNode,
+  changeStatusNode: ChangeStatusNode,
+  newVersionNode: NewVersionNode,
+  lockDocumentNode: LockDocumentNode,
+  unlockDocumentNode: UnlockDocumentNode,
+  archiveNode: ArchiveNode,
+  deleteNode: DeleteNode,
+  stampNode: StampNode,
+
+  // Communication
+  notificationNode: NotificationNode,
+  emailNode: EmailNode,
+
+  // Integration
+  apiCallNode: ApiCallNode,
+  scriptNode: ScriptNode,
+  ocrNode: OcrNode,
+  subWorkflowNode: SubWorkflowNode,
+
+  // Variables
+  setVariableNode: SetVariableNode,
+  getContextNode: GetContextNode,
+
+  // Flow Control / Termination
+  endNode: EndNode,
+  cancelNode: CancelNode,
+  errorHandlerNode: ErrorHandlerNode,
   finishNode: FinishNode,
+  endSuccessNode: EndSuccessNode,
+  endFailureNode: EndFailureNode,
 };
 
 const edgeTypes = {
@@ -407,6 +259,7 @@ const edgeTypes = {
 };
 
 export default function WorkflowDesignerPage() {
+  const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
   const { t } = useLanguage();
   const { showSuccess, showError } = useNotifications();
   const params = useParams();
@@ -426,6 +279,10 @@ export default function WorkflowDesignerPage() {
   }>>([]);
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [editingAdminIndex, setEditingAdminIndex] = useState<number | null>(null);
+
+  // Sidebar tab state
+  const [sidebarTab, setSidebarTab] = useState<'properties' | 'nodes'>('properties');
+  const [activeTab, setActiveTab] = useState("designer");
 
   // Apply changes dialog
   const [showApplyChangesDialog, setShowApplyChangesDialog] = useState(false);
@@ -514,10 +371,57 @@ export default function WorkflowDesignerPage() {
   }, [showModelSearch]);
 
   // ReactFlow state
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node<WorkflowNodeData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [showStepModal, setShowStepModal] = useState(false);
   const [editingStepData, setEditingStepData] = useState<any>(null);
+
+  // New modal states for each node type
+  const [showDelayModal, setShowDelayModal] = useState(false);
+  const [showStampModal, setShowStampModal] = useState(false);
+  const [showMoveDocumentModal, setShowMoveDocumentModal] = useState(false);
+  const [showNotificationModal, setShowNotificationModal] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [showConditionModal, setShowConditionModal] = useState(false);
+  const [showTriggerModal, setShowTriggerModal] = useState(false);
+  // New node modals
+  const [showSlaModal, setShowSlaModal] = useState(false);
+  const [showApiCallModal, setShowApiCallModal] = useState(false);
+  const [showSubWorkflowModal, setShowSubWorkflowModal] = useState(false);
+  const [showSetVariableModal, setShowSetVariableModal] = useState(false);
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  // New backend-aligned node modals
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [showManualTaskModal, setShowManualTaskModal] = useState(false);
+  const [showSplitModal, setShowSplitModal] = useState(false);
+  const [showJoinModal, setShowJoinModal] = useState(false);
+  const [showUpdateMetadataModal, setShowUpdateMetadataModal] = useState(false);
+  const [showChangeStatusModal, setShowChangeStatusModal] = useState(false);
+  const [showNewVersionModal, setShowNewVersionModal] = useState(false);
+  const [showLockDocumentModal, setShowLockDocumentModal] = useState(false);
+  const [showUnlockDocumentModal, setShowUnlockDocumentModal] = useState(false);
+  // Additional missing modals
+  const [showScriptModal, setShowScriptModal] = useState(false);
+  const [showOcrModal, setShowOcrModal] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showErrorHandlerModal, setShowErrorHandlerModal] = useState(false);
+  const [showGetContextModal, setShowGetContextModal] = useState(false);
+  const [editingNodeData, setEditingNodeData] = useState<Node<WorkflowNodeData> | null>(null);
+  const [nodeSearchQuery, setNodeSearchQuery] = useState('');
+
+  // Computed flag to disable ReactFlow interactions when any modal is open
+  const isAnyModalOpen = showStepModal || showDelayModal || showStampModal || showMoveDocumentModal ||
+    showNotificationModal || showEmailModal || showConditionModal || showTriggerModal ||
+    showSlaModal || showApiCallModal || showSubWorkflowModal || showSetVariableModal ||
+    showArchiveModal || showDeleteModal ||
+    showReviewModal || showManualTaskModal || showSplitModal || showJoinModal ||
+    showUpdateMetadataModal || showChangeStatusModal || showNewVersionModal ||
+    showLockDocumentModal || showUnlockDocumentModal ||
+    showScriptModal || showOcrModal || showCancelModal || showErrorHandlerModal || showGetContextModal;
+
+  // Workflow validation hook for connection validation and error detection
+  const { errors: validationErrors, isValid: isWorkflowValid, canConnect, validateConnection, getNodeErrors } = useWorkflowValidation(nodes, edges);
 
   // Create edit handler function that can be used in node data
   const createEditHandler = useCallback((nodeId: string) => {
@@ -525,19 +429,378 @@ export default function WorkflowDesignerPage() {
       setNodes((nds) => {
         const node = nds.find(n => n.id === nodeId);
         if (node) {
-          setEditingStepData(node);
-          setShowStepModal(true);
+          // Route to correct modal based on node type
+          switch (node.type) {
+            case 'workflowStep':
+            case 'approvalNode': // Handle approval node same as workflow step
+            case 'firstStep':
+              setEditingStepData(node);
+              setShowStepModal(true);
+              break;
+            case 'delayNode':
+              setEditingNodeData(node);
+              setShowDelayModal(true);
+              break;
+            case 'stampNode':
+              setEditingNodeData(node);
+              setShowStampModal(true);
+              break;
+            case 'moveDocumentNode':
+              setEditingNodeData(node);
+              setShowMoveDocumentModal(true);
+              break;
+            case 'notificationNode':
+              setEditingNodeData(node);
+              setShowNotificationModal(true);
+              break;
+            case 'emailNode':
+              setEditingNodeData(node);
+              setShowEmailModal(true);
+              break;
+            case 'conditionalNode':
+              setEditingNodeData(node);
+              setShowConditionModal(true);
+              break;
+            case 'startNode':
+            case 'triggerNode':
+              setEditingNodeData(node);
+              setShowTriggerModal(true);
+              break;
+            case 'slaNode':
+              setEditingNodeData(node);
+              setShowSlaModal(true);
+              break;
+            case 'apiCallNode':
+              setEditingNodeData(node);
+              setShowApiCallModal(true);
+              break;
+            case 'subWorkflowNode':
+              setEditingNodeData(node);
+              setShowSubWorkflowModal(true);
+              break;
+            case 'setVariableNode':
+              setEditingNodeData(node);
+              setShowSetVariableModal(true);
+              break;
+            case 'archiveNode':
+              setEditingNodeData(node);
+              setShowArchiveModal(true);
+              break;
+            case 'deleteNode':
+              setEditingNodeData(node);
+              setShowDeleteModal(true);
+              break;
+            // New backend-aligned node types
+            case 'reviewNode':
+              setEditingNodeData(node);
+              setShowReviewModal(true);
+              break;
+            case 'manualTaskNode':
+              setEditingNodeData(node);
+              setShowManualTaskModal(true);
+              break;
+            case 'splitNode':
+              setEditingNodeData(node);
+              setShowSplitModal(true);
+              break;
+            case 'joinNode':
+              setEditingNodeData(node);
+              setShowJoinModal(true);
+              break;
+            case 'updateMetadataNode':
+              setEditingNodeData(node);
+              setShowUpdateMetadataModal(true);
+              break;
+            case 'changeStatusNode':
+              setEditingNodeData(node);
+              setShowChangeStatusModal(true);
+              break;
+            case 'newVersionNode':
+              setEditingNodeData(node);
+              setShowNewVersionModal(true);
+              break;
+            case 'lockDocumentNode':
+              setEditingNodeData(node);
+              setShowLockDocumentModal(true);
+              break;
+            case 'unlockDocumentNode':
+              setEditingNodeData(node);
+              setShowUnlockDocumentModal(true);
+              break;
+            case 'cancelNode':
+              setEditingNodeData(node);
+              setShowCancelModal(true);
+              break;
+            case 'errorHandlerNode':
+              setEditingNodeData(node);
+              setShowErrorHandlerModal(true);
+              break;
+            case 'getContextNode':
+              setEditingNodeData(node);
+              setShowGetContextModal(true);
+              break;
+            case 'scriptNode':
+              setEditingNodeData(node);
+              setShowScriptModal(true);
+              break;
+            case 'ocrNode':
+              setEditingNodeData(node);
+              setShowOcrModal(true);
+              break;
+            default:
+              console.log('No modal for node type:', node.type);
+          }
         }
         return nds;
       });
     };
   }, [setNodes]);
 
+  // Validate nodes - check for disconnected nodes and unconnected outputs
+  const validationWarnings = useMemo(() => {
+    const warnings: string[] = [];
+
+    // Get all node IDs that have incoming connections (targets)
+    const nodesWithIncoming = new Set(edges.map(e => e.target));
+    // Get all node IDs that have outgoing connections (sources)
+    const nodesWithOutgoing = new Set(edges.map(e => e.source));
+
+    // Nodes that don't need incoming connections (they are start points)
+    const noIncomingNeeded = ['startNode', 'triggerNode'];
+    // Nodes that don't need outgoing connections (they are end points)
+    const noOutgoingNeeded = ['finishNode', 'endSuccessNode', 'endFailureNode', 'triggerNode'];
+
+    nodes.forEach(node => {
+      // Skip start node - only needs outgoing
+      if (node.type === 'startNode') {
+        if (!nodesWithOutgoing.has(node.id)) {
+          warnings.push('Start node has no outgoing connection');
+        }
+        return;
+      }
+
+      // Skip finish node - only needs incoming
+      if (node.type === 'finishNode') {
+        if (!nodesWithIncoming.has(node.id)) {
+          warnings.push('Finish node has no incoming connection');
+        }
+        return;
+      }
+
+      // Skip trigger nodes entirely - they don't need any connections to be valid
+      if (node.type === 'triggerNode') {
+        return;
+      }
+
+      // Skip end nodes - only need incoming
+      if (node.type === 'endSuccessNode' || node.type === 'endFailureNode') {
+        if (!nodesWithIncoming.has(node.id)) {
+          const nodeName = node.data.label || node.type;
+          warnings.push(`"${nodeName}" has no incoming connection`);
+        }
+        return;
+      }
+
+      // Other nodes need both incoming and outgoing connections
+      const nodeName = node.data.label || node.type;
+
+      if (!nodesWithIncoming.has(node.id)) {
+        warnings.push(`"${nodeName}" has no incoming connection`);
+      }
+
+      if (!nodesWithOutgoing.has(node.id)) {
+        warnings.push(`"${nodeName}" has no outgoing connection`);
+      }
+    });
+
+    return warnings;
+  }, [nodes, edges]);
+
   // Load workflow if editing
   useEffect(() => {
     if (!workflowId) return;
 
     let isMounted = true;
+
+    // Helper to load steps the old way (linear layout)
+    const loadLegacySteps = (workflow: any) => {
+      // Sort steps by order
+      const sortedSteps = [...(workflow.steps || [])].sort((a: any, b: any) => a.stepOrder - b.stepOrder);
+
+      const workflowNodes: Node[] = sortedSteps.map((step: any, index: number) => {
+        const nodeId = `step-${step.id}`;
+
+        // Use saved position if available
+        const position = (step.positionX !== null && step.positionX !== undefined && step.positionY !== null && step.positionY !== undefined)
+          ? { x: step.positionX, y: step.positionY }
+          : { x: 250 + (index * 250), y: 200 };
+
+        // Process assignments
+        const assignmentsWithEntities = (step.assignments || []).map((a: any) => {
+          let entity = null;
+          let assigneeType: 'USER' | 'ROLE' | 'GROUP' = 'USER';
+          if (a.user) { assigneeType = 'USER'; entity = a.user; }
+          else if (a.role) { assigneeType = 'ROLE'; entity = a.role; }
+          else if (a.group) { assigneeType = 'GROUP'; entity = a.group; }
+
+          return {
+            assigneeType,
+            assigneeId: entity?.id || '',
+            entity: entity,
+            canEdit: a.canEdit ?? true,
+          };
+        });
+
+        // Determine the correct React Flow node type based on step data
+        let nodeType = 'workflowStep'; // Default
+        let nodeData: any = {};
+
+        // Parse nodeConfigJson if available
+        let nodeConfig: any = {};
+        if (step.nodeConfigJson) {
+          try {
+            nodeConfig = JSON.parse(step.nodeConfigJson);
+          } catch (e) {
+            console.error('Failed to parse nodeConfigJson:', e);
+          }
+        }
+
+        // Detect node type from step name, nodeType field, or nodeConfigJson content
+        const stepNameLower = (step.name || '').toLowerCase();
+
+        if (nodeConfig.triggerType || stepNameLower === 'trigger' || stepNameLower.includes('trigger')) {
+          nodeType = 'triggerNode';
+          nodeData = {
+            triggerConfig: {
+              triggerType: nodeConfig.triggerType,
+              folderId: nodeConfig.triggerFolderId,
+              folderName: nodeConfig.triggerFolderName,
+              categoryId: nodeConfig.triggerCategoryId,
+              categoryName: nodeConfig.triggerCategoryName,
+            }
+          };
+        } else if (nodeConfig.conditionGroups || stepNameLower === 'condition' || stepNameLower.includes('condition')) {
+          nodeType = 'conditionalNode';
+          nodeData = {
+            conditionGroups: nodeConfig.conditionGroups || [],
+            conditionExpression: nodeConfig.conditionExpression || step.conditionExpression || '',
+          };
+        } else if (nodeConfig.delayDuration !== undefined || stepNameLower === 'delay' || stepNameLower.includes('delay')) {
+          nodeType = 'delayNode';
+          nodeData = {
+            delayDuration: nodeConfig.delayDuration,
+            delayUnit: nodeConfig.delayUnit || 'hours',
+          };
+        } else if (nodeConfig.targetFolderId || stepNameLower === 'move document' || stepNameLower.includes('move')) {
+          nodeType = 'moveDocumentNode';
+          nodeData = {
+            destinationFolderId: nodeConfig.targetFolderId,
+            destinationFolderName: nodeConfig.targetFolderName,
+          };
+        } else if (stepNameLower === 'notification' || stepNameLower.includes('notification')) {
+          nodeType = 'notificationNode';
+          nodeData = {
+            recipients: nodeConfig.recipients || [],
+            notificationTitle: nodeConfig.notificationTitle || '',
+            notificationMessage: nodeConfig.notificationMessage || '',
+          };
+        } else if (stepNameLower === 'email' || stepNameLower.includes('email')) {
+          nodeType = 'emailNode';
+          nodeData = {
+            emailRecipients: nodeConfig.emailRecipients || [],
+            emailSubject: nodeConfig.emailSubject || '',
+            emailBody: nodeConfig.emailBody || '',
+            attachDocument: nodeConfig.attachDocument || false,
+            ccRecipients: nodeConfig.ccRecipients || [],
+          };
+        } else if (stepNameLower === 'stamp' || stepNameLower.includes('stamp')) {
+          nodeType = 'stampNode';
+          nodeData = {
+            stampId: nodeConfig.stampId || step.stampId,
+            stampName: nodeConfig.stampName,
+          };
+        }
+
+        return {
+          id: nodeId,
+          type: nodeType,
+          position: position,
+          data: {
+            id: step.id,
+            label: step.name,
+            description: step.description,
+            expirationDays: step.expirationDays,
+            targetFolderId: step.targetFolderId,
+            targetFolderName: step.targetFolderName,
+            isRequired: step.isRequired ?? true,
+            allowParallelApproval: step.allowParallelApproval ?? false,
+            minApprovalsNeeded: step.minApprovalsNeeded,
+            priority: step.priority || 'MEDIUM',
+            assignments: assignmentsWithEntities,
+            nodeType: step.nodeType,
+            nodeConfig: step.nodeConfigJson,
+            stepId: step.id, // Ensure stepId is available
+            ...nodeData, // Spread node-specific data
+            onEdit: createEditHandler(nodeId),
+            onDelete: () => handleDeleteNode(nodeId),
+          },
+        };
+      });
+
+      // Add Start and Finish nodes
+      const startNode: Node = {
+        id: 'start-node',
+        type: 'startNode',
+        position: { x: 50, y: 200 },
+        data: {},
+      };
+
+      // Check if nodes have custom positions (indicating visual design was used)
+      const hasCustomPositions = workflowNodes.some(n =>
+        n.position.y !== 200 || // Not on default Y line
+        (workflowNodes.indexOf(n) > 0 && Math.abs(n.position.x - workflowNodes[workflowNodes.indexOf(n) - 1].position.x) > 300) // Gaps in X
+      );
+
+      const finishNode: Node = {
+        id: 'finish-node',
+        type: 'finishNode',
+        position: hasCustomPositions
+          ? { x: Math.max(...workflowNodes.map(n => n.position.x)) + 300, y: Math.min(...workflowNodes.map(n => n.position.y)) }
+          : { x: 250 + (workflowNodes.length * 250) + 200, y: 200 },
+        data: {},
+      };
+
+      setNodes([startNode, ...workflowNodes, finishNode]);
+
+      // Re-create edges
+      const workflowEdges: Edge[] = [];
+
+      if (hasCustomPositions) {
+        // For visually designed workflows without stored edges:
+        // Only create start->first edge, let user reconnect the rest
+        // This prevents destroying their custom layout
+        if (workflowNodes.length > 0) {
+          // Find the node closest to start based on y=200 or highest y position
+          const firstNode = workflowNodes.reduce((prev, curr) =>
+            Math.abs(curr.position.y - 200) < Math.abs(prev.position.y - 200) ? curr : prev
+          );
+          workflowEdges.push({ id: 'edge-start-first', source: 'start-node', target: firstNode.id, type: 'default' });
+        }
+        console.log('Legacy workflow has custom positions. Edges must be reconnected manually and saved.');
+      } else {
+        // Linear layout - create sequential edges
+        if (workflowNodes.length > 0) {
+          workflowEdges.push({ id: 'edge-start-first', source: 'start-node', target: workflowNodes[0].id, type: 'default' });
+          for (let i = 0; i < workflowNodes.length - 1; i++) {
+            workflowEdges.push({ id: `edge-${workflowNodes[i].id}-${workflowNodes[i + 1].id}`, source: workflowNodes[i].id, target: workflowNodes[i + 1].id, type: 'default' });
+          }
+          workflowEdges.push({ id: 'edge-last-finish', source: workflowNodes[workflowNodes.length - 1].id, target: 'finish-node', type: 'default' });
+        } else {
+          workflowEdges.push({ id: 'edge-start-finish', source: 'start-node', target: 'finish-node', type: 'default' });
+        }
+      }
+      setEdges(workflowEdges);
+    };
 
     const loadWorkflow = async () => {
       try {
@@ -554,7 +817,7 @@ export default function WorkflowDesignerPage() {
 
         // Load admins
         if (workflow.admins && workflow.admins.length > 0) {
-          setWorkflowAdmins(workflow.admins.map(admin => ({
+          setWorkflowAdmins(workflow.admins.map((admin: any) => ({
             userId: admin.user.id,
             user: admin.user,
           })));
@@ -562,145 +825,46 @@ export default function WorkflowDesignerPage() {
 
         // Load triggers
         if (triggers && triggers.length > 0) {
-          const activeTrigger = triggers.find(t => t.isActive) || triggers[0];
+          const activeTrigger = triggers.find((t: any) => t.isActive) || triggers[0];
           if (activeTrigger) {
             if (activeTrigger.triggerType === 'FOLDER') {
               setTriggerType('FOLDER');
-              setFolderTriggerId(activeTrigger.id);
+              setFolderTriggerId(activeTrigger.id!);
               setFolderTriggerFolderId(activeTrigger.folderId || null);
               setFolderTriggerFolderName(activeTrigger.folderName || '');
             } else if (activeTrigger.triggerType === 'MODEL') {
               setTriggerType('MODEL');
-              setModelTriggerId(activeTrigger.id);
+              setModelTriggerId(activeTrigger.id!);
               setModelTriggerCategoryId(activeTrigger.categoryId || null);
               setModelTriggerCategoryName(activeTrigger.categoryName || '');
             }
           }
         }
 
-        // Add Start and Finish nodes
-        const startNode: Node = {
-          id: 'start-node',
-          type: 'startNode',
-          position: { x: 100, y: 200 },
-          data: {},
-        };
-
-        const finishNode: Node = {
-          id: 'finish-node',
-          type: 'finishNode',
-          position: { x: 800, y: 200 },
-          data: {},
-        };
-
         // Convert workflow steps to nodes
-        if (workflow.steps && workflow.steps.length > 0) {
-          // Sort steps by stepOrder
-          const sortedSteps = [...workflow.steps].sort((a, b) => a.stepOrder - b.stepOrder);
-
-          const workflowNodes: Node[] = workflow.steps.map((step, index) => {
-            const nodeId = `step-${step.id}`;
-
-            // Store full entity objects from backend response
-            const assignmentsWithEntities = (step.assignments || []).map((a) => {
-              let entity = null;
-              let assigneeType: 'USER' | 'ROLE' | 'GROUP' = 'USER';
-
-              if (a.user) {
-                assigneeType = 'USER';
-                entity = a.user; // UserDto is already in the response
-              } else if (a.role) {
-                assigneeType = 'ROLE';
-                entity = a.role; // RoleDto is already in the response
-              } else if (a.group) {
-                assigneeType = 'GROUP';
-                entity = a.group; // GroupDto is already in the response
-              }
-
-              return {
-                assigneeType,
-                assigneeId: entity?.id || '',
-                entity: entity, // Store full entity object
-                canEdit: a.canEdit ?? true, // Preserve canEdit permission
-              };
-            });
-
-            return {
-              id: nodeId,
-              type: 'workflowStep',
-              position: { x: 300 + index * 200, y: 200 },
-              data: {
-                label: step.name,
-                description: step.description || '',
-                stepId: step.id,
-                assignments: assignmentsWithEntities,
-                expirationDays: step.expirationDays || 0,
-                onCompleteAction: step.onCompleteAction || 'NONE',
-                targetFolderId: step.targetFolderId,
-                targetFolderName: step.targetFolderName,
-                isRequired: step.isRequired ?? true,
-                allowParallelApproval: step.allowParallelApproval ?? false,
-                minApprovalsNeeded: step.minApprovalsNeeded,
-                priority: step.priority || 'MEDIUM',
-                isFirstStep: false,
-                onEdit: createEditHandler(nodeId),
-                onDelete: () => handleDeleteNode(nodeId),
-              },
-            };
-          });
-
-          // Set nodes with start, finish, and workflow steps
-          setNodes([startNode, ...workflowNodes, finishNode]);
-
-          // Create edges: start -> first step, steps in order, last step -> finish
-          const workflowEdges: Edge[] = [];
-
-          if (workflowNodes.length > 0) {
-            // Connect start to first step
-            workflowEdges.push({
-              id: 'edge-start-first',
-              source: 'start-node',
-              target: workflowNodes[0].id,
-              type: 'default',
-            });
-
-            // Connect steps in sequence
-            for (let i = 0; i < workflowNodes.length - 1; i++) {
-              workflowEdges.push({
-                id: `edge-${workflowNodes[i].id}-${workflowNodes[i + 1].id}`,
-                source: workflowNodes[i].id,
-                target: workflowNodes[i + 1].id,
-                type: 'default',
-              });
+        if (workflow.workflowDefinitionJson) {
+          // Restore from JSON if available (New Way)
+          try {
+            const definition = JSON.parse(workflow.workflowDefinitionJson);
+            if (definition.nodes && definition.edges) {
+              setNodes(definition.nodes.map((n: Node) => ({
+                ...n,
+                data: {
+                  ...n.data,
+                  onEdit: createEditHandler(n.id),
+                  onDelete: () => handleDeleteNode(n.id)
+                }
+              })));
+              setEdges(definition.edges);
+            } else {
+              loadLegacySteps(workflow);
             }
-
-            // Connect last step to finish
-            workflowEdges.push({
-              id: 'edge-last-finish',
-              source: workflowNodes[workflowNodes.length - 1].id,
-              target: 'finish-node',
-              type: 'default',
-            });
-          } else {
-            // No steps, just connect start to finish
-            workflowEdges.push({
-              id: 'edge-start-finish',
-              source: 'start-node',
-              target: 'finish-node',
-              type: 'default',
-            });
+          } catch (e) {
+            console.error("Failed to parse workflow definition JSON", e);
+            loadLegacySteps(workflow);
           }
-
-          setEdges(workflowEdges);
         } else {
-          // No steps, just start and finish with connecting edge
-          setNodes([startNode, finishNode]);
-          setEdges([{
-            id: 'edge-start-finish',
-            source: 'start-node',
-            target: 'finish-node',
-            type: 'default',
-          }]);
+          loadLegacySteps(workflow);
         }
       } catch (error) {
         if (!isMounted) return;
@@ -717,53 +881,191 @@ export default function WorkflowDesignerPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflowId]); // Only depend on workflowId
 
+  // ReactFlow refs for Drag and Drop
+  const reactFlowWrapper = useRef<HTMLDivElement>(null);
+
+  const onDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+  }, []);
+
+  const onDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault();
+
+      const type = event.dataTransfer.getData('application/reactflow/type');
+      const label = event.dataTransfer.getData('application/reactflow/label');
+
+      if (typeof type === 'undefined' || !type) {
+        return;
+      }
+
+      const position = reactFlowInstance.screenToFlowPosition({
+        x: event.clientX,
+        y: event.clientY,
+      });
+
+      const nodeId = `node_${Date.now()}`;
+      // Get backend node type from mapping
+      const backendNodeType = nodeTypeToBackendType[type] || 'APPROVAL';
+
+      const newNode: Node = {
+        id: nodeId,
+        type,
+        position,
+        data: {
+          label: label,
+          nodeType: backendNodeType, // Backend node type for API
+          onEdit: createEditHandler(nodeId),
+          onDelete: () => {
+            setNodes((nds) => nds.filter((n) => n.id !== nodeId));
+            setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
+          },
+        },
+      };
+
+      setNodes((nds) => nds.concat(newNode));
+
+      // Open appropriate modal based on node type
+      switch (type) {
+        case 'workflowStep':
+        case 'approvalNode': // Handle approval node same as workflow step
+        case 'firstStep':
+          setEditingStepData(newNode);
+          setShowStepModal(true);
+          break;
+        case 'delayNode':
+          setEditingNodeData(newNode);
+          setShowDelayModal(true);
+          break;
+        case 'stampNode':
+          setEditingNodeData(newNode);
+          setShowStampModal(true);
+          break;
+        case 'moveDocumentNode':
+          setEditingNodeData(newNode);
+          setShowMoveDocumentModal(true);
+          break;
+        case 'notificationNode':
+          setEditingNodeData(newNode);
+          setShowNotificationModal(true);
+          break;
+        case 'emailNode':
+          setEditingNodeData(newNode);
+          setShowEmailModal(true);
+          break;
+        case 'conditionalNode':
+          setEditingNodeData(newNode);
+          setShowConditionModal(true);
+          break;
+        case 'triggerNode':
+          setEditingNodeData(newNode);
+          setShowTriggerModal(true);
+          break;
+        case 'slaNode':
+          setEditingNodeData(newNode);
+          setShowSlaModal(true);
+          break;
+        case 'apiCallNode':
+          setEditingNodeData(newNode);
+          setShowApiCallModal(true);
+          break;
+        case 'subWorkflowNode':
+          setEditingNodeData(newNode);
+          setShowSubWorkflowModal(true);
+          break;
+        case 'setVariableNode':
+          setEditingNodeData(newNode);
+          setShowSetVariableModal(true);
+          break;
+        case 'archiveNode':
+          setEditingNodeData(newNode);
+          setShowArchiveModal(true);
+          break;
+        case 'deleteNode':
+          setEditingNodeData(newNode);
+          setShowDeleteModal(true);
+          break;
+        // New backend-aligned node types
+        case 'reviewNode':
+          setEditingNodeData(newNode);
+          setShowReviewModal(true);
+          break;
+        case 'manualTaskNode':
+          setEditingNodeData(newNode);
+          setShowManualTaskModal(true);
+          break;
+        case 'splitNode':
+          setEditingNodeData(newNode);
+          setShowSplitModal(true);
+          break;
+        case 'joinNode':
+          setEditingNodeData(newNode);
+          setShowJoinModal(true);
+          break;
+        case 'updateMetadataNode':
+          setEditingNodeData(newNode);
+          setShowUpdateMetadataModal(true);
+          break;
+        case 'changeStatusNode':
+          setEditingNodeData(newNode);
+          setShowChangeStatusModal(true);
+          break;
+        case 'newVersionNode':
+          setEditingNodeData(newNode);
+          setShowNewVersionModal(true);
+          break;
+        case 'lockDocumentNode':
+          setEditingNodeData(newNode);
+          setShowLockDocumentModal(true);
+          break;
+        case 'unlockDocumentNode':
+          setEditingNodeData(newNode);
+          setShowUnlockDocumentModal(true);
+          break;
+        case 'cancelNode':
+          setEditingNodeData(newNode);
+          setShowCancelModal(true);
+          break;
+        case 'errorHandlerNode':
+          setEditingNodeData(newNode);
+          setShowErrorHandlerModal(true);
+          break;
+        case 'getContextNode':
+          setEditingNodeData(newNode);
+          setShowGetContextModal(true);
+          break;
+        case 'scriptNode':
+          setEditingNodeData(newNode);
+          setShowScriptModal(true);
+          break;
+        case 'ocrNode':
+          setEditingNodeData(newNode);
+          setShowOcrModal(true);
+          break;
+      }
+    },
+    [setNodes, setEdges, reactFlowInstance, createEditHandler]
+  );
+
   const onConnect = useCallback(
     (params: Connection) => {
-      // Prevent self-connections
-      if (params.source === params.target) {
-        showError('Invalid Connection', 'A step cannot be connected to itself');
+      // Use hook validation for consistent checking
+      const validationResult = validateConnection(params);
+
+      if (!validationResult.valid) {
+        showError('Invalid Connection', validationResult.reason || 'Connection not allowed');
         return;
-      }
-
-      // Prevent connecting finish node as source
-      if (params.source === 'finish-node') {
-        showError('Invalid Connection', 'Cannot connect from Finish node');
-        return;
-      }
-
-      // Prevent connecting start node as target
-      if (params.target === 'start-node') {
-        showError('Invalid Connection', 'Cannot connect to Start node');
-        return;
-      }
-
-      // Check for loops - ensure forward connections only
-      const visited = new Set<string>();
-      const queue: string[] = [params.target];
-      visited.add(params.target);
-
-      while (queue.length > 0) {
-        const currentNodeId = queue.shift()!;
-        edges.forEach(edge => {
-          if (edge.source === currentNodeId && !visited.has(edge.target)) {
-            if (edge.target === params.source) {
-              showError('Invalid Connection', 'This connection would create a loop. Workflows must flow forward only.');
-              return;
-            }
-            visited.add(edge.target);
-            queue.push(edge.target);
-          }
-        });
       }
 
       setEdges((eds) => {
         // Remove the start-finish edge if connecting from start or to finish
         const filteredEdges = eds.filter(e => !(e.id === 'edge-start-finish' &&
           (params.source === 'start-node' || params.target === 'finish-node')));
-        return addEdge(params, filteredEdges);
+        return addEdge({ ...params, type: 'default' }, filteredEdges);
       });
     },
-    [setEdges, showError, edges]
+    [setEdges, showError, validateConnection]
   );
 
   // Initialize Start and Finish nodes on mount if creating new workflow
@@ -795,7 +1097,8 @@ export default function WorkflowDesignerPage() {
     }
   }, [workflowId, nodes.length, setNodes, setEdges]);
 
-  // Debounce folder search queries
+  // Handle saving workflow
+
   useEffect(() => {
     const timer = setTimeout(() => {
       setMyFoldersDebouncedQuery(myFoldersSearchQuery);
@@ -980,37 +1283,14 @@ export default function WorkflowDesignerPage() {
     });
   }, [setNodes, setEdges, nodes, showError]);
 
-  const handleAddStep = useCallback(() => {
-    const nodeId = `step-${Date.now()}`;
-    const newNode: Node = {
-      id: nodeId,
-      type: 'workflowStep',
-      position: {
-        x: Math.random() * 400 + 100,
-        y: Math.random() * 400 + 100,
-      },
-      data: {
-        label: `Step ${nodes.length}`,
-        description: '',
-        assignments: [],
-        expirationDays: 0,
-        onCompleteAction: 'NONE',
-        isRequired: true,
-        allowParallelApproval: false,
-        isFirstStep: false,
-        onEdit: createEditHandler(nodeId),
-        onDelete: () => handleDeleteNode(nodeId),
-      },
-    };
-    setNodes((nds) => [...nds, newNode]);
-    // Open modal to configure the new step
-    setEditingStepData(newNode);
-    setShowStepModal(true);
-  }, [nodes.length, setNodes, createEditHandler, handleDeleteNode]);
 
   const handleNodeClick = useCallback((_: any, node: Node) => {
-    // Don't open modal on node click, only on button click
+    // Don't open modal on single click
   }, []);
+
+  const handleNodeDoubleClick = useCallback((_: React.MouseEvent, node: Node) => {
+    createEditHandler(node.id)();
+  }, [createEditHandler]);
 
   const handleEditStep = useCallback((node: Node) => {
     setEditingStepData(node);
@@ -1205,15 +1485,20 @@ export default function WorkflowDesignerPage() {
       return;
     }
 
-    // Validate all steps have at least one assignment
-    const stepsWithoutAssignments = workflowSteps.filter(step => {
+    // Only approval type steps need assignments
+    // Include Review and Manual Task as they also require human assignment
+    const approvalStepTypes = ['workflowStep', 'firstStep', 'approvalNode', 'reviewNode', 'manualTaskNode'];
+    const approvalSteps = workflowSteps.filter(step => approvalStepTypes.includes(step.type || ''));
+
+    // Validate all APPROVAL/REVIEW/MANUAL steps have at least one assignment
+    const stepsWithoutAssignments = approvalSteps.filter(step => {
       const assignments = Array.isArray(step.data.assignments) ? step.data.assignments : [];
       return assignments.length === 0;
     });
 
     if (stepsWithoutAssignments.length > 0) {
       const stepNames = stepsWithoutAssignments.map(step => step.data.label || 'Unnamed step').join(', ');
-      showError('Validation Error', `All steps must have at least one assigned user. Please assign users to: ${stepNames}`);
+      showError('Validation Error', `The following steps require at least one assigned user/group: ${stepNames}`);
       return;
     }
 
@@ -1263,49 +1548,79 @@ export default function WorkflowDesignerPage() {
       return;
     }
 
-    // Check if all workflow steps are reachable from start
-    const allStepsReachable = workflowSteps.every(step => visited.has(step.id));
-    if (!allStepsReachable) {
-      showError('Validation Error', 'All steps must be connected between Start and Finish nodes');
+    // NEW: Validate that all nodes have their source (output) points connected
+    // Every node except finish nodes and trigger nodes must have at least one outgoing edge
+    const endNodeTypes = ['finishNode', 'endSuccessNode', 'endFailureNode', 'triggerNode'];
+    const nodesRequiringOutput = nodes.filter(n =>
+      !endNodeTypes.includes(n.type || '') && n.id !== 'finish-node'
+    );
+
+    const nodesWithoutOutput = nodesRequiringOutput.filter(node => {
+      const hasOutgoingEdge = edges.some(edge => edge.source === node.id);
+      return !hasOutgoingEdge;
+    });
+
+    if (nodesWithoutOutput.length > 0) {
+      const nodeNames = nodesWithoutOutput.map(n => n.data.label || n.type || 'Unnamed node').join(', ');
+      showError('Validation Error', `All nodes must have their output connected. Please connect: ${nodeNames}`);
+      return;
+    }
+
+    // Additional check: All non-finish nodes must eventually lead to finish
+    // Check that every reachable node can reach finish node (no dead ends)
+    const canReachFinish = new Set<string>();
+    const reverseQueue: string[] = ['finish-node'];
+    canReachFinish.add('finish-node');
+
+    while (reverseQueue.length > 0) {
+      const currentNodeId = reverseQueue.shift()!;
+      edges.forEach(edge => {
+        if (edge.target === currentNodeId && !canReachFinish.has(edge.source)) {
+          canReachFinish.add(edge.source);
+          reverseQueue.push(edge.source);
+        }
+      });
+    }
+
+    // Find nodes that are reachable from start but cannot reach finish (dead ends)
+    const deadEndNodes = nodes.filter(n =>
+      visited.has(n.id) && !canReachFinish.has(n.id) && !endNodeTypes.includes(n.type || '')
+    );
+
+    if (deadEndNodes.length > 0) {
+      const nodeNames = deadEndNodes.map(n => n.data.label || n.type || 'Unnamed node').join(', ');
+      showError('Validation Error', `Some nodes do not lead to the Finish node. Please connect: ${nodeNames}`);
       return;
     }
 
     setIsSaving(true);
     try {
-      // Convert workflow step nodes to workflow steps (exclude start/finish)
-      // Determine step order based on edges (topological sort from start)
+      // Build steps array with proper ordering based on edges
       const stepOrderMap = new Map<string, number>();
       const inDegree = new Map<string, number>();
 
-      // Initialize in-degree for workflow steps only
-      workflowSteps.forEach(node => {
-        inDegree.set(node.id, 0);
-      });
+      workflowSteps.forEach(node => inDegree.set(node.id, 0));
 
-      // Calculate in-degree (only count edges between workflow steps, not from/to start/finish)
       edges.forEach(edge => {
-        const sourceIsStep = workflowSteps.some(n => n.id === edge.source);
-        const targetIsStep = workflowSteps.some(n => n.id === edge.target);
-        if (sourceIsStep && targetIsStep) {
-          const current = inDegree.get(edge.target) || 0;
-          inDegree.set(edge.target, current + 1);
+        if (workflowSteps.some(n => n.id === edge.target)) {
+          inDegree.set(edge.target, (inDegree.get(edge.target) || 0) + 1);
         }
       });
 
       // Find steps with no incoming edges from other steps (connected from start)
-      const queue: string[] = [];
+      const sortQueue: string[] = [];
       workflowSteps.forEach(node => {
         const incomingFromSteps = edges.filter(e =>
           e.target === node.id && workflowSteps.some(n => n.id === e.source)
         ).length;
         if (incomingFromSteps === 0) {
-          queue.push(node.id);
+          sortQueue.push(node.id);
         }
       });
 
       let order = 1;
-      while (queue.length > 0) {
-        const nodeId = queue.shift()!;
+      while (sortQueue.length > 0) {
+        const nodeId = sortQueue.shift()!;
         stepOrderMap.set(nodeId, order++);
 
         // Find outgoing edges to other workflow steps
@@ -1316,17 +1631,17 @@ export default function WorkflowDesignerPage() {
               const targetInDegree = (inDegree.get(edge.target) || 0) - 1;
               inDegree.set(edge.target, targetInDegree);
               if (targetInDegree === 0) {
-                queue.push(edge.target);
+                sortQueue.push(edge.target);
               }
             }
           }
         });
       }
 
-      // If there are cycles or disconnected nodes, use index as fallback
+      // Handle cycles or disconnected components - assign remaining steps arbitrary order
       workflowSteps.forEach((node, index) => {
         if (!stepOrderMap.has(node.id)) {
-          stepOrderMap.set(node.id, index + 1);
+          stepOrderMap.set(node.id, order++);
         }
       });
 
@@ -1338,24 +1653,118 @@ export default function WorkflowDesignerPage() {
           canEdit: (a.canEdit as boolean) ?? true,
         }));
 
+        // Build node config json from various node-specific data
+        let nodeConfigJson: string | undefined = undefined;
+        const configData: Record<string, any> = {};
+
+        // For CONDITION nodes - include conditionGroups
+        if (node.data.conditionGroups) {
+          configData.conditionGroups = node.data.conditionGroups;
+          configData.conditionExpression = node.data.conditionExpression;
+        }
+
+        // For DELAY nodes - include delay config
+        if (node.data.delayDuration !== undefined) {
+          configData.delayDuration = node.data.delayDuration;
+          configData.delayUnit = node.data.delayUnit || 'hours';
+        }
+
+        // For MOVE_DOCUMENT nodes - include target folder
+        if (node.data.targetFolderId) {
+          configData.targetFolderId = node.data.targetFolderId;
+          configData.targetFolderName = node.data.targetFolderName;
+        }
+
+        // For TRIGGER nodes - include trigger config
+        if (node.data.triggerType) {
+          configData.triggerType = node.data.triggerType;
+          configData.triggerFolderId = node.data.triggerFolderId;
+          configData.triggerFolderName = node.data.triggerFolderName;
+          configData.triggerCategoryId = node.data.triggerCategoryId;
+          configData.triggerCategoryName = node.data.triggerCategoryName;
+        }
+
+        // For triggerConfig structure (from loaded nodes)
+        if (node.data.triggerConfig) {
+          configData.triggerType = node.data.triggerConfig.triggerType;
+          configData.triggerFolderId = node.data.triggerConfig.folderId;
+          configData.triggerFolderName = node.data.triggerConfig.folderName;
+          configData.triggerCategoryId = node.data.triggerConfig.categoryId;
+          configData.triggerCategoryName = node.data.triggerConfig.categoryName;
+        }
+
+        // For NOTIFICATION nodes - include recipients
+        if (node.data.recipients && node.data.recipients.length > 0) {
+          configData.recipients = node.data.recipients;
+          configData.notificationTitle = node.data.notificationTitle;
+          configData.notificationMessage = node.data.notificationMessage;
+          configData.subject = node.data.notificationSubject; // Review/Manual tasks also use this
+        }
+
+        // For Review and Manual Task special fields
+        if (node.data.allowComments !== undefined) configData.allowComments = node.data.allowComments;
+        if (node.data.instructions) configData.instructions = node.data.instructions;
+        if (node.data.notificationSubject) configData.notificationSubject = node.data.notificationSubject;
+
+        // For EMAIL nodes - include email recipients
+        if (node.data.emailRecipients && node.data.emailRecipients.length > 0) {
+          configData.emailRecipients = node.data.emailRecipients;
+          configData.ccRecipients = node.data.ccRecipients;
+          configData.emailSubject = node.data.emailSubject;
+          configData.emailBody = node.data.emailBody;
+          configData.attachDocument = node.data.attachDocument;
+        }
+
+        // For STAMP nodes - include stamp config
+        if (node.data.stampId) {
+          configData.stampId = node.data.stampId;
+          configData.stampName = node.data.stampName;
+          configData.stampPreviewUrl = node.data.stampPreviewUrl;
+        }
+
+        // For MOVE_DOCUMENT nodes - include destination folder (from modal)
+        if (node.data.destinationFolderId) {
+          configData.targetFolderId = node.data.destinationFolderId;
+          configData.targetFolderName = node.data.destinationFolderName;
+          configData.targetFolderPath = node.data.destinationFolderPath;
+        }
+
+        // Include any existing nodeConfig as fallback
+        if (node.data.nodeConfig) {
+          Object.assign(configData, typeof node.data.nodeConfig === 'string'
+            ? JSON.parse(node.data.nodeConfig)
+            : node.data.nodeConfig);
+        }
+
+        // Only serialize if there's config data
+        if (Object.keys(configData).length > 0) {
+          nodeConfigJson = JSON.stringify(configData);
+        }
+
         return {
+          id: node.data.id, // Should be present if editing
+          nodeId: node.id, // Frontend node ID for graph-based routing
           name: (node.data.label as string) || `Step ${stepOrder}`,
           description: (node.data.description as string) || '',
           stepOrder: stepOrder,
           expirationDays: (node.data.expirationDays as number) || undefined,
-          onCompleteAction: (node.data.onCompleteAction as 'NONE' | 'MOVE_TO_FOLDER' | 'NOTIFY_USERS' | 'COMPLETE_WORKFLOW') || 'NONE',
+          onCompleteAction: 'NONE', // Default for now
           targetFolderId: (node.data.targetFolderId as number) || undefined,
+          targetFolderName: (node.data.targetFolderName as string) || undefined,
           isRequired: (node.data.isRequired as boolean) ?? true,
           allowParallelApproval: (node.data.allowParallelApproval as boolean) ?? false,
           minApprovalsNeeded: (node.data.minApprovalsNeeded as number) || undefined,
           assignments: assignments,
+          nodeType: (node.data.nodeType as string) || nodeTypeToBackendType[node.type || ''] || 'APPROVAL',
+          nodeConfigJson: nodeConfigJson,
+          // Save position
+          positionX: Math.round(node.position.x),
+          positionY: Math.round(node.position.y),
         };
       });
 
       // Convert admins to request format
-      const admins = workflowAdmins.map(admin => ({
-        userId: admin.userId,
-      }));
+      const admins = workflowAdmins.map(admin => admin.userId);
 
       // Build trigger request (workflowId is set by backend)
       const trigger: AddWorkflowTriggerRequest = triggerType === 'FOLDER'
@@ -1368,16 +1777,26 @@ export default function WorkflowDesignerPage() {
           categoryId: modelTriggerCategoryId!,
         };
 
+      // Prepare Workflow Definition JSON (Visual Graph)
+      const workflowDefinition = {
+        nodes,
+        edges,
+        viewport: { x: 0, y: 0, zoom: 1 }
+      };
+
+      const commonPayload: CreateWorkflowRequest | UpdateWorkflowRequest = {
+        name: workflowName,
+        description: workflowDescription,
+        isActive,
+        steps,
+        admins: admins.length > 0 ? admins : undefined,
+        trigger,
+        workflowDefinitionJson: JSON.stringify(workflowDefinition)
+      };
+
       if (workflowId) {
         // Update existing workflow
-        const updatedWorkflow = await workflowService.updateWorkflow(Number(workflowId), {
-          name: workflowName,
-          description: workflowDescription,
-          isActive,
-          steps,
-          admins: admins.length > 0 ? admins : undefined,
-          trigger,
-        });
+        const updatedWorkflow = await workflowService.updateWorkflow(Number(workflowId), commonPayload as UpdateWorkflowRequest);
 
         // Store workflow ID for the apply changes dialog
         setWorkflowToApplyChanges(Number(workflowId));
@@ -1386,18 +1805,12 @@ export default function WorkflowDesignerPage() {
         return; // Will navigate after user makes decision
       } else {
         // Create new workflow
-        const newWorkflow = await workflowService.createWorkflow({
-          name: workflowName,
-          description: workflowDescription,
-          isActive,
-          steps,
-          admins: admins.length > 0 ? admins : undefined,
-          trigger,
-        });
+        const newWorkflow = await workflowService.createWorkflow(commonPayload as CreateWorkflowRequest);
         showSuccess('Workflow Created', 'Workflow created successfully');
+        // Route to edit mode of the new workflow
+        router.push(`/admin/workflow/designer?id=${newWorkflow.id}`);
       }
 
-      router.push('/admin/workflow');
     } catch (error: any) {
       console.error('Failed to save workflow:', error);
       showError('Save Failed', error?.response?.data?.message || 'Failed to save workflow');
@@ -1423,770 +1836,1233 @@ export default function WorkflowDesignerPage() {
   const proOptions = { hideAttribution: true };
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="bg-white border-b p-4 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => router.push('/admin/workflow')}
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back
-          </Button>
-          <div>
-            <h1 className="text-xl font-semibold flex items-center gap-2">
-              <Workflow className="h-5 w-5" />
-              {workflowId ? 'Edit Workflow' : 'Create New Workflow'}
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Design your workflow visually
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="default" className="bg-blue-500">
-            {nodes.filter(n => n.type !== 'startNode' && n.type !== 'finishNode').length} Steps
-          </Badge>
-          <Badge variant="outline">
-            {edges.length} Connections
-          </Badge>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleAddStep}
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Step
-          </Button>
-          <Button
-            onClick={handleSave}
-            disabled={
-              isSaving ||
-              !workflowName ||
-              workflowName.trim() === '' ||
-              nodes.filter(n => n.type !== 'startNode' && n.type !== 'finishNode').length === 0
-            }
-          >
-            <Save className="h-4 w-4 mr-2" />
-            {isSaving ? 'Saving...' : 'Save Workflow'}
-          </Button>
-        </div>
+    <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
+      <div className="flex-none border-b px-4 py-2 bg-white flex items-center justify-between z-10">
+        <TabsList>
+          <TabsTrigger value="designer">Designer</TabsTrigger>
+          <TabsTrigger value="instances">Instances</TabsTrigger>
+          <TabsTrigger value="history">History</TabsTrigger>
+          <TabsTrigger value="statistics">Statistics</TabsTrigger>
+        </TabsList>
       </div>
 
-      <div className="flex-1 flex">
-        {/* Sidebar - Workflow Properties */}
-        <Card className="w-80 border-r rounded-none">
-          <div className="p-4 space-y-4 h-full overflow-y-auto">
-            <div>
-              <h3 className="font-semibold mb-4">Workflow Properties</h3>
-
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="workflow-name">Name *</Label>
-                  <Input
-                    id="workflow-name"
-                    value={workflowName}
-                    onChange={(e) => setWorkflowName(e.target.value)}
-                    placeholder="Workflow name..."
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="workflow-description">Description</Label>
-                  <Textarea
-                    id="workflow-description"
-                    value={workflowDescription}
-                    onChange={(e) => setWorkflowDescription(e.target.value)}
-                    placeholder="Workflow description..."
-                    rows={3}
-                  />
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="is-active"
-                    checked={isActive}
-                    onChange={(e) => setIsActive(e.target.checked)}
-                    className="rounded"
-                  />
-                  <Label htmlFor="is-active" className="cursor-pointer">
-                    Active workflow
-                  </Label>
-                </div>
-              </div>
-            </div>
-
-            {/* Workflow Admins */}
-            <div className="border-t pt-4">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold">Workflow Admins</h3>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setEditingAdminIndex(null);
-                    setShowAdminModal(true);
-                  }}
-                >
-                  <Plus className="h-3 w-3 mr-1" />
-                  Add
-                </Button>
-              </div>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {workflowAdmins.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-2">
-                    No admins assigned
-                  </p>
-                ) : (
-                  workflowAdmins.map((admin, index) => (
-                    <div
-                      key={admin.userId}
-                      className="flex items-center justify-between p-2 border rounded-lg hover:bg-muted/50 transition-colors"
-                    >
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        {admin.user && (
-                          <UserAvatar user={admin.user as any} size="sm" />
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">
-                            {admin.user?.displayName || admin.user?.username || 'Unknown User'}
-                          </p>
-                          {admin.user?.email && (
-                            <p className="text-xs text-muted-foreground truncate">
-                              {admin.user.email}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() => {
-                              setEditingAdminIndex(index);
-                              setShowAdminModal(true);
-                            }}
-                          >
-                            <Edit className="h-4 w-4 mr-2" />
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => {
-                              setWorkflowAdmins(workflowAdmins.filter((_, i) => i !== index));
-                            }}
-                            className="text-destructive"
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Remove
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            {/* Workflow Triggers */}
-            <div className="border-t pt-4">
-              <h3 className="font-semibold mb-4">Workflow Triggers *</h3>
-
-              {/* Radio Button Selection */}
-              <div className="space-y-3 mb-4">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    id="trigger-folder"
-                    name="trigger-type"
-                    checked={triggerType === 'FOLDER'}
-                    onChange={() => {
-                      setTriggerType('FOLDER');
-                      // Clear model trigger when switching to folder
-                      setModelTriggerCategoryId(null);
-                      setModelTriggerCategoryName('');
-                      setModelSearchQuery('');
-                      setShowModelSearch(false);
-                    }}
-                    className="w-4 h-4 text-blue-600"
-                  />
-                  <Label htmlFor="trigger-folder" className="cursor-pointer font-medium">
-                    Start on Folder
-                  </Label>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    id="trigger-model"
-                    name="trigger-type"
-                    checked={triggerType === 'MODEL'}
-                    onChange={() => {
-                      setTriggerType('MODEL');
-                      // Clear folder trigger when switching to model
-                      setFolderTriggerFolderId(null);
-                      setFolderTriggerFolderName('');
-                    }}
-                    className="w-4 h-4 text-blue-600"
-                  />
-                  <Label htmlFor="trigger-model" className="cursor-pointer font-medium">
-                    Start on Model
-                  </Label>
-                </div>
-              </div>
-
-              {/* Folder Trigger */}
-              {triggerType === 'FOLDER' && (
-                <div className="space-y-2 mb-4">
-                  <Label className="text-sm font-medium">Select Folder *</Label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      value={folderTriggerFolderName || 'No folder selected'}
-                      readOnly
-                      placeholder="Select folder..."
-                      className="flex-1"
-                    />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowFolderPicker(true)}
-                    >
-                      <Folder className="h-4 w-4 mr-1" />
-                      {folderTriggerFolderId ? 'Change' : 'Select'}
-                    </Button>
-                    {folderTriggerFolderId && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setFolderTriggerFolderId(null);
-                          setFolderTriggerFolderName('');
-                        }}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Start workflow when document is uploaded or moved to this folder
-                  </p>
-                </div>
-              )}
-
-              {/* Model Trigger */}
-              {triggerType === 'MODEL' && (
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">Select Model *</Label>
-                  <div className="relative model-search-container">
-                    <ServerSearchInput
-                      value={modelSearchQuery}
-                      onChange={(value) => {
-                        setModelSearchQuery(value);
-                        setShowModelSearch(true);
-                      }}
-                      onFocus={() => {
-                        setShowModelSearch(true);
-                        if (modelSearchQuery === '' && displayCategories.length === 0) {
-                          fetchCategories();
-                        }
-                      }}
-                      placeholder={modelTriggerCategoryName || "Search models..."}
-                      className="w-full"
-                    />
-                    {showModelSearch && (
-                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                        {modelSearchLoading ? (
-                          <div className="flex items-center justify-center p-4">
-                            <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
-                          </div>
-                        ) : displayCategories.length > 0 ? (
-                          displayCategories.map((category) => (
-                            <button
-                              key={category.id}
-                              type="button"
-                              onClick={() => {
-                                setModelTriggerCategoryId(category.id);
-                                setModelTriggerCategoryName(category.name);
-                                setModelSearchQuery('');
-                                setShowModelSearch(false);
-                              }}
-                              className="w-full px-4 py-2 text-left text-sm text-gray-900 hover:bg-gray-50 focus:bg-gray-50 focus:outline-none border-b border-gray-200 last:border-b-0"
-                            >
-                              <div className="font-medium">{category.name}</div>
-                              {category.description && (
-                                <div className="text-xs text-gray-500">{category.description}</div>
-                              )}
-                            </button>
-                          ))
-                        ) : (
-                          <div className="p-4 text-center text-gray-500 text-sm">No models found</div>
-                        )}
-                      </div>
-                    )}
-                    {modelTriggerCategoryId && (
-                      <div className="mt-2 flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
-                        <span className="text-sm font-medium flex-1">{modelTriggerCategoryName}</span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setModelTriggerCategoryId(null);
-                            setModelTriggerCategoryName('');
-                            setModelSearchQuery('');
-                          }}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Start workflow when document uses this filing category
-                  </p>
-                </div>
-              )}
-
-              {/* Display Current Trigger Info */}
-              {workflowId && triggerType && (
-                <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Shield className="h-4 w-4 text-blue-600" />
-                    <span className="text-sm font-semibold text-blue-900">Current Trigger</span>
-                  </div>
-                  <div className="text-sm text-blue-800">
-                    {triggerType === 'FOLDER' && folderTriggerFolderName && (
-                      <div>
-                        <span className="font-medium">Type:</span> Folder
-                        <br />
-                        <span className="font-medium">Folder:</span> {folderTriggerFolderName}
-                      </div>
-                    )}
-                    {triggerType === 'MODEL' && modelTriggerCategoryName && (
-                      <div>
-                        <span className="font-medium">Type:</span> Model
-                        <br />
-                        <span className="font-medium">Model:</span> {modelTriggerCategoryName}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Workflow Stats */}
-            <div className="border-t pt-4">
-              <h3 className="font-semibold mb-4">Statistics</h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Total Steps:</span>
-                  <span className="font-medium">{nodes.filter(n => n.type !== 'startNode' && n.type !== 'finishNode').length}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Connections:</span>
-                  <span className="font-medium">{edges.length}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Admins:</span>
-                  <span className="font-medium">{workflowAdmins.length}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        {/* Main Canvas */}
-        <div className="flex-1 bg-gray-50">
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            onNodeClick={handleNodeClick}
-            nodeTypes={nodeTypes}
-            fitView
-            proOptions={proOptions}
-            connectionLineStyle={{ stroke: '#3b82f6', strokeWidth: 3 }}
-            defaultEdgeOptions={{
-              type: 'smoothstep',
-              animated: false,
-              style: { stroke: '#3b82f6', strokeWidth: 3 },
-            }}
-            edgeTypes={edgeTypes}
-          >
-            <Controls />
-            <MiniMap />
-            <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
-          </ReactFlow>
-        </div>
-      </div>
-
-      {/* Step Configuration Modal */}
-      {editingStepData && (
-        <WorkflowStepConfigModal
-          isOpen={showStepModal}
-          onClose={() => {
-            setShowStepModal(false);
-            setEditingStepData(null);
-          }}
-          stepData={{
-            id: editingStepData.id,
-            label: editingStepData.data.label || '',
-            description: editingStepData.data.description || '',
-            assignments: editingStepData.data.assignments?.map((a: any) => ({
-              assigneeType: a.assigneeType || (a.entity && ('username' in a.entity) ? 'USER' : ('userCount' in a.entity) ? 'GROUP' : 'ROLE'),
-              assigneeId: a.assigneeId || a.entity?.id,
-              entity: a.entity, // Pass full entity object if available
-            })) || [],
-            expirationDays: editingStepData.data.expirationDays,
-            onCompleteAction: editingStepData.data.onCompleteAction,
-            targetFolderId: editingStepData.data.targetFolderId,
-            targetFolderName: editingStepData.data.targetFolderName,
-            isRequired: editingStepData.data.isRequired,
-            allowParallelApproval: editingStepData.data.allowParallelApproval,
-            minApprovalsNeeded: editingStepData.data.minApprovalsNeeded,
-          }}
-          onSave={handleStepSave}
-        />
-      )}
-
-      {/* Folder Picker Modal */}
-      {showFolderPicker && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between p-6 border-b">
-              <h3 className="text-lg font-semibold">Select Folder for Workflow Trigger</h3>
-              <button
-                onClick={() => {
-                  setShowFolderPicker(false);
-                  setMyFoldersCurrentFolderId(null);
-                  setMyFoldersBreadcrumbs([]);
-                  setMyFoldersSearchQuery('');
-                  setSharedCurrentFolderId(null);
-                  setSharedBreadcrumbs([]);
-                  setSharedSearchQuery('');
-                }}
-                className="w-10 h-10 rounded-xl hover:bg-gray-100 flex items-center justify-center"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-6">
-              {/* Tab Selection */}
-              <div className="flex gap-2 border-b mb-4">
+      <TabsContent value="designer" className="flex-1 overflow-hidden data-[state=inactive]:hidden mt-0 border-0 p-0" forceMount>
+        <div className="h-full flex flex-col">
+          <div className="flex-1 flex overflow-hidden">
+            {/* Combined Sidebar with Tabs */}
+            <Card className="w-80 border-r rounded-none flex flex-col">
+              {/* Tab Buttons */}
+              <div className="flex border-b">
                 <button
-                  onClick={() => setFolderActiveTab('folders')}
-                  className={`px-4 py-2 font-medium text-sm transition-colors border-b-2 ${folderActiveTab === 'folders'
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                  onClick={() => setSidebarTab('properties')}
+                  className={`flex-1 flex items-center justify-center p-3 border-b-2 transition-colors ${sidebarTab === 'properties'
+                    ? 'border-blue-500 text-blue-600 bg-blue-50/50'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
                     }`}
                 >
-                  <div className="flex items-center gap-2">
-                    <Folder className="h-4 w-4" />
-                    My Folders
+                  <div className="flex flex-col items-center gap-1">
+                    <span className="font-medium text-sm">Properties</span>
                   </div>
                 </button>
                 <button
-                  onClick={() => setFolderActiveTab('shared')}
-                  className={`px-4 py-2 font-medium text-sm transition-colors border-b-2 ${folderActiveTab === 'shared'
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                  onClick={() => setSidebarTab('nodes')}
+                  className={`flex-1 flex items-center justify-center p-3 border-b-2 transition-colors ${sidebarTab === 'nodes'
+                    ? 'border-blue-500 text-blue-600 bg-blue-50/50'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
                     }`}
                 >
-                  <div className="flex items-center gap-2">
-                    <Share2 className="h-4 w-4" />
-                    Shared with Me
+                  <div className="flex flex-col items-center gap-1">
+                    <span className="font-medium text-sm">Nodes</span>
                   </div>
                 </button>
+                <div className="p-2 border-l flex items-center">
+                  <Button
+                    size="sm"
+                    className="w-full h-full"
+                    onClick={handleSave}
+                    disabled={isSaving}
+                  >
+                    <Save className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
 
               {/* Tab Content */}
-              {folderActiveTab === 'folders' ? (
-                <div className="flex flex-col border rounded-lg overflow-hidden">
-                  {/* Search Bar */}
-                  <div className="p-3 border-b bg-gray-50">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                      <Input
-                        value={myFoldersSearchQuery}
-                        onChange={(e) => setMyFoldersSearchQuery(e.target.value)}
-                        placeholder="Search folders..."
-                        className="pl-10"
-                      />
+              <div className="flex-1 overflow-y-auto">
+                {sidebarTab === 'properties' ? (
+                  <div className="p-4 space-y-4">
+                    <div>
+                      <h3 className="font-semibold mb-4">Workflow Properties</h3>
+
+                      <div className="space-y-4">
+                        <div>
+                          <Label htmlFor="workflow-name">Name *</Label>
+                          <Input
+                            id="workflow-name"
+                            value={workflowName}
+                            onChange={(e) => setWorkflowName(e.target.value)}
+                            placeholder="Workflow name..."
+                          />
+                        </div>
+
+                        <div>
+                          <Label htmlFor="workflow-description">Description</Label>
+                          <Textarea
+                            id="workflow-description"
+                            value={workflowDescription}
+                            onChange={(e) => setWorkflowDescription(e.target.value)}
+                            placeholder="Workflow description..."
+                            rows={3}
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            id="is-active"
+                            checked={isActive}
+                            onChange={(e) => setIsActive(e.target.checked)}
+                            className="rounded"
+                          />
+                          <Label htmlFor="is-active" className="cursor-pointer">
+                            Active workflow
+                          </Label>
+                        </div>
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Breadcrumb Navigation */}
-                  <div className="p-3 border-b bg-white flex items-center gap-2 text-sm overflow-x-auto">
-                    <button
-                      onClick={() => navigateMyFoldersBreadcrumb(null)}
-                      className={`flex items-center gap-1 px-2 py-1 rounded transition-colors flex-shrink-0 ${myFoldersCurrentFolderId === null
-                        ? 'font-medium text-blue-600'
-                        : 'hover:bg-gray-100 text-gray-700'
-                        }`}
-                    >
-                      <Home className="h-4 w-4" />
-                      <span>Root</span>
-                    </button>
-
-                    {myFoldersBreadcrumbs.map((crumb, index) => (
-                      <div key={`${crumb.id}-${index}`} className="flex items-center gap-2 flex-shrink-0">
-                        <ChevronRight className="h-4 w-4 text-gray-400" />
-                        <button
-                          onClick={() => navigateMyFoldersBreadcrumb(crumb.id, index)}
-                          className={`px-2 py-1 rounded transition-colors truncate max-w-[150px] ${index === myFoldersBreadcrumbs.length - 1 && myFoldersCurrentFolderId === crumb.id
-                            ? 'font-medium text-blue-600'
-                            : 'hover:bg-gray-100 text-gray-700'
-                            }`}
-                          title={crumb.name}
+                    {/* Workflow Admins */}
+                    <div className="border-t pt-4">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="font-semibold">Workflow Admins</h3>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setEditingAdminIndex(null);
+                            setShowAdminModal(true);
+                          }}
                         >
-                          {crumb.name}
-                        </button>
+                          <Plus className="h-3 w-3 mr-1" />
+                          Add
+                        </Button>
                       </div>
-                    ))}
-                  </div>
-
-                  {/* Folders List */}
-                  <div className="flex-1 overflow-y-auto bg-white min-h-[300px] max-h-[400px]">
-                    {myFoldersLoading ? (
-                      <div className="flex items-center justify-center p-8">
-                        <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
-                      </div>
-                    ) : myFoldersData && myFoldersData.folders && myFoldersData.folders.length > 0 ? (
-                      <div className="p-2">
-                        {myFoldersData.folders.map((folder) => {
-                          const isSelected = folderTriggerFolderId === folder.id;
-                          return (
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {workflowAdmins.length === 0 ? (
+                          <p className="text-sm text-muted-foreground text-center py-2">
+                            No admins assigned
+                          </p>
+                        ) : (
+                          workflowAdmins.map((admin, index) => (
                             <div
-                              key={folder.id}
-                              className={`flex items-center py-2 px-3 rounded-md transition-colors ${isSelected
-                                ? 'bg-blue-100 border border-blue-300'
-                                : 'hover:bg-gray-100'
-                                }`}
+                              key={admin.userId}
+                              className="flex items-center justify-between p-2 border rounded-lg hover:bg-muted/50 transition-colors"
                             >
-                              <Folder className="h-4 w-4 mr-2 text-blue-500" />
-
-                              <div
-                                className="flex-1 min-w-0 cursor-pointer"
-                                onClick={() => handleFolderSelect(folder.id, folder.name)}
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                {admin.user && (
+                                  <UserAvatar user={admin.user as any} size="sm" />
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium truncate">
+                                    {admin.user?.displayName || admin.user?.username || 'Unknown User'}
+                                  </p>
+                                  {admin.user?.email && (
+                                    <p className="text-xs text-muted-foreground truncate">
+                                      {admin.user.email}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive hover:text-destructive hover:bg-destructive/10 h-8 w-8 p-0"
+                                onClick={() => {
+                                  setWorkflowAdmins(workflowAdmins.filter((_, i) => i !== index));
+                                }}
                               >
-                                <div className="text-sm truncate">{folder.name}</div>
-                                {folder.description && (
-                                  <div className="text-xs text-gray-500 mt-1 truncate">{folder.description}</div>
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Workflow Triggers */}
+                    <div className="border-t pt-4">
+                      <h3 className="font-semibold mb-4">Workflow Triggers *</h3>
+
+                      {/* Radio Button Selection */}
+                      <div className="space-y-3 mb-4">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            id="trigger-folder"
+                            name="trigger-type"
+                            checked={triggerType === 'FOLDER'}
+                            onChange={() => {
+                              setTriggerType('FOLDER');
+                              // Clear model trigger when switching to folder
+                              setModelTriggerCategoryId(null);
+                              setModelTriggerCategoryName('');
+                              setModelSearchQuery('');
+                              setShowModelSearch(false);
+                            }}
+                            className="w-4 h-4 text-blue-600"
+                          />
+                          <Label htmlFor="trigger-folder" className="cursor-pointer font-medium">
+                            Start on Folder
+                          </Label>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            id="trigger-model"
+                            name="trigger-type"
+                            checked={triggerType === 'MODEL'}
+                            onChange={() => {
+                              setTriggerType('MODEL');
+                              // Clear folder trigger when switching to model
+                              setFolderTriggerFolderId(null);
+                              setFolderTriggerFolderName('');
+                            }}
+                            className="w-4 h-4 text-blue-600"
+                          />
+                          <Label htmlFor="trigger-model" className="cursor-pointer font-medium">
+                            Start on Model
+                          </Label>
+                        </div>
+                      </div>
+
+                      {/* Folder Trigger */}
+                      {triggerType === 'FOLDER' && (
+                        <div className="space-y-2 mb-4">
+                          <Label className="text-sm font-medium">Select Folder *</Label>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              value={folderTriggerFolderName || 'No folder selected'}
+                              readOnly
+                              placeholder="Select folder..."
+                              className="flex-1"
+                            />
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setShowFolderPicker(true)}
+                            >
+                              <Folder className="h-4 w-4 mr-1" />
+                              {folderTriggerFolderId ? 'Change' : 'Select'}
+                            </Button>
+                            {folderTriggerFolderId && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setFolderTriggerFolderId(null);
+                                  setFolderTriggerFolderName('');
+                                }}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Start workflow when document is uploaded or moved to this folder
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Model Trigger */}
+                      {triggerType === 'MODEL' && (
+                        <div className="space-y-2">
+                          <Label className="text-sm font-medium">Select Model *</Label>
+                          <div className="relative model-search-container">
+                            <ServerSearchInput
+                              value={modelSearchQuery}
+                              onChange={(value) => {
+                                setModelSearchQuery(value);
+                                setShowModelSearch(true);
+                              }}
+                              onFocus={() => {
+                                setShowModelSearch(true);
+                                if (modelSearchQuery === '' && displayCategories.length === 0) {
+                                  fetchCategories();
+                                }
+                              }}
+                              placeholder={modelTriggerCategoryName || "Search models..."}
+                              className="w-full"
+                            />
+                            {showModelSearch && (
+                              <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                                {modelSearchLoading ? (
+                                  <div className="flex items-center justify-center p-4">
+                                    <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                                  </div>
+                                ) : displayCategories.length > 0 ? (
+                                  displayCategories.map((category) => (
+                                    <button
+                                      key={category.id}
+                                      type="button"
+                                      onClick={() => {
+                                        setModelTriggerCategoryId(category.id);
+                                        setModelTriggerCategoryName(category.name);
+                                        setModelSearchQuery('');
+                                        setShowModelSearch(false);
+                                      }}
+                                      className="w-full px-4 py-2 text-left text-sm text-gray-900 hover:bg-gray-50 focus:bg-gray-50 focus:outline-none border-b border-gray-200 last:border-b-0"
+                                    >
+                                      <div className="font-medium">{category.name}</div>
+                                      {category.description && (
+                                        <div className="text-xs text-gray-500">{category.description}</div>
+                                      )}
+                                    </button>
+                                  ))
+                                ) : (
+                                  <div className="p-4 text-center text-gray-500 text-sm">No models found</div>
                                 )}
                               </div>
-
-                              {isSelected && (
-                                <Check className="h-4 w-4 text-blue-600 flex-shrink-0 mr-2" />
-                              )}
-
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  navigateToMyFolder(folder.id, folder.name);
-                                }}
-                                className="ml-2 p-1 hover:bg-gray-200 rounded transition-colors"
-                                title="Navigate into folder"
-                              >
-                                <ChevronRight className="h-4 w-4 text-gray-600" />
-                              </button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="p-4 text-center text-gray-500">No folders found</div>
-                    )}
-                  </div>
-
-                  {/* Pagination */}
-                  {myFoldersData && myFoldersData.totalPages > 1 && (
-                    <div className="p-3 border-t bg-gray-50">
-                      <Pagination
-                        currentPage={myFoldersCurrentPage}
-                        totalPages={myFoldersData.totalPages}
-                        totalElements={myFoldersData.totalElements || 0}
-                        pageSize={myFoldersPageSize}
-                        onPageChange={setMyFoldersCurrentPage}
-                      />
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="flex flex-col border rounded-lg overflow-hidden">
-                  {/* Search Bar */}
-                  <div className="p-3 border-b bg-gray-50">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                      <Input
-                        value={sharedSearchQuery}
-                        onChange={(e) => setSharedSearchQuery(e.target.value)}
-                        placeholder="Search shared folders..."
-                        className="pl-10"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Breadcrumb Navigation */}
-                  <div className="p-3 border-b bg-white flex items-center gap-2 text-sm overflow-x-auto">
-                    <button
-                      onClick={() => navigateSharedBreadcrumb(null)}
-                      className={`flex items-center gap-1 px-2 py-1 rounded transition-colors flex-shrink-0 ${sharedCurrentFolderId === null
-                        ? 'font-medium text-blue-600'
-                        : 'hover:bg-gray-100 text-gray-700'
-                        }`}
-                    >
-                      <Home className="h-4 w-4" />
-                      <span>Root</span>
-                    </button>
-
-                    {sharedBreadcrumbs.map((crumb, index) => (
-                      <div key={`${crumb.id}-${index}`} className="flex items-center gap-2 flex-shrink-0">
-                        <ChevronRight className="h-4 w-4 text-gray-400" />
-                        <button
-                          onClick={() => navigateSharedBreadcrumb(crumb.id, index)}
-                          className={`px-2 py-1 rounded transition-colors truncate max-w-[150px] ${index === sharedBreadcrumbs.length - 1 && sharedCurrentFolderId === crumb.id
-                            ? 'font-medium text-blue-600'
-                            : 'hover:bg-gray-100 text-gray-700'
-                            }`}
-                          title={crumb.name}
-                        >
-                          {crumb.name}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Folders List */}
-                  <div className="flex-1 overflow-y-auto bg-white min-h-[300px] max-h-[400px]">
-                    {sharedLoading ? (
-                      <div className="flex items-center justify-center p-8">
-                        <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
-                      </div>
-                    ) : sharedData && sharedData.folders && sharedData.folders.length > 0 ? (
-                      <div className="p-2">
-                        {sharedData.folders.map((folder) => {
-                          const isSelected = folderTriggerFolderId === folder.id;
-                          return (
-                            <div
-                              key={folder.id}
-                              className={`flex items-center py-2 px-3 rounded-md transition-colors ${isSelected
-                                ? 'bg-blue-100 border border-blue-300'
-                                : 'hover:bg-gray-100'
-                                }`}
-                            >
-                              <Folder className="h-4 w-4 mr-2 text-blue-500" />
-
-                              <div
-                                className="flex-1 min-w-0 cursor-pointer"
-                                onClick={() => handleFolderSelect(folder.id, folder.name)}
-                              >
-                                <div className="text-sm truncate">{folder.name}</div>
-                                {folder.description && (
-                                  <div className="text-xs text-gray-500 mt-1 truncate">{folder.description}</div>
-                                )}
+                            )}
+                            {modelTriggerCategoryId && (
+                              <div className="mt-2 flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                                <span className="text-sm font-medium flex-1">{modelTriggerCategoryName}</span>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setModelTriggerCategoryId(null);
+                                    setModelTriggerCategoryName('');
+                                    setModelSearchQuery('');
+                                  }}
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
                               </div>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Start workflow when document uses this filing category
+                          </p>
+                        </div>
+                      )}
 
-                              {isSelected && (
-                                <Check className="h-4 w-4 text-blue-600 flex-shrink-0 mr-2" />
-                              )}
-
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  navigateToSharedFolder(folder.id, folder.name);
-                                }}
-                                className="ml-2 p-1 hover:bg-gray-200 rounded transition-colors"
-                                title="Navigate into folder"
-                              >
-                                <ChevronRight className="h-4 w-4 text-gray-600" />
-                              </button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="p-4 text-center text-gray-500">No folders found</div>
-                    )}
-                  </div>
-
-                  {/* Pagination */}
-                  {sharedData && sharedData.totalPages > 1 && (
-                    <div className="p-3 border-t bg-gray-50">
-                      <Pagination
-                        currentPage={sharedCurrentPage}
-                        totalPages={sharedData.totalPages}
-                        totalElements={sharedData.totalElements || 0}
-                        pageSize={sharedPageSize}
-                        onPageChange={setSharedCurrentPage}
-                      />
+                      {/* Display Current Trigger Info */}
+                      {workflowId && triggerType && (
+                        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Shield className="h-4 w-4 text-blue-600" />
+                            <span className="text-sm font-semibold text-blue-900">Current Trigger</span>
+                          </div>
+                          <div className="text-sm text-blue-800">
+                            {triggerType === 'FOLDER' && folderTriggerFolderName && (
+                              <div>
+                                <span className="font-medium">Type:</span> Folder
+                                <br />
+                                <span className="font-medium">Folder:</span> {folderTriggerFolderName}
+                              </div>
+                            )}
+                            {triggerType === 'MODEL' && modelTriggerCategoryName && (
+                              <div>
+                                <span className="font-medium">Type:</span> Model
+                                <br />
+                                <span className="font-medium">Model:</span> {modelTriggerCategoryName}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* Admin Management Modal */}
-      <WorkflowAdminModal
-        isOpen={showAdminModal}
-        onClose={() => {
-          setShowAdminModal(false);
-          setEditingAdminIndex(null);
-        }}
-        onSave={async (data) => {
-          if (editingAdminIndex !== null) {
-            // Update existing admin
-            const updatedAdmin = { ...workflowAdmins[editingAdminIndex], ...data };
-            // Try to preserve user object if available
-            if (workflowAdmins[editingAdminIndex].user) {
-              updatedAdmin.user = workflowAdmins[editingAdminIndex].user;
-            }
-            setWorkflowAdmins(workflowAdmins.map((admin, index) =>
-              index === editingAdminIndex ? updatedAdmin : admin
-            ));
-          } else {
-            // Add new admin - need to fetch user details
-            try {
-              const user = await notificationApiClient.getUserById(data.userId, { silent: true });
-              setWorkflowAdmins([...workflowAdmins, { ...data, user }]);
-            } catch (error) {
-              console.error('Failed to load user:', error);
-              // Add without user details, will be loaded later
-              setWorkflowAdmins([...workflowAdmins, data]);
-            }
+                    {/* Workflow Stats */}
+                    <div className="border-t pt-4">
+                      <h3 className="font-semibold mb-4">Statistics</h3>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Total Steps:</span>
+                          <span className="font-medium">{nodes.filter(n => n.type !== 'startNode' && n.type !== 'finishNode').length}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Connections:</span>
+                          <span className="font-medium">{edges.length}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Admins:</span>
+                          <span className="font-medium">{workflowAdmins.length}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* Add Nodes Tab Content */
+                  <NodesPalette
+                    searchQuery={nodeSearchQuery}
+                    onSearchChange={setNodeSearchQuery}
+                  />
+                )}
+              </div>
+            </Card>
+
+            <ReactFlowProvider>
+              <div className="flex-1 flex h-full overflow-hidden">
+                {/* Main Canvas */}
+                <div className="flex-1 h-full relative" ref={reactFlowWrapper}>
+                  <ReactFlow
+                    nodes={nodes}
+                    edges={edges}
+                    onNodesChange={onNodesChange}
+                    onEdgesChange={onEdgesChange}
+                    onConnect={onConnect}
+                    onInit={setReactFlowInstance}
+                    onDrop={onDrop}
+                    onDragOver={onDragOver}
+                    onNodeClick={handleNodeClick}
+                    onNodeDoubleClick={handleNodeDoubleClick}
+                    nodeTypes={nodeTypes}
+                    edgeTypes={edgeTypes}
+                    connectionMode={ConnectionMode.Strict}
+                    connectionLineType={ConnectionLineType.Bezier}
+                    connectionRadius={30}
+                    isValidConnection={canConnect}
+                    fitView
+                    attributionPosition="bottom-right"
+                    className="bg-gray-50"
+                    proOptions={proOptions}
+                    connectionLineStyle={{ stroke: '#3b82f6', strokeWidth: 4, strokeDasharray: '5,5' }}
+                    defaultEdgeOptions={{
+                      type: 'default',
+                      animated: false,
+                      style: { stroke: '#3b82f6', strokeWidth: 4 },
+                    }}
+                    // Disable interactions when any modal is open to prevent events leaking through
+                    nodesDraggable={!isAnyModalOpen}
+                    nodesConnectable={!isAnyModalOpen}
+                    elementsSelectable={!isAnyModalOpen}
+                    panOnDrag={!isAnyModalOpen}
+                    zoomOnScroll={!isAnyModalOpen}
+                  >
+                    <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
+                    <Controls />
+                    <MiniMap />
+                  </ReactFlow>
+                  {/* Validation Panel */}
+                  <ValidationPanel
+                    errors={validationErrors}
+                    isValid={isWorkflowValid}
+                    onNodeClick={(nodeId) => {
+                      const node = nodes.find(n => n.id === nodeId);
+                      if (node && reactFlowInstance) {
+                        reactFlowInstance.setCenter(node.position.x + 100, node.position.y + 50, { zoom: 1.5, duration: 500 });
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+            </ReactFlowProvider>
+          </div >
+
+          {/* Step Configuration Modal */}
+          {
+            editingStepData && (
+              <WorkflowStepConfigModal
+                isOpen={showStepModal}
+                onClose={() => {
+                  setShowStepModal(false);
+                  setEditingStepData(null);
+                }}
+                stepData={{
+                  id: editingStepData.id,
+                  label: editingStepData.data.label || '',
+                  description: editingStepData.data.description || '',
+                  assignments: editingStepData.data.assignments?.map((a: any) => ({
+                    assigneeType: a.assigneeType || (a.entity && ('username' in a.entity) ? 'USER' : ('userCount' in a.entity) ? 'GROUP' : 'ROLE'),
+                    assigneeId: a.assigneeId || a.entity?.id,
+                    entity: a.entity, // Pass full entity object if available
+                  })) || [],
+                  expirationDays: editingStepData.data.expirationDays,
+                  onCompleteAction: editingStepData.data.onCompleteAction,
+                  targetFolderId: editingStepData.data.targetFolderId,
+                  targetFolderName: editingStepData.data.targetFolderName,
+                  isRequired: editingStepData.data.isRequired,
+                  allowParallelApproval: editingStepData.data.allowParallelApproval,
+                  minApprovalsNeeded: editingStepData.data.minApprovalsNeeded,
+                }}
+                onSave={handleStepSave}
+              />
+            )
           }
-          setShowAdminModal(false);
-          setEditingAdminIndex(null);
-        }}
-        editingAdmin={editingAdminIndex !== null ? {
-          id: 0,
-          user: workflowAdmins[editingAdminIndex]?.user || { id: workflowAdmins[editingAdminIndex].userId } as any,
-        } : null}
-        existingAdminUserIds={workflowAdmins.map(a => a.userId)}
-      />
 
-      {/* Apply Workflow Changes Dialog */}
-      <ApplyWorkflowChangesDialog
-        isOpen={showApplyChangesDialog}
-        onClose={() => {
-          setShowApplyChangesDialog(false);
-          setWorkflowToApplyChanges(null);
-          setApplyChangesReason('');
-          // Navigate even if user cancels
-          router.push('/admin/workflow');
-        }}
-        onConfirm={handleApplyChangesConfirm}
-        isLoading={isApplyingChanges}
-      />
-    </div>
+          {/* Folder Picker Modal */}
+          {
+            showFolderPicker && (
+              <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+                  <div className="flex items-center justify-between p-6 border-b">
+                    <h3 className="text-lg font-semibold">Select Folder for Workflow Trigger</h3>
+                    <button
+                      onClick={() => {
+                        setShowFolderPicker(false);
+                        setMyFoldersCurrentFolderId(null);
+                        setMyFoldersBreadcrumbs([]);
+                        setMyFoldersSearchQuery('');
+                        setSharedCurrentFolderId(null);
+                        setSharedBreadcrumbs([]);
+                        setSharedSearchQuery('');
+                      }}
+                      className="w-10 h-10 rounded-xl hover:bg-gray-100 flex items-center justify-center"
+                    >
+                      <X className="w-6 h-6" />
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-6">
+                    {/* Tab Selection */}
+                    <div className="flex gap-2 border-b mb-4">
+                      <button
+                        onClick={() => setFolderActiveTab('folders')}
+                        className={`px-4 py-2 font-medium text-sm transition-colors border-b-2 ${folderActiveTab === 'folders'
+                          ? 'border-blue-600 text-blue-600'
+                          : 'border-transparent text-gray-500 hover:text-gray-700'
+                          }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Folder className="h-4 w-4" />
+                          My Folders
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => setFolderActiveTab('shared')}
+                        className={`px-4 py-2 font-medium text-sm transition-colors border-b-2 ${folderActiveTab === 'shared'
+                          ? 'border-blue-600 text-blue-600'
+                          : 'border-transparent text-gray-500 hover:text-gray-700'
+                          }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Share2 className="h-4 w-4" />
+                          Shared with Me
+                        </div>
+                      </button>
+                    </div>
+
+                    {/* Tab Content */}
+                    {folderActiveTab === 'folders' ? (
+                      <div className="flex flex-col border rounded-lg overflow-hidden">
+                        {/* Search Bar */}
+                        <div className="p-3 border-b bg-gray-50">
+                          <div className="relative">
+                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                            <Input
+                              value={myFoldersSearchQuery}
+                              onChange={(e) => setMyFoldersSearchQuery(e.target.value)}
+                              placeholder="Search folders..."
+                              className="pl-10"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Breadcrumb Navigation */}
+                        <div className="p-3 border-b bg-white flex items-center gap-2 text-sm overflow-x-auto">
+                          <button
+                            onClick={() => navigateMyFoldersBreadcrumb(null)}
+                            className={`flex items-center gap-1 px-2 py-1 rounded transition-colors flex-shrink-0 ${myFoldersCurrentFolderId === null
+                              ? 'font-medium text-blue-600'
+                              : 'hover:bg-gray-100 text-gray-700'
+                              }`}
+                          >
+                            <Home className="h-4 w-4" />
+                            <span>Root</span>
+                          </button>
+
+                          {myFoldersBreadcrumbs.map((crumb, index) => (
+                            <div key={`${crumb.id}-${index}`} className="flex items-center gap-2 flex-shrink-0">
+                              <ChevronRight className="h-4 w-4 text-gray-400" />
+                              <button
+                                onClick={() => navigateMyFoldersBreadcrumb(crumb.id, index)}
+                                className={`px-2 py-1 rounded transition-colors truncate max-w-[150px] ${index === myFoldersBreadcrumbs.length - 1 && myFoldersCurrentFolderId === crumb.id
+                                  ? 'font-medium text-blue-600'
+                                  : 'hover:bg-gray-100 text-gray-700'
+                                  }`}
+                                title={crumb.name}
+                              >
+                                {crumb.name}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Folders List */}
+                        <div className="flex-1 overflow-y-auto bg-white min-h-[300px] max-h-[400px]">
+                          {myFoldersLoading ? (
+                            <div className="flex items-center justify-center p-8">
+                              <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+                            </div>
+                          ) : myFoldersData && myFoldersData.folders && myFoldersData.folders.length > 0 ? (
+                            <div className="p-2">
+                              {myFoldersData.folders.map((folder) => {
+                                const isSelected = folderTriggerFolderId === folder.id;
+                                return (
+                                  <div
+                                    key={folder.id}
+                                    className={`flex items-center py-2 px-3 rounded-md transition-colors ${isSelected
+                                      ? 'bg-blue-100 border border-blue-300'
+                                      : 'hover:bg-gray-100'
+                                      }`}
+                                  >
+                                    <Folder className="h-4 w-4 mr-2 text-blue-500" />
+
+                                    <div
+                                      className="flex-1 min-w-0 cursor-pointer"
+                                      onClick={() => handleFolderSelect(folder.id, folder.name)}
+                                    >
+                                      <div className="text-sm truncate">{folder.name}</div>
+                                      {folder.description && (
+                                        <div className="text-xs text-gray-500 mt-1 truncate">{folder.description}</div>
+                                      )}
+                                    </div>
+
+                                    {isSelected && (
+                                      <Check className="h-4 w-4 text-blue-600 flex-shrink-0 mr-2" />
+                                    )}
+
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        navigateToMyFolder(folder.id, folder.name);
+                                      }}
+                                      className="ml-2 p-1 hover:bg-gray-200 rounded transition-colors"
+                                      title="Navigate into folder"
+                                    >
+                                      <ChevronRight className="h-4 w-4 text-gray-600" />
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="p-4 text-center text-gray-500">No folders found</div>
+                          )}
+                        </div>
+
+                        {/* Pagination */}
+                        {myFoldersData && myFoldersData.totalPages > 1 && (
+                          <div className="p-3 border-t bg-gray-50">
+                            <Pagination
+                              currentPage={myFoldersCurrentPage}
+                              totalPages={myFoldersData.totalPages}
+                              totalElements={myFoldersData.totalElements || 0}
+                              pageSize={myFoldersPageSize}
+                              onPageChange={setMyFoldersCurrentPage}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex flex-col border rounded-lg overflow-hidden">
+                        {/* Search Bar */}
+                        <div className="p-3 border-b bg-gray-50">
+                          <div className="relative">
+                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                            <Input
+                              value={sharedSearchQuery}
+                              onChange={(e) => setSharedSearchQuery(e.target.value)}
+                              placeholder="Search shared folders..."
+                              className="pl-10"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Breadcrumb Navigation */}
+                        <div className="p-3 border-b bg-white flex items-center gap-2 text-sm overflow-x-auto">
+                          <button
+                            onClick={() => navigateSharedBreadcrumb(null)}
+                            className={`flex items-center gap-1 px-2 py-1 rounded transition-colors flex-shrink-0 ${sharedCurrentFolderId === null
+                              ? 'font-medium text-blue-600'
+                              : 'hover:bg-gray-100 text-gray-700'
+                              }`}
+                          >
+                            <Home className="h-4 w-4" />
+                            <span>Root</span>
+                          </button>
+
+                          {sharedBreadcrumbs.map((crumb, index) => (
+                            <div key={`${crumb.id}-${index}`} className="flex items-center gap-2 flex-shrink-0">
+                              <ChevronRight className="h-4 w-4 text-gray-400" />
+                              <button
+                                onClick={() => navigateSharedBreadcrumb(crumb.id, index)}
+                                className={`px-2 py-1 rounded transition-colors truncate max-w-[150px] ${index === sharedBreadcrumbs.length - 1 && sharedCurrentFolderId === crumb.id
+                                  ? 'font-medium text-blue-600'
+                                  : 'hover:bg-gray-100 text-gray-700'
+                                  }`}
+                                title={crumb.name}
+                              >
+                                {crumb.name}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Folders List */}
+                        <div className="flex-1 overflow-y-auto bg-white min-h-[300px] max-h-[400px]">
+                          {sharedLoading ? (
+                            <div className="flex items-center justify-center p-8">
+                              <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+                            </div>
+                          ) : sharedData && sharedData.folders && sharedData.folders.length > 0 ? (
+                            <div className="p-2">
+                              {sharedData.folders.map((folder) => {
+                                const isSelected = folderTriggerFolderId === folder.id;
+                                return (
+                                  <div
+                                    key={folder.id}
+                                    className={`flex items-center py-2 px-3 rounded-md transition-colors ${isSelected
+                                      ? 'bg-blue-100 border border-blue-300'
+                                      : 'hover:bg-gray-100'
+                                      }`}
+                                  >
+                                    <Folder className="h-4 w-4 mr-2 text-blue-500" />
+
+                                    <div
+                                      className="flex-1 min-w-0 cursor-pointer"
+                                      onClick={() => handleFolderSelect(folder.id, folder.name)}
+                                    >
+                                      <div className="text-sm truncate">{folder.name}</div>
+                                      {folder.description && (
+                                        <div className="text-xs text-gray-500 mt-1 truncate">{folder.description}</div>
+                                      )}
+                                    </div>
+
+                                    {isSelected && (
+                                      <Check className="h-4 w-4 text-blue-600 flex-shrink-0 mr-2" />
+                                    )}
+
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        navigateToSharedFolder(folder.id, folder.name);
+                                      }}
+                                      className="ml-2 p-1 hover:bg-gray-200 rounded transition-colors"
+                                      title="Navigate into folder"
+                                    >
+                                      <ChevronRight className="h-4 w-4 text-gray-600" />
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="p-4 text-center text-gray-500">No folders found</div>
+                          )}
+                        </div>
+
+                        {/* Pagination */}
+                        {sharedData && sharedData.totalPages > 1 && (
+                          <div className="p-3 border-t bg-gray-50">
+                            <Pagination
+                              currentPage={sharedCurrentPage}
+                              totalPages={sharedData.totalPages}
+                              totalElements={sharedData.totalElements || 0}
+                              pageSize={sharedPageSize}
+                              onPageChange={setSharedCurrentPage}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          }
+
+          {/* Admin Management Modal */}
+          <WorkflowAdminModal
+            isOpen={showAdminModal}
+            onClose={() => {
+              setShowAdminModal(false);
+              setEditingAdminIndex(null);
+            }}
+            onSave={async (data) => {
+              if (editingAdminIndex !== null) {
+                // Update existing admin
+                const updatedAdmin = { ...workflowAdmins[editingAdminIndex], ...data };
+                // Try to preserve user object if available
+                if (workflowAdmins[editingAdminIndex].user) {
+                  updatedAdmin.user = workflowAdmins[editingAdminIndex].user;
+                }
+                setWorkflowAdmins(workflowAdmins.map((admin, index) =>
+                  index === editingAdminIndex ? updatedAdmin : admin
+                ));
+              } else {
+                // Add new admin - need to fetch user details
+                try {
+                  const user = await notificationApiClient.getUserById(data.userId, { silent: true });
+                  setWorkflowAdmins([...workflowAdmins, { ...data, user }]);
+                } catch (error) {
+                  console.error('Failed to load user:', error);
+                  // Add without user details, will be loaded later
+                  setWorkflowAdmins([...workflowAdmins, data]);
+                }
+              }
+              setShowAdminModal(false);
+              setEditingAdminIndex(null);
+            }}
+            editingAdmin={editingAdminIndex !== null ? {
+              id: 0,
+              user: workflowAdmins[editingAdminIndex]?.user || { id: workflowAdmins[editingAdminIndex].userId } as any,
+            } : null}
+            existingAdminUserIds={workflowAdmins.map(a => a.userId)}
+          />
+
+          {/* Apply Workflow Changes Dialog */}
+          <ApplyWorkflowChangesDialog
+            isOpen={showApplyChangesDialog}
+            onClose={() => {
+              setShowApplyChangesDialog(false);
+              setWorkflowToApplyChanges(null);
+              setApplyChangesReason('');
+              // Navigate even if user cancels
+              router.push('/admin/workflow');
+            }}
+            onConfirm={handleApplyChangesConfirm}
+            isLoading={isApplyingChanges}
+          />
+
+          {/* Node Configuration Modals */}
+          {
+            editingNodeData && (
+              <>
+                <DelayNodeModal
+                  isOpen={showDelayModal}
+                  onClose={() => {
+                    setShowDelayModal(false);
+                    setEditingNodeData(null);
+                  }}
+                  nodeData={editingNodeData.data}
+                  onSave={(updatedData) => {
+                    setNodes((nds) =>
+                      nds.map((n) =>
+                        n.id === editingNodeData.id
+                          ? { ...n, data: { ...n.data, ...updatedData } }
+                          : n
+                      )
+                    );
+                    setShowDelayModal(false);
+                    setEditingNodeData(null);
+                  }}
+                />
+
+                <StampNodeModal
+                  isOpen={showStampModal}
+                  onClose={() => {
+                    setShowStampModal(false);
+                    setEditingNodeData(null);
+                  }}
+                  nodeData={editingNodeData.data}
+                  onSave={(updatedData) => {
+                    setNodes((nds) =>
+                      nds.map((n) =>
+                        n.id === editingNodeData.id
+                          ? { ...n, data: { ...n.data, ...updatedData } }
+                          : n
+                      )
+                    );
+                    setShowStampModal(false);
+                    setEditingNodeData(null);
+                  }}
+                />
+
+                <MoveDocumentNodeModal
+                  isOpen={showMoveDocumentModal}
+                  onClose={() => {
+                    setShowMoveDocumentModal(false);
+                    setEditingNodeData(null);
+                  }}
+                  nodeData={editingNodeData.data}
+                  onSave={(updatedData) => {
+                    setNodes((nds) =>
+                      nds.map((n) =>
+                        n.id === editingNodeData.id
+                          ? { ...n, data: { ...n.data, ...updatedData } }
+                          : n
+                      )
+                    );
+                    setShowMoveDocumentModal(false);
+                    setEditingNodeData(null);
+                  }}
+                />
+
+                <NotificationNodeModal
+                  isOpen={showNotificationModal}
+                  onClose={() => {
+                    setShowNotificationModal(false);
+                    setEditingNodeData(null);
+                  }}
+                  nodeData={editingNodeData.data}
+                  onSave={(updatedData) => {
+                    setNodes((nds) =>
+                      nds.map((n) =>
+                        n.id === editingNodeData.id
+                          ? { ...n, data: { ...n.data, ...updatedData } }
+                          : n
+                      )
+                    );
+                    setShowNotificationModal(false);
+                    setEditingNodeData(null);
+                  }}
+                />
+
+                <EmailNodeModal
+                  isOpen={showEmailModal}
+                  onClose={() => {
+                    setShowEmailModal(false);
+                    setEditingNodeData(null);
+                  }}
+                  nodeData={editingNodeData.data}
+                  onSave={(updatedData) => {
+                    setNodes((nds) =>
+                      nds.map((n) =>
+                        n.id === editingNodeData.id
+                          ? { ...n, data: { ...n.data, ...updatedData } }
+                          : n
+                      )
+                    );
+                    setShowEmailModal(false);
+                    setEditingNodeData(null);
+                  }}
+                />
+
+                <ConditionNodeModal
+                  isOpen={showConditionModal}
+                  onClose={() => {
+                    setShowConditionModal(false);
+                    setEditingNodeData(null);
+                  }}
+                  nodeData={editingNodeData.data}
+                  onSave={(updatedData) => {
+                    setNodes((nds) =>
+                      nds.map((n) =>
+                        n.id === editingNodeData.id
+                          ? { ...n, data: { ...n.data, ...updatedData } }
+                          : n
+                      )
+                    );
+                    setShowConditionModal(false);
+                    setEditingNodeData(null);
+                  }}
+                />
+
+                <TriggerNodeModal
+                  isOpen={showTriggerModal}
+                  onClose={() => {
+                    setShowTriggerModal(false);
+                    setEditingNodeData(null);
+                  }}
+                  nodeData={editingNodeData.data}
+                  onSave={(updatedData) => {
+                    setNodes((nds) =>
+                      nds.map((n) =>
+                        n.id === editingNodeData.id
+                          ? { ...n, data: { ...n.data, ...updatedData } }
+                          : n
+                      )
+                    );
+                    setShowTriggerModal(false);
+                    setEditingNodeData(null);
+                  }}
+                />
+
+                <SlaNodeModal
+                  isOpen={showSlaModal}
+                  onClose={() => {
+                    setShowSlaModal(false);
+                    setEditingNodeData(null);
+                  }}
+                  nodeData={editingNodeData.data}
+                  onSave={(updatedData) => {
+                    setNodes((nds) =>
+                      nds.map((n) =>
+                        n.id === editingNodeData.id
+                          ? { ...n, data: { ...n.data, ...updatedData } }
+                          : n
+                      )
+                    );
+                    setShowSlaModal(false);
+                    setEditingNodeData(null);
+                  }}
+                />
+
+                <ApiCallNodeModal
+                  isOpen={showApiCallModal}
+                  onClose={() => {
+                    setShowApiCallModal(false);
+                    setEditingNodeData(null);
+                  }}
+                  nodeData={editingNodeData.data}
+                  onSave={(updatedData) => {
+                    setNodes((nds) =>
+                      nds.map((n) =>
+                        n.id === editingNodeData.id
+                          ? { ...n, data: { ...n.data, ...updatedData } }
+                          : n
+                      )
+                    );
+                    setShowApiCallModal(false);
+                    setEditingNodeData(null);
+                  }}
+                />
+
+                <SubWorkflowNodeModal
+                  isOpen={showSubWorkflowModal}
+                  onClose={() => {
+                    setShowSubWorkflowModal(false);
+                    setEditingNodeData(null);
+                  }}
+                  nodeData={editingNodeData.data}
+                  onSave={(updatedData) => {
+                    setNodes((nds) =>
+                      nds.map((n) =>
+                        n.id === editingNodeData.id
+                          ? { ...n, data: { ...n.data, ...updatedData } }
+                          : n
+                      )
+                    );
+                    setShowSubWorkflowModal(false);
+                    setEditingNodeData(null);
+                  }}
+                />
+
+                <SetVariableNodeModal
+                  isOpen={showSetVariableModal}
+                  onClose={() => {
+                    setShowSetVariableModal(false);
+                    setEditingNodeData(null);
+                  }}
+                  nodeData={editingNodeData.data}
+                  onSave={(updatedData) => {
+                    setNodes((nds) =>
+                      nds.map((n) =>
+                        n.id === editingNodeData.id
+                          ? { ...n, data: { ...n.data, ...updatedData } }
+                          : n
+                      )
+                    );
+                    setShowSetVariableModal(false);
+                    setEditingNodeData(null);
+                  }}
+                />
+
+
+
+                <ArchiveNodeModal
+                  isOpen={showArchiveModal}
+                  onClose={() => {
+                    setShowArchiveModal(false);
+                    setEditingNodeData(null);
+                  }}
+                  nodeData={editingNodeData.data}
+                  onSave={(updatedData) => {
+                    setNodes((nds) =>
+                      nds.map((n) =>
+                        n.id === editingNodeData.id
+                          ? { ...n, data: { ...n.data, ...updatedData } }
+                          : n
+                      )
+                    );
+                    setShowArchiveModal(false);
+                    setEditingNodeData(null);
+                  }}
+                />
+
+                <DeleteNodeModal
+                  isOpen={showDeleteModal}
+                  onClose={() => {
+                    setShowDeleteModal(false);
+                    setEditingNodeData(null);
+                  }}
+                  nodeData={editingNodeData.data}
+                  onSave={(updatedData) => {
+                    setNodes((nds) =>
+                      nds.map((n) =>
+                        n.id === editingNodeData.id
+                          ? { ...n, data: { ...n.data, ...updatedData } }
+                          : n
+                      )
+                    );
+                    setShowDeleteModal(false);
+                    setEditingNodeData(null);
+                  }}
+                />
+
+                {/* New backend-aligned node modals */}
+                <ReviewNodeModal
+                  isOpen={showReviewModal}
+                  onClose={() => { setShowReviewModal(false); setEditingNodeData(null); }}
+                  nodeData={editingNodeData.data}
+                  onSave={(updatedData) => {
+                    setNodes((nds) => nds.map((n) => n.id === editingNodeData.id ? { ...n, data: { ...n.data, ...updatedData } } : n));
+                    setShowReviewModal(false);
+                    setEditingNodeData(null);
+                  }}
+                />
+
+                <ManualTaskNodeModal
+                  isOpen={showManualTaskModal}
+                  onClose={() => { setShowManualTaskModal(false); setEditingNodeData(null); }}
+                  nodeData={editingNodeData.data}
+                  onSave={(updatedData) => {
+                    setNodes((nds) => nds.map((n) => n.id === editingNodeData.id ? { ...n, data: { ...n.data, ...updatedData } } : n));
+                    setShowManualTaskModal(false);
+                    setEditingNodeData(null);
+                  }}
+                />
+
+                <SplitNodeModal
+                  isOpen={showSplitModal}
+                  onClose={() => { setShowSplitModal(false); setEditingNodeData(null); }}
+                  nodeData={editingNodeData.data}
+                  onSave={(updatedData) => {
+                    setNodes((nds) => nds.map((n) => n.id === editingNodeData.id ? { ...n, data: { ...n.data, ...updatedData } } : n));
+                    setShowSplitModal(false);
+                    setEditingNodeData(null);
+                  }}
+                />
+
+                <JoinNodeModal
+                  isOpen={showJoinModal}
+                  onClose={() => { setShowJoinModal(false); setEditingNodeData(null); }}
+                  nodeData={editingNodeData.data}
+                  onSave={(updatedData) => {
+                    setNodes((nds) => nds.map((n) => n.id === editingNodeData.id ? { ...n, data: { ...n.data, ...updatedData } } : n));
+                    setShowJoinModal(false);
+                    setEditingNodeData(null);
+                  }}
+                />
+
+                <UpdateMetadataNodeModal
+                  isOpen={showUpdateMetadataModal}
+                  onClose={() => { setShowUpdateMetadataModal(false); setEditingNodeData(null); }}
+                  nodeData={editingNodeData.data}
+                  onSave={(updatedData) => {
+                    setNodes((nds) => nds.map((n) => n.id === editingNodeData.id ? { ...n, data: { ...n.data, ...updatedData } } : n));
+                    setShowUpdateMetadataModal(false);
+                    setEditingNodeData(null);
+                  }}
+                />
+
+                <ChangeStatusNodeModal
+                  isOpen={showChangeStatusModal}
+                  onClose={() => { setShowChangeStatusModal(false); setEditingNodeData(null); }}
+                  nodeData={editingNodeData.data}
+                  onSave={(updatedData) => {
+                    setNodes((nds) => nds.map((n) => n.id === editingNodeData.id ? { ...n, data: { ...n.data, ...updatedData } } : n));
+                    setShowChangeStatusModal(false);
+                    setEditingNodeData(null);
+                  }}
+                />
+
+                <NewVersionNodeModal
+                  isOpen={showNewVersionModal}
+                  onClose={() => { setShowNewVersionModal(false); setEditingNodeData(null); }}
+                  nodeData={editingNodeData.data}
+                  onSave={(updatedData) => {
+                    setNodes((nds) => nds.map((n) => n.id === editingNodeData.id ? { ...n, data: { ...n.data, ...updatedData } } : n));
+                    setShowNewVersionModal(false);
+                    setEditingNodeData(null);
+                  }}
+                />
+
+                <LockDocumentNodeModal
+                  isOpen={showLockDocumentModal}
+                  onClose={() => { setShowLockDocumentModal(false); setEditingNodeData(null); }}
+                  nodeData={editingNodeData.data}
+                  onSave={(updatedData) => {
+                    setNodes((nds) => nds.map((n) => n.id === editingNodeData.id ? { ...n, data: { ...n.data, ...updatedData } } : n));
+                    setShowLockDocumentModal(false);
+                    setEditingNodeData(null);
+                  }}
+                />
+
+                <UnlockDocumentNodeModal
+                  isOpen={showUnlockDocumentModal}
+                  onClose={() => { setShowUnlockDocumentModal(false); setEditingNodeData(null); }}
+                  nodeData={editingNodeData.data}
+                  onSave={(updatedData) => {
+                    setNodes((nds) => nds.map((n) => n.id === editingNodeData.id ? { ...n, data: { ...n.data, ...updatedData } } : n));
+                    setShowUnlockDocumentModal(false);
+                    setEditingNodeData(null);
+                  }}
+                />
+
+                <ScriptNodeModal
+                  isOpen={showScriptModal}
+                  onClose={() => { setShowScriptModal(false); setEditingNodeData(null); }}
+                  nodeData={editingNodeData.data}
+                  onSave={(updatedData) => {
+                    setNodes((nds) => nds.map((n) => n.id === editingNodeData.id ? { ...n, data: { ...n.data, ...updatedData } } : n));
+                    setShowScriptModal(false);
+                    setEditingNodeData(null);
+                  }}
+                />
+
+                <OcrNodeModal
+                  isOpen={showOcrModal}
+                  onClose={() => { setShowOcrModal(false); setEditingNodeData(null); }}
+                  nodeData={editingNodeData.data}
+                  onSave={(updatedData) => {
+                    setNodes((nds) => nds.map((n) => n.id === editingNodeData.id ? { ...n, data: { ...n.data, ...updatedData } } : n));
+                    setShowOcrModal(false);
+                    setEditingNodeData(null);
+                  }}
+                />
+
+                <CancelNodeModal
+                  isOpen={showCancelModal}
+                  onClose={() => { setShowCancelModal(false); setEditingNodeData(null); }}
+                  nodeData={editingNodeData.data}
+                  onSave={(updatedData) => {
+                    setNodes((nds) => nds.map((n) => n.id === editingNodeData.id ? { ...n, data: { ...n.data, ...updatedData } } : n));
+                    setShowCancelModal(false);
+                    setEditingNodeData(null);
+                  }}
+                />
+
+                <ErrorHandlerNodeModal
+                  isOpen={showErrorHandlerModal}
+                  onClose={() => { setShowErrorHandlerModal(false); setEditingNodeData(null); }}
+                  nodeData={editingNodeData.data}
+                  onSave={(updatedData) => {
+                    setNodes((nds) => nds.map((n) => n.id === editingNodeData.id ? { ...n, data: { ...n.data, ...updatedData } } : n));
+                    setShowErrorHandlerModal(false);
+                    setEditingNodeData(null);
+                  }}
+                />
+
+                <GetContextNodeModal
+                  isOpen={showGetContextModal}
+                  onClose={() => { setShowGetContextModal(false); setEditingNodeData(null); }}
+                  nodeData={editingNodeData.data}
+                  onSave={(updatedData) => {
+                    setNodes((nds) => nds.map((n) => n.id === editingNodeData.id ? { ...n, data: { ...n.data, ...updatedData } } : n));
+                    setShowGetContextModal(false);
+                    setEditingNodeData(null);
+                  }}
+                />
+              </>
+            )
+          }
+        </div >
+      </TabsContent>
+
+      <TabsContent value="instances" className="flex-1 overflow-hidden p-6 bg-gray-50/50 mt-0 border-0">
+        {workflowId ? <InstancesTab workflowId={Number(workflowId)} /> : <div className="p-8 flex justify-center"><Loader2 className="animate-spin" /></div>}
+      </TabsContent>
+
+      <TabsContent value="history" className="flex-1 overflow-hidden p-6 bg-gray-50/50 mt-0 border-0">
+        {workflowId ? <HistoryTab workflowId={Number(workflowId)} /> : <div className="p-8 flex justify-center"><Loader2 className="animate-spin" /></div>}
+      </TabsContent>
+
+      <TabsContent value="statistics" className="flex-1 overflow-hidden p-6 bg-gray-50/50 mt-0 border-0">
+        {workflowId ? <StatisticsTab workflowId={Number(workflowId)} /> : <div className="p-8 flex justify-center"><Loader2 className="animate-spin" /></div>}
+      </TabsContent>
+    </Tabs>
   );
 }

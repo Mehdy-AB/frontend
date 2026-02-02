@@ -30,14 +30,14 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { workflowService } from '@/api/services/workflowService';
+import { workflowAdminService } from '@/api/services/workflowAdminService';
 import { useNotifications } from '@/hooks/useNotifications';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface WorkflowInstanceActionsProps {
     instanceId: number;
     stepInstanceId: number;
-    workflowStepId: number;
+    nodeId: string;
     stepName: string;
     status: string;
     onActionComplete: () => void;
@@ -48,7 +48,7 @@ interface WorkflowInstanceActionsProps {
 export function WorkflowInstanceActions({
     instanceId,
     stepInstanceId,
-    workflowStepId,
+    nodeId,
     stepName,
     status,
     onActionComplete,
@@ -90,8 +90,8 @@ export function WorkflowInstanceActions({
         if (!rollbackReason.trim()) return;
 
         try {
-            await workflowService.rollbackToStep(instanceId, {
-                targetStepId: workflowStepId,
+            await workflowAdminService.rollbackToStep(instanceId, {
+                targetNodeId: nodeId,
                 reason: rollbackReason
             });
             showSuccess(`Rolled back to step: ${stepName}`);
@@ -108,7 +108,7 @@ export function WorkflowInstanceActions({
         if (!newDueDate) return;
 
         try {
-            await workflowService.updateStepDueDate(
+            await workflowAdminService.updateStepDueDate(
                 instanceId,
                 stepInstanceId,
                 new Date(newDueDate).toISOString(),

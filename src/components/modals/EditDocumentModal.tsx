@@ -17,7 +17,9 @@ import {
   Upload,
   Share2,
   Settings,
-  Check
+  Check,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 import { documentService } from '@/api/services/documentService';
 import { notificationApiClient } from '@/api/notificationClient';
@@ -35,6 +37,7 @@ import { useServerSideSearch } from '@/components/main/useServerSideSearch';
 import ServerSearchInput from '@/components/main/ServerSearchInput';
 import SearchPagination from '@/components/search/SearchPagination';
 import UserAvatar from '@/components/main/UserAvatar';
+import { useNotifications } from '@/hooks/useNotifications';
 
 interface EditDocumentModalProps {
   isOpen: boolean;
@@ -45,26 +48,20 @@ interface EditDocumentModalProps {
 const PERMISSION_PRESETS = {
   viewer: {
     canView: true,
-    canUpload: false,
     canEdit: false,
     canDelete: false,
-    canShare: false,
     canManagePermissions: false
   },
   editor: {
     canView: true,
-    canUpload: false,
     canEdit: true,
     canDelete: false,
-    canShare: false,
     canManagePermissions: false
   },
   admin: {
     canView: true,
-    canUpload: false,
     canEdit: true,
     canDelete: true,
-    canShare: true,
     canManagePermissions: true
   }
 };
@@ -81,7 +78,7 @@ function isUser(grantee: UserDto | GroupDto | RoleDto | null | undefined): grant
 }
 
 function isGroup(grantee: UserDto | GroupDto | RoleDto | null | undefined): grantee is GroupDto {
-  return grantee != null && 'userCount' in grantee && !('username' in grantee);
+  return grantee != null && ('userCount' in grantee || 'users' in grantee) && !('username' in grantee);
 }
 
 function isRole(grantee: UserDto | GroupDto | RoleDto | null | undefined): grantee is RoleDto {
@@ -91,6 +88,7 @@ function isRole(grantee: UserDto | GroupDto | RoleDto | null | undefined): grant
 export default function EditDocumentModal({ isOpen, onClose, document }: EditDocumentModalProps) {
   const { data: session } = useSession();
   const currentUserId = session?.user?.id;
+  const { showError } = useNotifications();
 
   // Client-side only check
   const [isClient, setIsClient] = useState(false);
@@ -400,7 +398,7 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
     try {
       // Prevent users from granting permissions to themselves
       if (isUser(entity) && entity.id === currentUserId) {
-        notificationApiClient['showNotification']?.('error', 'Cannot Add Permission', 'You cannot grant permissions to yourself');
+        showError('Cannot Add Permission', 'You cannot grant permissions to yourself');
         return;
       }
 
@@ -478,11 +476,11 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
       // Open permission modal to edit
       setEditingGrant({
         grantee: grant.grantee,
-        permission: grant.permission as DocumentPermissionReq,
+        permission: grant.permission as unknown as DocumentPermissionReq,
         type: granteeType,
         isNew: false
       });
-      setTempPermission(grant.permission as DocumentPermissionReq);
+      setTempPermission(grant.permission as unknown as DocumentPermissionReq);
       setShowPermissionModal(true);
     } catch (error) {
       console.error('Error updating permission:', error);
@@ -494,7 +492,7 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
 
     // Prevent users from granting permissions to themselves
     if (editingGrant.type === GranteeType.USER && editingGrant.grantee.id === currentUserId) {
-      notificationApiClient['showNotification']?.('error', 'Cannot Grant Permission', 'You cannot grant permissions to yourself');
+      showError('Cannot Grant Permission', 'You cannot grant permissions to yourself');
       return;
     }
 
@@ -521,7 +519,7 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
       console.error('Error saving permission:', error);
       // Check if error is about self-granting
       if (error?.response?.status === 400 || error?.message?.includes('cannot grant permissions to yourself')) {
-        notificationApiClient['showNotification']?.('error', 'Cannot Grant Permission', 'You cannot grant permissions to yourself');
+        showError('Cannot Grant Permission', 'You cannot grant permissions to yourself');
       }
     }
   };
@@ -531,121 +529,155 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
     onClose();
   };
 
-  // Add Entity Buttons Component - removed useCallback to prevent re-renders
+  // Add Entity Buttons Component
   const AddEntityButtons = () => (
-    <div className="flex gap-2">
+    <div className="flex gap-3 mb-4">
       <button
         onClick={handleAddUser}
-        className="flex items-center gap-2 px-3 py-2 bg-primary text-surface rounded-lg text-sm hover:bg-primary-dark transition-colors"
+        className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${selectedEntityType === 'user'
+          ? 'bg-primary text-white shadow-md shadow-primary/20 ring-2 ring-primary ring-offset-2'
+          : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300'
+          }`}
       >
-        <User className="h-4 w-4" />
+        <div className={`p-1.5 rounded-lg ${selectedEntityType === 'user' ? 'bg-white/20' : 'bg-blue-50'}`}>
+          <User className={`h-4 w-4 ${selectedEntityType === 'user' ? 'text-white' : 'text-blue-600'}`} />
+        </div>
         Add User
       </button>
       <button
         onClick={handleAddGroup}
-        className="flex items-center gap-2 px-3 py-2 bg-primary text-surface rounded-lg text-sm hover:bg-primary-dark transition-colors"
+        className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${selectedEntityType === 'group'
+          ? 'bg-primary text-white shadow-md shadow-primary/20 ring-2 ring-primary ring-offset-2'
+          : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300'
+          }`}
       >
-        <Users className="h-4 w-4" />
+        <div className={`p-1.5 rounded-lg ${selectedEntityType === 'group' ? 'bg-white/20' : 'bg-green-50'}`}>
+          <Users className={`h-4 w-4 ${selectedEntityType === 'group' ? 'text-white' : 'text-green-600'}`} />
+        </div>
         Add Group
       </button>
       <button
         onClick={handleAddRole}
-        className="flex items-center gap-2 px-3 py-2 bg-primary text-surface rounded-lg text-sm hover:bg-primary-dark transition-colors"
+        className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${selectedEntityType === 'role'
+          ? 'bg-primary text-white shadow-md shadow-primary/20 ring-2 ring-primary ring-offset-2'
+          : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300'
+          }`}
       >
-        <Shield className="h-4 w-4" />
+        <div className={`p-1.5 rounded-lg ${selectedEntityType === 'role' ? 'bg-white/20' : 'bg-purple-50'}`}>
+          <Shield className={`h-4 w-4 ${selectedEntityType === 'role' ? 'text-white' : 'text-purple-600'}`} />
+        </div>
         Add Role
       </button>
     </div>
   );
 
-  // SearchableSelect component - removed useCallback to prevent re-renders
+  // SearchableSelect component
   const SearchableSelect = () => (
     <div className="relative searchable-select-container">
       {selectedEntityType && (
-        <>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-neutral-text-light h-4 w-4" />
+        <div className="animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="relative group">
+            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5 group-focus-within:text-primary transition-colors" />
             <input
               ref={searchInputRef}
               type="text"
               placeholder={`Search ${selectedEntityType}s to add permissions...`}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-ui rounded-lg text-sm bg-surface text-neutral-text-dark placeholder-neutral-text-light focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+              className="w-full pl-12 pr-10 py-3 border border-gray-200 rounded-xl text-sm bg-gray-50/50 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary focus:bg-white transition-all shadow-sm"
             />
-            {searching && (
-              <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
+            {searching ? (
+              <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
               </div>
+            ) : (
+              <button
+                onClick={handleCloseDropdown}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
             )}
-            <button
-              onClick={handleCloseDropdown}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 p-1 hover:bg-neutral-background rounded"
-            >
-              <X className="h-4 w-4 text-neutral-text-light" />
-            </button>
           </div>
 
           {showSearchDropdown && availableEntities.length > 0 && (
-            <div className="absolute z-50 w-full mt-1 bg-surface border border-ui rounded-lg shadow-lg max-h-60 overflow-y-auto">
-              {availableEntities.map((entity: any) => (
-                <button
-                  key={entity.id}
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleAddPermissionWithClose(entity);
-                  }}
-                  className="w-full px-4 py-2 text-left text-sm text-neutral-text-dark hover:bg-neutral-background focus:bg-neutral-background focus:outline-none border-b border-ui last:border-b-0"
-                >
-                  <div className="flex items-center gap-3">
-                    {/* User - Show Avatar */}
-                    {'username' in entity && (
-                      <>
-                        <UserAvatar user={entity as UserDto} size="sm" />
-                        <div>
-                          <div className="font-medium">
-                            {`${entity.firstName || ''} ${entity.lastName || ''}`.trim() || entity.username}
+            <div className="absolute z-50 w-full mt-2 bg-white border border-gray-100 rounded-xl shadow-xl shadow-gray-200/50 max-h-[320px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent">
+              <div className="p-1.5 space-y-0.5">
+                {availableEntities.map((entity: any) => (
+                  <button
+                    key={entity.id}
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (selectedEntityType) {
+                        handleAddPermissionWithClose(entity);
+                      }
+                    }}
+                    className="w-full px-3 py-2.5 text-left rounded-lg hover:bg-gray-50 focus:bg-gray-50 focus:outline-none transition-colors group"
+                  >
+                    <div className="flex items-center gap-3">
+                      {/* User - Show Avatar */}
+                      {'username' in entity && (
+                        <>
+                          <UserAvatar user={entity as UserDto} size="md" className="ring-2 ring-white shadow-sm" />
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-gray-900 truncate group-hover:text-primary transition-colors">
+                              {`${entity.firstName || ''} ${entity.lastName || ''}`.trim() || entity.username}
+                            </div>
+                            <div className="text-xs text-gray-500 truncate flex items-center gap-1.5">
+                              <span className="font-medium text-gray-400">@</span>
+                              {entity.username}
+                              {entity.email && (
+                                <>
+                                  <span className="w-1 h-1 rounded-full bg-gray-300" />
+                                  <span>{entity.email}</span>
+                                </>
+                              )}
+                            </div>
                           </div>
-                          <div className="text-xs text-neutral-text-light">
-                            @{entity.username}{entity.email ? ` • ${entity.email}` : ''}
+                        </>
+                      )}
+
+                      {/* Group - Show Icon */}
+                      {'userCount' in entity && (
+                        <>
+                          <div className="p-2.5 bg-green-50 text-green-600 rounded-lg shrink-0 ring-1 ring-green-100 group-hover:bg-green-100 group-hover:text-green-700 transition-colors">
+                            <Users className="h-5 w-5" />
                           </div>
-                        </div>
-                      </>
-                    )}
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-gray-900 truncate group-hover:text-primary transition-colors">{entity.name}</div>
+                            <div className="text-xs text-gray-500 truncate">{entity.description || 'Group'}</div>
+                          </div>
+                          <div className="px-2 py-1 bg-gray-100 rounded text-xs font-medium text-gray-600">
+                            {entity.userCount || 0} members
+                          </div>
+                        </>
+                      )}
 
-                    {/* Group - Show Icon */}
-                    {'userCount' in entity && (
-                      <>
-                        <div className="p-2 bg-green-100 rounded-lg shrink-0">
-                          <Users className="h-4 w-4 text-green-700" />
-                        </div>
-                        <div>
-                          <div className="font-medium">{entity.name}</div>
-                          <div className="text-xs text-neutral-text-light">{entity.description || 'Group'}</div>
-                        </div>
-                      </>
-                    )}
+                      {/* Role - Show Icon */}
+                      {!('username' in entity) && !('userCount' in entity) && (
+                        <>
+                          <div className="p-2.5 bg-purple-50 text-purple-600 rounded-lg shrink-0 ring-1 ring-purple-100 group-hover:bg-purple-100 group-hover:text-purple-700 transition-colors">
+                            <Shield className="h-5 w-5" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-gray-900 truncate group-hover:text-primary transition-colors">{entity.name}</div>
+                            <div className="text-xs text-gray-500 truncate">{entity.description || 'Role'}</div>
+                          </div>
+                        </>
+                      )}
 
-                    {/* Role - Show Icon */}
-                    {!('username' in entity) && !('userCount' in entity) && (
-                      <>
-                        <div className="p-2 bg-purple-100 rounded-lg shrink-0">
-                          <Shield className="h-4 w-4 text-purple-700" />
-                        </div>
-                        <div>
-                          <div className="font-medium">{entity.name}</div>
-                          <div className="text-xs text-neutral-text-light">{entity.description || 'Role'}</div>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </button>
-              ))}
+                      <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Plus className="h-4 w-4 text-primary" />
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );
@@ -656,44 +688,49 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-surface rounded-lg border border-ui w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex justify-between items-center p-6 border-b border-ui">
+        <div className="flex justify-between items-start p-6 border-b border-gray-100 bg-white">
           <div>
-            <h2 className="text-xl font-semibold text-neutral-text-dark">
+            <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <FileText className="h-5 w-5 text-primary" />
+              </div>
               Edit Document Permissions
             </h2>
-            <p className="text-sm text-neutral-text-light">
-              Manage permissions for "{document.name}"
+            <p className="text-sm text-gray-500 mt-1 ml-11">
+              Manage access and permissions for <span className="font-medium text-gray-900">"{document.name}"</span>
             </p>
           </div>
           <button
             onClick={handleClose}
             disabled={loading}
-            className="p-2 rounded-lg hover:bg-neutral-background transition-colors disabled:opacity-50"
+            className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
           >
-            <X className="h-5 w-5 text-neutral-text-light" />
+            <X className="h-5 w-5" />
           </button>
         </div>
 
         {/* Search Header */}
-        <div className="border-b border-ui p-6">
+        <div className="border-b border-gray-100 bg-gray-50/50 p-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-medium text-neutral-text-dark">Document Permissions</h3>
-            <div className="text-sm text-neutral-text-light">
-              {totalElements} grant{totalElements !== 1 ? 's' : ''} with access
+            <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Add Permissions</h3>
+            <div className="text-xs font-medium px-2.5 py-1 bg-white border border-gray-200 rounded-full text-gray-600 shadow-sm">
+              {totalElements} active grant{totalElements !== 1 ? 's' : ''}
             </div>
           </div>
 
-          <ServerSearchInput
-            value={searchQuery}
-            onChange={setSearchQuery}
-            placeholder="Search by name, email, or role..."
-            className="mb-4"
-          />
-
-          <div className="space-y-3">
+          <div className="space-y-4">
             <AddEntityButtons />
             <SearchableSelect />
           </div>
+
+          {!selectedEntityType && (
+            <ServerSearchInput
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder="Search existing permissions..."
+              className="mt-4"
+            />
+          )}
         </div>
 
         {/* Content */}
@@ -760,7 +797,6 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
                 if (perm?.canView) activePerms.push('View');
                 if (perm?.canEdit) activePerms.push('Edit');
                 if (perm?.canDelete) activePerms.push('Delete');
-                if (perm?.canShare) activePerms.push('Share');
                 if (perm?.canManagePermissions) activePerms.push('Manage Permissions');
 
                 return (
@@ -798,22 +834,16 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
                       </div>
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            updatePermission(grant);
-                          }}
-                          className="p-2 hover:bg-blue-100 rounded-lg transition-colors"
+                          onClick={() => updatePermission(grant)}
+                          className="p-2 hover:bg-neutral-background rounded-lg text-neutral-text-light hover:text-primary transition-colors"
                           title="Edit Permissions"
                         >
-                          <Edit className="h-4 w-4 text-neutral-text-light hover:text-blue-600" />
+                          <Edit className="h-4 w-4" />
                         </button>
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRemovePermissionClick(grantee.id, displayName);
-                          }}
-                          className="p-2 text-error hover:bg-error/10 rounded transition-colors"
-                          disabled={loading}
+                          onClick={() => handleRemovePermissionClick(grantee.id, displayName)}
+                          className="p-2 hover:bg-red-50 rounded-lg text-neutral-text-light hover:text-red-600 transition-colors"
+                          title="Remove Access"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
@@ -824,192 +854,130 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
               })}
             </div>
           )}
-        </div>
 
-        {/* Pagination */}
-        {!loadingPermissions && allGrants.length > 0 && (
-          <div className="px-6 pb-6">
-            <SearchPagination
-              totalPages={totalPages}
-              currentPage={page}
-              totalElements={totalElements}
-              itemsPerPage={pageSize}
-              onPageChange={setPage}
-            />
-          </div>
-        )}
-
-        {/* Footer */}
-        <div className="flex justify-end p-6 border-t border-ui">
-          <button
-            onClick={handleClose}
-            disabled={loading}
-            className="px-6 py-2 text-sm font-medium bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Close
-          </button>
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="mt-4 flex justify-center">
+              <SearchPagination
+                currentPage={page}
+                totalPages={totalPages}
+                totalElements={totalElements}
+                itemsPerPage={pageSize}
+                onPageChange={setPage}
+              />
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Permission Modal - Add/Edit Permissions */}
+      {/* Permission Modal */}
       {showPermissionModal && editingGrant && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-auto">
-            <div className="p-6">
-              {/* Modal Header */}
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-semibold text-neutral-text-dark">
-                  {editingGrant.isNew ? 'Set Permissions' : 'Edit Permissions'}
-                </h3>
-                <button
-                  onClick={() => setShowPermissionModal(false)}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-surface rounded-lg border border-ui w-full max-w-md shadow-xl">
+            <div className="flex justify-between items-center p-4 border-b border-ui">
+              <h3 className="text-lg font-semibold text-neutral-text-dark">
+                {editingGrant.isNew ? 'Add Permissions' : 'Edit Permissions'}
+              </h3>
+              <button
+                onClick={() => setShowPermissionModal(false)}
+                className="p-1 hover:bg-neutral-background rounded"
+              >
+                <X className="h-5 w-5 text-neutral-text-light" />
+              </button>
+            </div>
 
-              {/* Grantee Info */}
-              <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-lg mb-6">
-                {isUser(editingGrant.grantee) && (
-                  <UserAvatar user={editingGrant.grantee} size="md" />
-                )}
-                {isGroup(editingGrant.grantee) && (
-                  <div className="p-3 bg-green-100 rounded-lg">
-                    <Users className="h-6 w-6 text-green-700" />
-                  </div>
-                )}
-                {isRole(editingGrant.grantee) && (
-                  <div className="p-3 bg-purple-100 rounded-lg">
-                    <Shield className="h-6 w-6 text-purple-700" />
-                  </div>
+            <div className="p-4">
+              <div className="mb-4 flex items-center gap-3 p-3 bg-neutral-background rounded-lg">
+                {isUser(editingGrant.grantee) ? (
+                  <UserAvatar user={editingGrant.grantee as UserDto} size="sm" />
+                ) : editingGrant.type === GranteeType.GROUP ? (
+                  <Users className="h-8 w-8 text-neutral-text-light" />
+                ) : (
+                  <Shield className="h-8 w-8 text-neutral-text-light" />
                 )}
                 <div>
                   <div className="font-medium text-neutral-text-dark">
                     {isUser(editingGrant.grantee)
-                      ? (() => {
-                        const user = editingGrant.grantee as UserDto;
-                        return `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username;
-                      })()
-                      : editingGrant.grantee.name
-                    }
+                      ? (editingGrant.grantee as UserDto).username
+                      : (editingGrant.grantee as GroupDto | RoleDto).name}
                   </div>
-                  <div className="text-sm text-neutral-text-light">
-                    {isUser(editingGrant.grantee)
-                      ? editingGrant.grantee.email || editingGrant.grantee.username
-                      : isGroup(editingGrant.grantee)
-                        ? `${editingGrant.grantee.userCount || 0} members`
-                        : editingGrant.grantee.description || 'Role'
-                    }
+                  <div className="text-xs text-neutral-text-light">
+                    {editingGrant.type}
                   </div>
                 </div>
               </div>
 
-              {/* Permission Presets */}
-              <div className="mb-6">
-                <label className="text-sm font-medium mb-3 block text-neutral-text-dark">Quick Presets</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {Object.entries(PRESET_LABELS).map(([key, { label, color }]) => {
-                    const isActive = JSON.stringify(tempPermission) === JSON.stringify(PERMISSION_PRESETS[key as keyof typeof PERMISSION_PRESETS]);
-
-                    // Get icon based on preset
-                    const Icon = key === 'viewer' ? Eye :
-                      key === 'editor' ? Edit :
-                        Shield;
-
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => setTempPermission(PERMISSION_PRESETS[key as keyof typeof PERMISSION_PRESETS])}
-                        className={`flex items-center gap-2 px-4 py-3 text-sm font-medium rounded-lg transition-colors ${isActive ? color : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                          }`}
-                      >
-                        <Icon className="h-4 w-4" />
-                        {label}
-                        {isActive && <Check className="h-4 w-4 ml-auto" />}
-                      </button>
-                    );
-                  })}
+              <div className="space-y-4">
+                {/* Presets */}
+                <div className="grid grid-cols-3 gap-2">
+                  {Object.entries(PRESET_LABELS).map(([key, { label, color }]) => (
+                    <button
+                      key={key}
+                      onClick={() => setTempPermission(PERMISSION_PRESETS[key as keyof typeof PERMISSION_PRESETS])}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors border ${JSON.stringify(tempPermission) === JSON.stringify(PERMISSION_PRESETS[key as keyof typeof PERMISSION_PRESETS])
+                        ? color + ' border-transparent'
+                        : 'bg-surface text-neutral-text-dark border-ui hover:bg-neutral-background'
+                        }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
-              </div>
 
-              {/* Individual Permissions */}
-              <div className="mb-6">
-                <label className="text-sm font-medium mb-3 block text-neutral-text-dark">Custom Permissions</label>
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
+                <div className="space-y-2 border-t border-ui pt-4">
+                  <label className="flex items-center justify-between p-2 hover:bg-neutral-background rounded cursor-pointer">
+                    <span className="text-sm text-neutral-text-dark">View Document</span>
                     <input
                       type="checkbox"
                       checked={tempPermission.canView}
                       onChange={(e) => setTempPermission({ ...tempPermission, canView: e.target.checked })}
-                      className="rounded"
+                      className="rounded border-ui text-primary focus:ring-primary"
                     />
-                    <Eye className="h-4 w-4 text-gray-600" />
-                    <span className="text-sm">View</span>
                   </label>
-
-                  <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
+                  <label className="flex items-center justify-between p-2 hover:bg-neutral-background rounded cursor-pointer">
+                    <span className="text-sm text-neutral-text-dark">Edit Document</span>
                     <input
                       type="checkbox"
                       checked={tempPermission.canEdit}
                       onChange={(e) => setTempPermission({ ...tempPermission, canEdit: e.target.checked })}
-                      className="rounded"
+                      className="rounded border-ui text-primary focus:ring-primary"
                     />
-                    <Edit className="h-4 w-4 text-gray-600" />
-                    <span className="text-sm">Edit</span>
                   </label>
-
-                  <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
+                  <label className="flex items-center justify-between p-2 hover:bg-neutral-background rounded cursor-pointer">
+                    <span className="text-sm text-neutral-text-dark">Delete Document</span>
                     <input
                       type="checkbox"
                       checked={tempPermission.canDelete}
                       onChange={(e) => setTempPermission({ ...tempPermission, canDelete: e.target.checked })}
-                      className="rounded"
+                      className="rounded border-ui text-primary focus:ring-primary"
                     />
-                    <Trash2 className="h-4 w-4 text-gray-600" />
-                    <span className="text-sm">Delete</span>
                   </label>
-
-                  <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={tempPermission.canShare}
-                      onChange={(e) => setTempPermission({ ...tempPermission, canShare: e.target.checked })}
-                      className="rounded"
-                    />
-                    <Share2 className="h-4 w-4 text-gray-600" />
-                    <span className="text-sm">Share</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
+                  <label className="flex items-center justify-between p-2 hover:bg-neutral-background rounded cursor-pointer">
+                    <span className="text-sm text-neutral-text-dark">Manage Permissions</span>
                     <input
                       type="checkbox"
                       checked={tempPermission.canManagePermissions}
                       onChange={(e) => setTempPermission({ ...tempPermission, canManagePermissions: e.target.checked })}
-                      className="rounded"
+                      className="rounded border-ui text-primary focus:ring-primary"
                     />
-                    <Settings className="h-4 w-4 text-gray-600" />
-                    <span className="text-sm">Manage Permissions</span>
                   </label>
                 </div>
               </div>
+            </div>
 
-              {/* Modal Footer */}
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => setShowPermissionModal(false)}
-                  className="px-6 py-2 text-sm font-medium bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSavePermission}
-                  className="px-6 py-2 text-sm font-medium bg-primary text-white hover:bg-primary/90 rounded-lg transition-colors"
-                >
-                  {editingGrant.isNew ? 'Add Permission' : 'Update Permission'}
-                </button>
-              </div>
+            <div className="p-4 border-t border-ui flex justify-end gap-2">
+              <button
+                onClick={() => setShowPermissionModal(false)}
+                className="px-4 py-2 text-sm font-medium text-neutral-text-dark hover:bg-neutral-background rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSavePermission}
+                className="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary-dark rounded-lg transition-colors"
+              >
+                Save Permissions
+              </button>
             </div>
           </div>
         </div>
@@ -1017,39 +985,27 @@ export default function EditDocumentModal({ isOpen, onClose, document }: EditDoc
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirmation && granteeToDelete && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
-            <div className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                Confirm Remove Permission
-              </h3>
-              <p className="text-gray-600 mb-6">
-                Are you sure you want to remove document access for{' '}
-                <span className="font-medium text-gray-900">{granteeToDelete.name}</span>?
-              </p>
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={cancelRemovePermission}
-                  disabled={loading}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={confirmRemovePermission}
-                  disabled={loading}
-                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
-                >
-                  {loading ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      Removing...
-                    </>
-                  ) : (
-                    'Remove'
-                  )}
-                </button>
-              </div>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
+          <div className="bg-surface rounded-lg border border-ui w-full max-w-md shadow-xl p-6">
+            <h3 className="text-lg font-semibold text-neutral-text-dark mb-2">Remove Access?</h3>
+            <p className="text-neutral-text-light mb-6">
+              Are you sure you want to remove access for <span className="font-medium text-neutral-text-dark">{granteeToDelete.name}</span>?
+              They will no longer be able to access this document.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={cancelRemovePermission}
+                className="px-4 py-2 text-sm font-medium text-neutral-text-dark hover:bg-neutral-background rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmRemovePermission}
+                disabled={loading}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {loading ? 'Removing...' : 'Remove Access'}
+              </button>
             </div>
           </div>
         </div>

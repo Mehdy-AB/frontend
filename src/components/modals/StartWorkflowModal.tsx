@@ -5,7 +5,7 @@ import { X, Play, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { workflowService } from '@/api/services/workflowService';
+import { workflowAdminService } from '@/api/services/workflowAdminService';
 import { WorkflowResponse } from '@/types/api';
 import { useNotifications } from '@/hooks/useNotifications';
 
@@ -41,7 +41,7 @@ export default function StartWorkflowModal({
       const loadWorkflows = async () => {
         try {
           setLoading(true);
-          const response = await workflowService.getAllWorkflows(0, 100, undefined, true);
+          const response = await workflowAdminService.getAllWorkflows(0, 100, undefined, true);
           setWorkflows(response.content || []);
         } catch (error) {
           console.error('Failed to load workflows:', error);
@@ -69,7 +69,7 @@ export default function StartWorkflowModal({
 
     setStarting(true);
     try {
-      await workflowService.startWorkflowInstance({
+      await workflowAdminService.startWorkflowInstance({
         workflowId: selectedWorkflowId,
         documentId: documentId,
         notes: notes.trim() || undefined,

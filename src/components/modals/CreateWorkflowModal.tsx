@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { notificationApiClient } from '@/api/notificationClient';
-import { workflowService } from '@/api/services/workflowService';
+import { workflowAdminService } from '@/api/services/workflowAdminService';
 import { useNotifications } from '@/hooks/useNotifications';
 import { CreateWorkflowRequest, CreateWorkflowStepRequest, CreateStepAssignmentRequest } from '@/types/api';
 
@@ -134,7 +134,7 @@ export default function CreateWorkflowModal({
 
     try {
       setIsLoading(true);
-      await workflowService.createWorkflow(formData);
+      await workflowAdminService.createWorkflow(formData);
       showSuccess('Workflow created successfully');
       handleReset();
       onClose();

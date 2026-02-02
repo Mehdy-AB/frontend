@@ -7,22 +7,22 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '../contexts/LanguageContext';
-import { workflowService } from '@/api/services/workflowService';
-import { WorkflowStepInstanceResponse } from '@/types/api';
+import { workflowAdminService } from '@/api/services/workflowAdminService';
+import { WorkflowNodeInstanceResponse } from '@/types/workflow';
 import { useRouter } from 'next/navigation';
 import { formatDate } from '@/lib/dateFormatter';
 
 export default function Dashboard() {
   const { t } = useLanguage();
   const router = useRouter();
-  const [pendingSteps, setPendingSteps] = useState<WorkflowStepInstanceResponse[]>([]);
+  const [pendingSteps, setPendingSteps] = useState<WorkflowNodeInstanceResponse[]>([]);
   const [loadingSteps, setLoadingSteps] = useState(true);
-  
+
   useEffect(() => {
     const fetchPendingSteps = async () => {
       try {
         setLoadingSteps(true);
-        const steps = await workflowService.getPendingSteps();
+        const steps = await workflowAdminService.getPendingNodes();
         setPendingSteps(steps);
       } catch (error) {
         console.error('Error fetching pending steps:', error);
@@ -33,7 +33,7 @@ export default function Dashboard() {
 
     fetchPendingSteps();
   }, []);
-  
+
   const stats = [
     { label: t('dashboard.totalDocuments'), value: '1,247', icon: FileText, change: '+12%' },
     { label: t('common.folders'), value: '89', icon: Folder, change: '+5%' },
@@ -99,7 +99,7 @@ export default function Dashboard() {
                 >
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="font-medium">{step.workflowStep.name}</span>
+                      <span className="font-medium">{step.nodeName || 'Unknown Step'}</span>
                       {step.isOverdue && (
                         <Badge variant="destructive" className="text-xs">
                           <AlertCircle className="h-3 w-3 mr-1" />
@@ -107,14 +107,10 @@ export default function Dashboard() {
                         </Badge>
                       )}
                     </div>
-                    {step.workflowStep.description && (
-                      <p className="text-sm text-muted-foreground mb-1">
-                        {step.workflowStep.description}
-                      </p>
-                    )}
+
                     <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                      {step.assignedToUser && (
-                        <span>Assigned to: {step.assignedToUser.displayName || step.assignedToUser.username}</span>
+                      {step.assignments && step.assignments.length > 0 && step.assignments[0].user && (
+                        <span>Assigned to: {step.assignments[0].user.displayName || step.assignments[0].user.username}</span>
                       )}
                       {step.dueDate && (
                         <span>Due: {formatDate(step.dueDate)}</span>

@@ -1,0 +1,32 @@
+/* Tiptap Editor Styles for Stamp Editor */
+.stamp-text-element .ProseMirror {
+  outline: none;
+  min-height: 40px;
+  padding: 8px;
+}
+
+.stamp-text-element .ProseMirror p {
+  margin: 0;
+  padding: 0;
+}
+
+.stamp-text-element .ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  display: inline-block;
+}
+
+.stamp-editor-image {
+  max-width: 100px;
+  height: auto;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+/* Inline Toolbar Styles */
+.stamp-text-element .inline-toolbar {
+  position: absolute;
+  z-index: 1000;
+}
+
+

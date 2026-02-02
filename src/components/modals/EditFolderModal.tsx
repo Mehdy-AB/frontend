@@ -19,7 +19,8 @@ import {
   Settings,
   ChevronDown,
   ChevronRight,
-  Check
+  Check,
+  FileText
 } from 'lucide-react';
 import { notificationApiClient } from '@/api/notificationClient';
 import { useNotifications } from '@/hooks/useNotifications';
@@ -49,57 +50,49 @@ interface EditFolderModalProps {
 const PERMISSION_PRESETS = {
   viewer: {
     canView: true,
-    canUpload: false,
     canEdit: false,
     canDelete: false,
-    canShare: false,
     canManagePermissions: false,
     canCreateSubFolders: false,
+    canUpload: false,
     canEditDoc: false,
     canDeleteDoc: false,
-    canShareDoc: false,
     canManagePermissionsDoc: false,
     inherits: true
   },
   contributor: {
     canView: true,
-    canUpload: true,
     canEdit: false,
     canDelete: false,
-    canShare: false,
     canManagePermissions: false,
     canCreateSubFolders: false,
+    canUpload: true,
     canEditDoc: false,
     canDeleteDoc: false,
-    canShareDoc: false,
     canManagePermissionsDoc: false,
     inherits: true
   },
   editor: {
     canView: true,
-    canUpload: true,
     canEdit: true,
     canDelete: false,
-    canShare: false,
     canManagePermissions: false,
     canCreateSubFolders: true,
+    canUpload: true,
     canEditDoc: true,
     canDeleteDoc: true,
-    canShareDoc: false,
     canManagePermissionsDoc: false,
     inherits: true
   },
   admin: {
     canView: true,
-    canUpload: true,
     canEdit: true,
     canDelete: true,
-    canShare: true,
     canManagePermissions: true,
     canCreateSubFolders: true,
+    canUpload: true,
     canEditDoc: true,
     canDeleteDoc: true,
-    canShareDoc: true,
     canManagePermissionsDoc: true,
     inherits: true
   }
@@ -118,7 +111,7 @@ function isUser(grantee: UserDto | GroupDto | RoleDto | null | undefined): grant
 }
 
 function isGroup(grantee: UserDto | GroupDto | RoleDto | null | undefined): grantee is GroupDto {
-  return grantee != null && 'userCount' in grantee && !('username' in grantee);
+  return grantee != null && ('userCount' in grantee || 'users' in grantee) && !('username' in grantee);
 }
 
 function isRole(grantee: UserDto | GroupDto | RoleDto | null | undefined): grantee is RoleDto {
@@ -428,19 +421,19 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
   };
 
   // Permission management functions - NO immediate API calls
-  const addPermission = (entity: UserDto | GroupDto | RoleDto) => {
+  const addPermission = (entity: UserDto | GroupDto | RoleDto, type: 'user' | 'group' | 'role') => {
     try {
       // Prevent users from granting permissions to themselves
-      if (isUser(entity) && entity.id === currentUserId) {
+      if (type === 'user' && entity.id === currentUserId) {
         showError('Cannot Add Permission', 'You cannot grant permissions to yourself');
         return;
       }
 
       // Determine entity type
       let granteeType: GranteeType;
-      if (isUser(entity)) {
+      if (type === 'user') {
         granteeType = GranteeType.USER;
-      } else if (isGroup(entity)) {
+      } else if (type === 'group') {
         granteeType = GranteeType.GROUP;
       } else {
         granteeType = GranteeType.ROLE;
@@ -568,121 +561,155 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
     onClose();
   };
 
-  // Add Entity Buttons Component - removed useCallback to prevent re-renders
+  // Add Entity Buttons Component
   const AddEntityButtons = () => (
-    <div className="flex gap-2">
+    <div className="flex gap-3 mb-4">
       <button
         onClick={handleAddUser}
-        className="flex items-center gap-2 px-3 py-2 bg-primary text-surface rounded-lg text-sm hover:bg-primary-dark transition-colors"
+        className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${selectedEntityType === 'user'
+          ? 'bg-primary text-white shadow-md shadow-primary/20 ring-2 ring-primary ring-offset-2'
+          : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300'
+          }`}
       >
-        <User className="h-4 w-4" />
+        <div className={`p-1.5 rounded-lg ${selectedEntityType === 'user' ? 'bg-white/20' : 'bg-blue-50'}`}>
+          <User className={`h-4 w-4 ${selectedEntityType === 'user' ? 'text-white' : 'text-blue-600'}`} />
+        </div>
         Add User
       </button>
       <button
         onClick={handleAddGroup}
-        className="flex items-center gap-2 px-3 py-2 bg-primary text-surface rounded-lg text-sm hover:bg-primary-dark transition-colors"
+        className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${selectedEntityType === 'group'
+          ? 'bg-primary text-white shadow-md shadow-primary/20 ring-2 ring-primary ring-offset-2'
+          : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300'
+          }`}
       >
-        <Users className="h-4 w-4" />
+        <div className={`p-1.5 rounded-lg ${selectedEntityType === 'group' ? 'bg-white/20' : 'bg-green-50'}`}>
+          <Users className={`h-4 w-4 ${selectedEntityType === 'group' ? 'text-white' : 'text-green-600'}`} />
+        </div>
         Add Group
       </button>
       <button
         onClick={handleAddRole}
-        className="flex items-center gap-2 px-3 py-2 bg-primary text-surface rounded-lg text-sm hover:bg-primary-dark transition-colors"
+        className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${selectedEntityType === 'role'
+          ? 'bg-primary text-white shadow-md shadow-primary/20 ring-2 ring-primary ring-offset-2'
+          : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300'
+          }`}
       >
-        <Shield className="h-4 w-4" />
+        <div className={`p-1.5 rounded-lg ${selectedEntityType === 'role' ? 'bg-white/20' : 'bg-purple-50'}`}>
+          <Shield className={`h-4 w-4 ${selectedEntityType === 'role' ? 'text-white' : 'text-purple-600'}`} />
+        </div>
         Add Role
       </button>
     </div>
   );
 
-  // SearchableSelect component - removed useCallback to prevent re-renders
+  // SearchableSelect component
   const SearchableSelect = () => (
     <div className="relative searchable-select-container">
       {selectedEntityType && (
-        <>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-neutral-text-light h-4 w-4" />
+        <div className="animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="relative group">
+            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5 group-focus-within:text-primary transition-colors" />
             <input
               ref={searchInputRef}
               type="text"
               placeholder={`Search ${selectedEntityType}s to add permissions...`}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-ui rounded-lg text-sm bg-surface text-neutral-text-dark placeholder-neutral-text-light focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+              className="w-full pl-12 pr-10 py-3 border border-gray-200 rounded-xl text-sm bg-gray-50/50 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary focus:bg-white transition-all shadow-sm"
             />
-            {searching && (
-              <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
+            {searching ? (
+              <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
               </div>
+            ) : (
+              <button
+                onClick={handleCloseDropdown}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
             )}
-            <button
-              onClick={handleCloseDropdown}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 p-1 hover:bg-neutral-background rounded"
-            >
-              <X className="h-4 w-4 text-neutral-text-light" />
-            </button>
           </div>
 
           {showSearchDropdown && availableEntities.length > 0 && (
-            <div className="absolute z-50 w-full mt-1 bg-surface border border-ui rounded-lg shadow-lg max-h-60 overflow-y-auto">
-              {availableEntities.map((entity: any) => (
-                <button
-                  key={entity.id}
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    addPermission(entity);
-                  }}
-                  className="w-full px-4 py-2 text-left text-sm text-neutral-text-dark hover:bg-neutral-background focus:bg-neutral-background focus:outline-none border-b border-ui last:border-b-0"
-                >
-                  <div className="flex items-center gap-3">
-                    {/* User - Show Avatar */}
-                    {'username' in entity && (
-                      <>
-                        <UserAvatar user={entity as UserDto} size="sm" />
-                        <div>
-                          <div className="font-medium">
-                            {`${entity.firstName || ''} ${entity.lastName || ''}`.trim() || entity.username}
+            <div className="absolute z-50 w-full mt-2 bg-white border border-gray-100 rounded-xl shadow-xl shadow-gray-200/50 max-h-[320px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent">
+              <div className="p-1.5 space-y-0.5">
+                {availableEntities.map((entity: any) => (
+                  <button
+                    key={entity.id}
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (selectedEntityType) {
+                        addPermission(entity, selectedEntityType);
+                      }
+                    }}
+                    className="w-full px-3 py-2.5 text-left rounded-lg hover:bg-gray-50 focus:bg-gray-50 focus:outline-none transition-colors group"
+                  >
+                    <div className="flex items-center gap-3">
+                      {/* User - Show Avatar */}
+                      {'username' in entity && (
+                        <>
+                          <UserAvatar user={entity as UserDto} size="md" className="ring-2 ring-white shadow-sm" />
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-gray-900 truncate group-hover:text-primary transition-colors">
+                              {`${entity.firstName || ''} ${entity.lastName || ''}`.trim() || entity.username}
+                            </div>
+                            <div className="text-xs text-gray-500 truncate flex items-center gap-1.5">
+                              <span className="font-medium text-gray-400">@</span>
+                              {entity.username}
+                              {entity.email && (
+                                <>
+                                  <span className="w-1 h-1 rounded-full bg-gray-300" />
+                                  <span>{entity.email}</span>
+                                </>
+                              )}
+                            </div>
                           </div>
-                          <div className="text-xs text-neutral-text-light">
-                            @{entity.username}{entity.email ? ` • ${entity.email}` : ''}
+                        </>
+                      )}
+
+                      {/* Group - Show Icon */}
+                      {'userCount' in entity && (
+                        <>
+                          <div className="p-2.5 bg-green-50 text-green-600 rounded-lg shrink-0 ring-1 ring-green-100 group-hover:bg-green-100 group-hover:text-green-700 transition-colors">
+                            <Users className="h-5 w-5" />
                           </div>
-                        </div>
-                      </>
-                    )}
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-gray-900 truncate group-hover:text-primary transition-colors">{entity.name}</div>
+                            <div className="text-xs text-gray-500 truncate">{entity.description || 'Group'}</div>
+                          </div>
+                          <div className="px-2 py-1 bg-gray-100 rounded text-xs font-medium text-gray-600">
+                            {entity.userCount || 0} members
+                          </div>
+                        </>
+                      )}
 
-                    {/* Group - Show Icon */}
-                    {'userCount' in entity && (
-                      <>
-                        <div className="p-2 bg-green-100 rounded-lg shrink-0">
-                          <Users className="h-4 w-4 text-green-700" />
-                        </div>
-                        <div>
-                          <div className="font-medium">{entity.name}</div>
-                          <div className="text-xs text-neutral-text-light">{entity.description || 'Group'}</div>
-                        </div>
-                      </>
-                    )}
+                      {/* Role - Show Icon */}
+                      {!('username' in entity) && !('userCount' in entity) && (
+                        <>
+                          <div className="p-2.5 bg-purple-50 text-purple-600 rounded-lg shrink-0 ring-1 ring-purple-100 group-hover:bg-purple-100 group-hover:text-purple-700 transition-colors">
+                            <Shield className="h-5 w-5" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-gray-900 truncate group-hover:text-primary transition-colors">{entity.name}</div>
+                            <div className="text-xs text-gray-500 truncate">{entity.description || 'Role'}</div>
+                          </div>
+                        </>
+                      )}
 
-                    {/* Role - Show Icon */}
-                    {!('username' in entity) && !('userCount' in entity) && (
-                      <>
-                        <div className="p-2 bg-purple-100 rounded-lg shrink-0">
-                          <Shield className="h-4 w-4 text-purple-700" />
-                        </div>
-                        <div>
-                          <div className="font-medium">{entity.name}</div>
-                          <div className="text-xs text-neutral-text-light">{entity.description || 'Role'}</div>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </button>
-              ))}
+                      <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Plus className="h-4 w-4 text-primary" />
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );
@@ -693,44 +720,49 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-surface rounded-lg border border-ui w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex justify-between items-center p-6 border-b border-ui">
+        <div className="flex justify-between items-start p-6 border-b border-gray-100 bg-white">
           <div>
-            <h2 className="text-xl font-semibold text-neutral-text-dark">
+            <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <Folder className="h-5 w-5 text-primary" />
+              </div>
               Edit Folder Permissions
             </h2>
-            <p className="text-sm text-neutral-text-light">
-              Manage permissions for "{folder.name}"
+            <p className="text-sm text-gray-500 mt-1 ml-11">
+              Manage access and permissions for <span className="font-medium text-gray-900">"{folder.name}"</span>
             </p>
           </div>
           <button
             onClick={handleClose}
             disabled={loading}
-            className="p-2 rounded-lg hover:bg-neutral-background transition-colors disabled:opacity-50"
+            className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
           >
-            <X className="h-5 w-5 text-neutral-text-light" />
+            <X className="h-5 w-5" />
           </button>
         </div>
 
         {/* Search Header */}
-        <div className="border-b border-ui p-6">
+        <div className="border-b border-gray-100 bg-gray-50/50 p-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-medium text-neutral-text-dark">Folder Permissions</h3>
-            <div className="text-sm text-neutral-text-light">
-              {totalElements} grant{totalElements !== 1 ? 's' : ''} with access
+            <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Add Permissions</h3>
+            <div className="text-xs font-medium px-2.5 py-1 bg-white border border-gray-200 rounded-full text-gray-600 shadow-sm">
+              {totalElements} active grant{totalElements !== 1 ? 's' : ''}
             </div>
           </div>
 
-          <ServerSearchInput
-            value={searchQuery}
-            onChange={setSearchQuery}
-            placeholder="Search by name, email, or role..."
-            className="mb-4"
-          />
-
-          <div className="space-y-3">
+          <div className="space-y-4">
             <AddEntityButtons />
             <SearchableSelect />
           </div>
+
+          {!selectedEntityType && (
+            <ServerSearchInput
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder="Search existing permissions..."
+              className="mt-4"
+            />
+          )}
         </div>
 
         {/* Content */}
@@ -791,7 +823,20 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
                   const group = grantee as GroupDto;
                   IconComponent = Users;
                   displayName = group.name;
-                  displaySubtitle = group.description || 'Group';
+                  // Show user count or user list if available
+                  if (group.users && group.users.length > 0) {
+                    const userList = group.users.slice(0, 3).join(', ');
+                    const extraCount = group.users.length > 3 ? ` +${group.users.length - 3} more` : '';
+                    displaySubtitle = group.description
+                      ? `${group.description} • ${group.users.length} member${group.users.length !== 1 ? 's' : ''}: ${userList}${extraCount}`
+                      : `${group.users.length} member${group.users.length !== 1 ? 's' : ''}: ${userList}${extraCount}`;
+                  } else if (group.userCount !== undefined) {
+                    displaySubtitle = group.description
+                      ? `${group.description} • ${group.userCount} member${group.userCount !== 1 ? 's' : ''}`
+                      : `${group.userCount} member${group.userCount !== 1 ? 's' : ''}`;
+                  } else {
+                    displaySubtitle = group.description || 'Group';
+                  }
                 } else if (granteeType === GranteeType.ROLE) {
                   const role = grantee as RoleDto;
                   IconComponent = Shield;
@@ -805,57 +850,66 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
                 if (grant.permission?.canUpload) activePerms.push('Upload');
                 if (grant.permission?.canEdit) activePerms.push('Edit');
                 if (grant.permission?.canDelete) activePerms.push('Delete');
-                if (grant.permission?.canShare) activePerms.push('Share');
                 if (grant.permission?.canManagePermissions) activePerms.push('Manage Permissions');
                 if (grant.permission?.canCreateSubFolders) activePerms.push('Create Subfolders');
                 if (grant.permission?.canEditDoc) activePerms.push('Edit Docs');
                 if (grant.permission?.canDeleteDoc) activePerms.push('Delete Docs');
-                if (grant.permission?.canShareDoc) activePerms.push('Share Docs');
                 if (grant.permission?.canManagePermissionsDoc) activePerms.push('Manage Doc Permissions');
 
+
                 return (
-                  <div key={grantee.id} className="border border-ui rounded-lg">
-                    <div className="p-4 flex justify-between items-center">
-                      <div className="flex items-center gap-3 flex-1">
+                  <div key={grantee.id} className="group bg-white border border-gray-200 rounded-xl hover:border-primary/30 hover:shadow-md transition-all duration-200">
+                    <div className="p-4 flex justify-between items-start gap-4">
+                      <div className="flex items-start gap-4 flex-1 min-w-0">
                         {isUser(grantee) ? (
-                          <UserAvatar user={grantee} size="sm" />
+                          <UserAvatar user={grantee} size="md" className="ring-2 ring-white shadow-sm shrink-0" />
                         ) : (
-                          <IconComponent className="h-5 w-5 text-neutral-text-light" />
+                          <div className={`p-2.5 rounded-lg shrink-0 ${isGroup(grantee) ? 'bg-green-50 text-green-600' : 'bg-purple-50 text-purple-600'
+                            }`}>
+                            <IconComponent className="h-5 w-5" />
+                          </div>
                         )}
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <div className="font-medium text-neutral-text-dark">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <div className="font-semibold text-gray-900 truncate">
                               {displayName}
                             </div>
+                            {grant.permission.inherits && (
+                              <div className="px-1.5 py-0.5 bg-gray-100 text-gray-500 text-[10px] uppercase font-bold tracking-wider rounded border border-gray-200" title="Inherits to subfolders">
+                                Inherits
+                              </div>
+                            )}
                           </div>
-                          <div className="text-sm text-neutral-text-light mb-1">
+                          <div className="text-sm text-gray-500 truncate mb-3">
                             {displaySubtitle}
                           </div>
+
                           {/* Show permissions inline */}
-                          <div className="flex flex-wrap gap-1 mt-2">
-                            {activePerms.slice(0, 5).map((perm) => (
-                              <span key={perm} className="inline-flex px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-md border border-blue-200">
+                          <div className="flex flex-wrap gap-1.5">
+                            {activePerms.slice(0, 6).map((perm) => (
+                              <span key={perm} className="inline-flex items-center px-2 py-1 bg-blue-50 text-blue-700 text-xs font-medium rounded-md border border-blue-100/50">
                                 {perm}
                               </span>
                             ))}
-                            {activePerms.length > 5 && (
-                              <span className="inline-flex px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-md">
-                                +{activePerms.length - 5} more
+                            {activePerms.length > 6 && (
+                              <span className="inline-flex items-center px-2 py-1 bg-gray-50 text-gray-600 text-xs font-medium rounded-md border border-gray-100">
+                                +{activePerms.length - 6} more
                               </span>
                             )}
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
+
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             updatePermission(grant);
                           }}
-                          className="p-2 hover:bg-blue-100 rounded-lg transition-colors"
+                          className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-all"
                           title="Edit Permissions"
                         >
-                          <Edit className="h-4 w-4 text-neutral-text-light hover:text-blue-600" />
+                          <Edit className="h-4 w-4" />
                         </button>
                         <button
                           onClick={(e) => {
@@ -868,8 +922,9 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
                               : grantee.name;
                             removePermission(grantee.id, granteeName, grant.permission.inherits);
                           }}
-                          className="p-2 text-error hover:bg-error/10 rounded transition-colors"
+                          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
                           disabled={loading}
+                          title="Remove Access"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
@@ -991,140 +1046,139 @@ export default function EditFolderModal({ isOpen, onClose, folder }: EditFolderM
                 </div>
               </div>
 
-              {/* Individual Permissions */}
-              <div className="mb-6">
-                <label className="text-sm font-medium mb-3 block text-neutral-text-dark">Custom Permissions</label>
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={tempPermission.canView}
-                      onChange={(e) => setTempPermission({ ...tempPermission, canView: e.target.checked })}
-                      className="rounded"
-                    />
-                    <Eye className="h-4 w-4 text-gray-600" />
-                    <span className="text-sm">View</span>
-                  </label>
+              {/* Individual Permissions - Split into Folder and Document */}
+              <div className="space-y-6 mb-6">
+                {/* Folder Permissions Section */}
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Folder className="h-4 w-4 text-primary" />
+                    <label className="text-sm font-semibold text-neutral-text-dark">Folder Permissions</label>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 pl-6">
+                    <label className="flex items-center gap-2 px-3 py-2.5 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={tempPermission.canView}
+                        onChange={(e) => setTempPermission({ ...tempPermission, canView: e.target.checked })}
+                        className="rounded border-gray-300 text-primary focus:ring-primary"
+                      />
+                      <Eye className="h-4 w-4 text-gray-600" />
+                      <span className="text-sm text-gray-700">View</span>
+                    </label>
 
-                  <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={tempPermission.canUpload}
-                      onChange={(e) => setTempPermission({ ...tempPermission, canUpload: e.target.checked })}
-                      className="rounded"
-                    />
-                    <Upload className="h-4 w-4 text-gray-600" />
-                    <span className="text-sm">Upload</span>
-                  </label>
+                    <label className="flex items-center gap-2 px-3 py-2.5 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={tempPermission.canEdit}
+                        onChange={(e) => setTempPermission({ ...tempPermission, canEdit: e.target.checked })}
+                        className="rounded border-gray-300 text-primary focus:ring-primary"
+                      />
+                      <Edit className="h-4 w-4 text-gray-600" />
+                      <span className="text-sm text-gray-700">Edit</span>
+                    </label>
 
-                  <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={tempPermission.canEdit}
-                      onChange={(e) => setTempPermission({ ...tempPermission, canEdit: e.target.checked })}
-                      className="rounded"
-                    />
-                    <Edit className="h-4 w-4 text-gray-600" />
-                    <span className="text-sm">Edit Folder</span>
-                  </label>
+                    <label className="flex items-center gap-2 px-3 py-2.5 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={tempPermission.canDelete}
+                        onChange={(e) => setTempPermission({ ...tempPermission, canDelete: e.target.checked })}
+                        className="rounded border-gray-300 text-primary focus:ring-primary"
+                      />
+                      <Trash2 className="h-4 w-4 text-gray-600" />
+                      <span className="text-sm text-gray-700">Delete</span>
+                    </label>
 
-                  <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={tempPermission.canDelete}
-                      onChange={(e) => setTempPermission({ ...tempPermission, canDelete: e.target.checked })}
-                      className="rounded"
-                    />
-                    <Trash2 className="h-4 w-4 text-gray-600" />
-                    <span className="text-sm">Delete Folder</span>
-                  </label>
+                    <label className="flex items-center gap-2 px-3 py-2.5 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={tempPermission.canCreateSubFolders}
+                        onChange={(e) => setTempPermission({ ...tempPermission, canCreateSubFolders: e.target.checked })}
+                        className="rounded border-gray-300 text-primary focus:ring-primary"
+                      />
+                      <Folder className="h-4 w-4 text-gray-600" />
+                      <span className="text-sm text-gray-700">Create Subfolders</span>
+                    </label>
 
-                  <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={tempPermission.canShare}
-                      onChange={(e) => setTempPermission({ ...tempPermission, canShare: e.target.checked })}
-                      className="rounded"
-                    />
-                    <Share2 className="h-4 w-4 text-gray-600" />
-                    <span className="text-sm">Share</span>
-                  </label>
+                    <label className="flex items-center gap-2 px-3 py-2.5 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={tempPermission.canManagePermissions}
+                        onChange={(e) => setTempPermission({ ...tempPermission, canManagePermissions: e.target.checked })}
+                        className="rounded border-gray-300 text-primary focus:ring-primary"
+                      />
+                      <Settings className="h-4 w-4 text-gray-600" />
+                      <span className="text-sm text-gray-700">Manage Permissions</span>
+                    </label>
+                  </div>
+                </div>
 
-                  <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={tempPermission.canManagePermissions}
-                      onChange={(e) => setTempPermission({ ...tempPermission, canManagePermissions: e.target.checked })}
-                      className="rounded"
-                    />
-                    <Settings className="h-4 w-4 text-gray-600" />
-                    <span className="text-sm">Manage Permissions</span>
-                  </label>
+                {/* Document Permissions Section */}
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <FileText className="h-4 w-4 text-primary" />
+                    <label className="text-sm font-semibold text-neutral-text-dark">Document Permissions</label>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 pl-6">
+                    <label className="flex items-center gap-2 px-3 py-2.5 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={tempPermission.canUpload}
+                        onChange={(e) => setTempPermission({ ...tempPermission, canUpload: e.target.checked })}
+                        className="rounded border-gray-300 text-primary focus:ring-primary"
+                      />
+                      <Upload className="h-4 w-4 text-gray-600" />
+                      <span className="text-sm text-gray-700">Upload</span>
+                    </label>
 
-                  <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={tempPermission.canCreateSubFolders}
-                      onChange={(e) => setTempPermission({ ...tempPermission, canCreateSubFolders: e.target.checked })}
-                      className="rounded"
-                    />
-                    <Folder className="h-4 w-4 text-gray-600" />
-                    <span className="text-sm">Create Subfolders</span>
-                  </label>
+                    <label className="flex items-center gap-2 px-3 py-2.5 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={tempPermission.canEditDoc}
+                        onChange={(e) => setTempPermission({ ...tempPermission, canEditDoc: e.target.checked })}
+                        className="rounded border-gray-300 text-primary focus:ring-primary"
+                      />
+                      <Edit className="h-4 w-4 text-gray-600" />
+                      <span className="text-sm text-gray-700">Edit</span>
+                    </label>
 
-                  <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={tempPermission.canEditDoc}
-                      onChange={(e) => setTempPermission({ ...tempPermission, canEditDoc: e.target.checked })}
-                      className="rounded"
-                    />
-                    <Edit className="h-4 w-4 text-gray-600" />
-                    <span className="text-sm">Edit Documents</span>
-                  </label>
+                    <label className="flex items-center gap-2 px-3 py-2.5 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={tempPermission.canDeleteDoc}
+                        onChange={(e) => setTempPermission({ ...tempPermission, canDeleteDoc: e.target.checked })}
+                        className="rounded border-gray-300 text-primary focus:ring-primary"
+                      />
+                      <Trash2 className="h-4 w-4 text-gray-600" />
+                      <span className="text-sm text-gray-700">Delete</span>
+                    </label>
 
-                  <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={tempPermission.canDeleteDoc}
-                      onChange={(e) => setTempPermission({ ...tempPermission, canDeleteDoc: e.target.checked })}
-                      className="rounded"
-                    />
-                    <Trash2 className="h-4 w-4 text-gray-600" />
-                    <span className="text-sm">Delete Documents</span>
-                  </label>
+                    <label className="flex items-center gap-2 px-3 py-2.5 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={tempPermission.canManagePermissionsDoc}
+                        onChange={(e) => setTempPermission({ ...tempPermission, canManagePermissionsDoc: e.target.checked })}
+                        className="rounded border-gray-300 text-primary focus:ring-primary"
+                      />
+                      <Settings className="h-4 w-4 text-gray-600" />
+                      <span className="text-sm text-gray-700">Manage Permissions</span>
+                    </label>
+                  </div>
+                </div>
 
-                  <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={tempPermission.canShareDoc}
-                      onChange={(e) => setTempPermission({ ...tempPermission, canShareDoc: e.target.checked })}
-                      className="rounded"
-                    />
-                    <Share2 className="h-4 w-4 text-gray-600" />
-                    <span className="text-sm">Share Documents</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={tempPermission.canManagePermissionsDoc}
-                      onChange={(e) => setTempPermission({ ...tempPermission, canManagePermissionsDoc: e.target.checked })}
-                      className="rounded"
-                    />
-                    <Settings className="h-4 w-4 text-gray-600" />
-                    <span className="text-sm">Manage Doc Permissions</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 px-3 py-2 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer">
+                {/* Inheritance Option */}
+                <div>
+                  <label className="flex items-center gap-2 px-3 py-2.5 border border-ui rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
                     <input
                       type="checkbox"
                       checked={tempPermission.inherits}
                       onChange={(e) => setTempPermission({ ...tempPermission, inherits: e.target.checked })}
-                      className="rounded"
+                      className="rounded border-gray-300 text-primary focus:ring-primary"
                     />
                     <ChevronDown className="h-4 w-4 text-gray-600" />
-                    <span className="text-sm">Inherit to Subfolders</span>
+                    <div className="flex-1">
+                      <span className="text-sm font-medium text-gray-700">Inherit to Subfolders</span>
+                      <p className="text-xs text-gray-500 mt-0.5">Apply these permissions to all subfolders</p>
+                    </div>
                   </label>
                 </div>
               </div>

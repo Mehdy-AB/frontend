@@ -10,10 +10,10 @@ import {
   MessageSquare,
   Clock
 } from 'lucide-react';
-import { WorkflowHistoryResponse } from '@/types/workflow';
+import { WorkflowHistoryResponse } from '@/types/api';
 import { formatDate } from '@/lib/dateFormatter';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { workflowService } from '@/api/services/workflowService';
+import { workflowAdminService } from '@/api/services/workflowAdminService';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface WorkflowHistoryProps {
@@ -30,7 +30,7 @@ export function WorkflowHistory({ workflowInstanceId, documentId }: WorkflowHist
     const fetchHistory = async () => {
       try {
         setLoading(true);
-        const data = await workflowService.getInstanceHistory(workflowInstanceId);
+        const data = await workflowAdminService.getInstanceHistory(workflowInstanceId);
         setHistory(data);
       } catch (err) {
         console.error('Failed to fetch history:', err);
@@ -142,9 +142,9 @@ export function WorkflowHistory({ workflowInstanceId, documentId }: WorkflowHist
                     <h4 className="font-semibold text-xs text-gray-900">
                       {getActionLabel(entry.action)}
                     </h4>
-                    {entry.stepName && (
+                    {entry.nodeId && (
                       <p className="text-[10px] text-gray-600 mt-0.5">
-                        Step: {entry.stepName}
+                        Node: {entry.nodeId}
                       </p>
                     )}
                     {entry.comment && (

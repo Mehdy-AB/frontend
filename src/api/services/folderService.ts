@@ -157,6 +157,29 @@ export class FolderService {
     return apiClient.get<PageResponse<FolderResDto>>(`${this.baseUrl}?${params}`);
   }
 
+  // Get specific user's repository (root folders) - for admin viewing
+  async getUserRepository(
+    userId: string,
+    page: number = 0,
+    size: number = 20,
+    name?: string,
+    sortBy: SortFields = SortFields.NAME,
+    sortDirection: 'asc' | 'desc' = 'desc'
+  ): Promise<PageResponse<FolderResDto>> {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      size: size.toString(),
+      sort: sortBy,
+      desc: (sortDirection === 'desc').toString(),
+    });
+
+    if (name) {
+      params.append('name', name);
+    }
+
+    return apiClient.get<PageResponse<FolderResDto>>(`${this.baseUrl}/user/${userId}?${params}`);
+  }
+
   async getRootFolders(
     page: number = 0,
     size: number = 20,
@@ -231,8 +254,12 @@ export class FolderService {
     return apiClient.put<void>(`${this.baseUrl}/rename/${folderId}?name=${encodeURIComponent(newName)}`);
   }
 
+  async changeDescription(folderId: number, description: string): Promise<void> {
+    return apiClient.put<void>(`${this.baseUrl}/change-description/${folderId}?description=${encodeURIComponent(description)}`);
+  }
+
   // Move folder
-  async moveFolder(folderId: number, newParentId: number): Promise<void> {
+  async moveFolder(folderId: number, newParentId: number | null): Promise<void> {
     return apiClient.put<void>(`${this.baseUrl}/move/${folderId}/${newParentId}`);
   }
 
@@ -399,6 +426,28 @@ export class FolderService {
     }
 
     return apiClient.get<PageResponse<any>>(`${this.baseUrl}/${folderId}/available-groups?${params}`);
+  }
+
+  // Download folder as ZIP
+  async downloadFolder(folderId: number, folderName: string): Promise<void> {
+    try {
+      const blob = await apiClient.downloadFile(`${this.baseUrl}/${folderId}/download`);
+
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${folderName}.zip`;
+      document.body.appendChild(link);
+      link.click();
+
+      // Cleanup
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error downloading folder:', error);
+      throw error;
+    }
   }
 }
 

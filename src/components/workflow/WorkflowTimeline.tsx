@@ -2,10 +2,11 @@
 
 import React, { useEffect, useState } from 'react';
 import { CheckCircle2, Circle, Clock, AlertCircle, Users } from 'lucide-react';
-import { TimelineStep, WorkflowTimelineResponse } from '@/types/workflow';
+import { WorkflowTimelineResponse } from '@/types/workflow';
+import { WorkflowNodeInstanceResponse } from '@/types/api';
 import { formatDate } from '@/lib/dateFormatter';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { workflowService } from '@/api/services/workflowService';
+import { workflowAdminService } from '@/api/services/workflowAdminService';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface WorkflowTimelineProps {
@@ -22,7 +23,7 @@ export function WorkflowTimeline({ workflowInstanceId, documentId }: WorkflowTim
     const fetchTimeline = async () => {
       try {
         setLoading(true);
-        const data = await workflowService.getInstanceTimeline(workflowInstanceId);
+        const data = await workflowAdminService.getInstanceTimeline(workflowInstanceId);
         setTimeline(data);
       } catch (err) {
         console.error('Failed to fetch timeline:', err);
@@ -57,12 +58,12 @@ export function WorkflowTimeline({ workflowInstanceId, documentId }: WorkflowTim
     return <div className="text-red-500 p-4 text-center">{error}</div>;
   }
 
-  if (!timeline || !timeline.steps || timeline.steps.length === 0) {
+  if (!timeline || !timeline.nodes || timeline.nodes.length === 0) {
     return <div className="text-gray-500 p-4 text-center">No timeline steps available</div>;
   }
 
-  const steps = timeline.steps;
-  const currentStepId = timeline.steps.find(s => s.status === 'ACTIVE')?.stepInstanceId;
+  const nodes = timeline.nodes;
+  const currentNodeId = timeline.nodes.find(s => s.status === 'ACTIVE')?.id;
 
   const getStepIcon = (status: string, isOverdue: boolean) => {
     if (status === 'COMPLETED') {
@@ -109,12 +110,12 @@ export function WorkflowTimeline({ workflowInstanceId, documentId }: WorkflowTim
 
   return (
     <div className="space-y-3">
-      {steps.map((step, index) => {
-        const isLast = index === steps.length - 1;
-        const isCurrent = step.stepInstanceId === currentStepId;
+      {nodes.map((node, index) => {
+        const isLast = index === nodes.length - 1;
+        const isCurrent = node.id === currentNodeId;
 
         return (
-          <div key={step.stepInstanceId} className="relative">
+          <div key={node.id} className="relative">
             {/* Connection line */}
             {!isLast && (
               <div className="absolute left-[11px] top-9 bottom-0 w-0.5 bg-gray-200" />
@@ -122,12 +123,12 @@ export function WorkflowTimeline({ workflowInstanceId, documentId }: WorkflowTim
 
             {/* Step card */}
             <div
-              className={`relative flex gap-2 p-2.5 rounded-lg border transition-all ${getStepColor(step.status, step.isOverdue)
+              className={`relative flex gap-2 p-2.5 rounded-lg border transition-all ${getStepColor(node.status, node.isOverdue)
                 } ${isCurrent ? 'ring-1 ring-blue-400 shadow-sm' : ''}`}
             >
               {/* Icon */}
               <div className="flex-shrink-0">
-                {getStepIcon(step.status, step.isOverdue)}
+                {getStepIcon(node.status, node.isOverdue)}
               </div>
 
               {/* Content */}
@@ -136,43 +137,40 @@ export function WorkflowTimeline({ workflowInstanceId, documentId }: WorkflowTim
                   <div className="flex-1">
                     <div className="flex items-center gap-1.5 mb-0.5">
                       <span className="text-[10px] font-medium text-gray-500">
-                        Step {step.stepOrder}
+                        {node.nodeType === 'START' ? 'Start' : node.nodeType === 'END' ? 'End' : `Node ${index + 1}`}
                       </span>
-                      {getStepBadge(step.status)}
-                      {step.isOverdue && (
+                      {getStepBadge(node.status)}
+                      {node.isOverdue && (
                         <span className="px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-red-100 text-red-700">
                           Overdue
                         </span>
                       )}
                     </div>
-                    <h3 className="font-semibold text-sm text-gray-900">{step.stepName}</h3>
-                    {step.stepDescription && (
-                      <p className="text-xs text-gray-600 mt-0.5 line-clamp-2">{step.stepDescription}</p>
-                    )}
+                    <h3 className="font-semibold text-sm text-gray-900">{node.nodeName}</h3>
                   </div>
                 </div>
 
                 {/* Assigned users */}
-                {step.assignedUsers && step.assignedUsers.length > 0 && (
+                {node.assignments && node.assignments.length > 0 && (
                   <div className="flex items-center gap-1.5 mt-2 p-1.5 bg-white/50 rounded">
                     <Users className="w-3 h-3 text-gray-500 flex-shrink-0" />
                     <div className="flex items-center gap-1 flex-wrap">
-                      {step.assignedUsers.slice(0, 2).map((user, idx) => (
-                        <div key={user.id} className="flex items-center gap-1">
+                      {node.assignments.filter(a => a.user).slice(0, 2).map((assignment, idx) => (
+                        <div key={assignment.id} className="flex items-center gap-1">
                           <Avatar className="h-4 w-4">
-                            <AvatarImage src={user.imgUrl} />
+                            <AvatarImage src={assignment.user?.imgUrl} />
                             <AvatarFallback className="text-[8px]">
-                              {user.firstName?.[0]}{user.lastName?.[0]}
+                              {assignment.user?.firstName?.[0]}{assignment.user?.lastName?.[0]}
                             </AvatarFallback>
                           </Avatar>
                           <span className="text-[10px] text-gray-700">
-                            {user.firstName} {user.lastName}
+                            {assignment.user?.firstName} {assignment.user?.lastName}
                           </span>
                         </div>
                       ))}
-                      {step.assignedUsers.length > 2 && (
+                      {node.assignments.filter(a => a.user).length > 2 && (
                         <span className="text-[10px] text-gray-500">
-                          +{step.assignedUsers.length - 2}
+                          +{node.assignments.filter(a => a.user).length - 2}
                         </span>
                       )}
                     </div>
@@ -181,43 +179,43 @@ export function WorkflowTimeline({ workflowInstanceId, documentId }: WorkflowTim
 
                 {/* Timeline info */}
                 <div className="flex flex-col gap-0.5 mt-2 text-[10px] text-gray-500">
-                  {step.startedAt && (
+                  {node.startedAt && (
                     <div>
-                      Started: {formatDate(step.startedAt)}
+                      Started: {formatDate(node.startedAt)}
                     </div>
                   )}
-                  {step.dueDate && (
-                    <div className={step.isOverdue ? 'text-red-600 font-medium' : ''}>
-                      Due: {formatDate(step.dueDate)}
+                  {node.dueDate && (
+                    <div className={node.isOverdue ? 'text-red-600 font-medium' : ''}>
+                      Due: {formatDate(node.dueDate)}
                     </div>
                   )}
-                  {step.completedAt && (
+                  {node.completedAt && (
                     <div className="text-green-600">
-                      Completed: {formatDate(step.completedAt)}
+                      Completed: {formatDate(node.completedAt)}
                     </div>
                   )}
                 </div>
 
                 {/* Completed by */}
-                {step.completedBy && (
+                {node.completedBy && (
                   <div className="flex items-center gap-1.5 mt-1.5 text-[10px] text-gray-600">
                     <span>Completed by:</span>
                     <Avatar className="h-4 w-4">
-                      <AvatarImage src={step.completedBy.imgUrl} />
+                      <AvatarImage src={node.completedBy.imgUrl} />
                       <AvatarFallback className="text-[8px]">
-                        {step.completedBy.firstName?.[0]}{step.completedBy.lastName?.[0]}
+                        {node.completedBy.firstName?.[0]}{node.completedBy.lastName?.[0]}
                       </AvatarFallback>
                     </Avatar>
                     <span className="font-medium">
-                      {step.completedBy.firstName} {step.completedBy.lastName}
+                      {node.completedBy.firstName} {node.completedBy.lastName}
                     </span>
                   </div>
                 )}
 
                 {/* Comment */}
-                {step.comment && (
+                {node.comment && (
                   <div className="mt-1.5 p-1.5 bg-white rounded text-xs text-gray-700 border-l-2 border-gray-300">
-                    {step.comment}
+                    {node.comment}
                   </div>
                 )}
               </div>

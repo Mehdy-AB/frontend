@@ -2,13 +2,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { 
-  X, 
-  Upload, 
-  Download, 
-  Eye, 
-  History, 
-  FileText, 
+import {
+  X,
+  Upload,
+  Download,
+  Eye,
+  History,
+  FileText,
   Calendar,
   User,
   HardDrive,
@@ -23,17 +23,32 @@ import { formatFileSize, formatDate } from '../../utils/documentUtils';
 interface VersionInfo {
   versionId: number;
   versionNumber: number;
+  // Semantic versioning
+  majorVersion: number;
+  minorVersion: number;
+  patchVersion: number;
+  semanticVersion: string;
+  modificationType: 'MAJOR' | 'MINOR' | 'PATCH' | 'RESTORE';
+  versionComment?: string;
+  // File info
   sizeBytes: number;
   mimeType: string;
   createdAt: string;
   updatedAt: string;
-  createdBy: {
+  createdBy?: {
     id: string;
-    username: string;
+    username?: string;
     firstName: string;
     lastName: string;
+    email?: string;
   };
 }
+
+const MODIFICATION_TYPES = [
+  { value: 'MAJOR', label: 'Major', description: 'Breaking changes', color: 'bg-red-100 text-red-700' },
+  { value: 'MINOR', label: 'Minor', description: 'New features', color: 'bg-yellow-100 text-yellow-700' },
+  { value: 'PATCH', label: 'Patch', description: 'Bug fixes', color: 'bg-gray-100 text-gray-700' }
+] as const;
 
 interface VersionManagementModalProps {
   document: DocumentViewDto;
@@ -41,10 +56,10 @@ interface VersionManagementModalProps {
   onClose: () => void;
 }
 
-export default function VersionManagementModal({ 
-  document, 
-  isOpen, 
-  onClose 
+export default function VersionManagementModal({
+  document,
+  isOpen,
+  onClose
 }: VersionManagementModalProps) {
   const [versions, setVersions] = useState<VersionInfo[]>([]);
   const [loading, setLoading] = useState(false);
@@ -52,6 +67,8 @@ export default function VersionManagementModal({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [showUploadForm, setShowUploadForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [modificationType, setModificationType] = useState<'MAJOR' | 'MINOR' | 'PATCH'>('MINOR');
+  const [versionComment, setVersionComment] = useState('');
 
   useEffect(() => {
     if (isOpen) {
@@ -64,23 +81,26 @@ export default function VersionManagementModal({
       setLoading(true);
       setError(null);
       const versions = await notificationApiClient.getDocumentVersionsList(document.documentId);
-      
+
       // Map the DocumentVersionResponseDto to VersionInfo format
-      const versionInfos: VersionInfo[] = versions.map(version => ({
+      const versionInfos: VersionInfo[] = versions.map((version: any) => ({
         versionId: version.id,
         versionNumber: version.versionNumber,
+        // Semantic versioning
+        majorVersion: version.majorVersion || 1,
+        minorVersion: version.minorVersion || 0,
+        patchVersion: version.patchVersion || 0,
+        semanticVersion: version.semanticVersion || `${version.majorVersion || 1}.${version.minorVersion || 0}.${version.patchVersion || 0}`,
+        modificationType: version.modificationType || 'MINOR',
+        versionComment: version.versionComment,
+        // File info
         sizeBytes: version.sizeBytes,
         mimeType: version.mimeType,
         createdAt: version.createdAt,
         updatedAt: version.updatedAt || version.createdAt,
-        createdBy: {
-          id: '', // DocumentVersionResponseDto doesn't include user info
-          username: '',
-          firstName: '',
-          lastName: ''
-        }
+        createdBy: version.createdBy || undefined
       }));
-      
+
       setVersions(versionInfos);
     } catch (err) {
       console.error('Error fetching versions:', err);
@@ -105,17 +125,22 @@ export default function VersionManagementModal({
     try {
       setUploading(true);
       setError(null);
-      
+
       await notificationApiClient.uploadDocumentVersion(
         selectedFile,
         document.documentId,
-        { lang: 'eng' } // Default language
+        'eng', // Default language
+        undefined, // filingCategory
+        modificationType,
+        versionComment || undefined
       );
-      
+
       // Refresh versions list
       await fetchVersions();
       setSelectedFile(null);
       setShowUploadForm(false);
+      setVersionComment('');
+      setModificationType('MINOR');
     } catch (err) {
       console.error('Error uploading version:', err);
       setError('Failed to upload new version');
@@ -128,7 +153,7 @@ export default function VersionManagementModal({
     try {
       const version = versions.find(v => v.versionId === versionId);
       const downloadUrl = await notificationApiClient.downloadDocument(document.documentId, versionId);
-      
+
       // Log the download operation
       try {
         await notificationApiClient.fileDownloaded(document.documentId, versionId);
@@ -136,7 +161,7 @@ export default function VersionManagementModal({
         console.warn('Failed to log download operation:', logError);
         // Don't throw here as the download was successful
       }
-      
+
       // Create a temporary link to download the file
       const link = window.document.createElement('a');
       link.href = downloadUrl;
@@ -221,7 +246,7 @@ export default function VersionManagementModal({
                       className="w-full p-2 border border-ui rounded-lg text-sm"
                     />
                   </div>
-                  
+
                   {selectedFile && (
                     <div className="p-3 bg-surface border border-ui rounded-lg">
                       <div className="flex items-center gap-3">
@@ -235,6 +260,45 @@ export default function VersionManagementModal({
                       </div>
                     </div>
                   )}
+
+                  {/* Modification Type */}
+                  <div>
+                    <label className="block text-sm font-medium text-neutral-text-dark mb-2">
+                      Version Type
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {MODIFICATION_TYPES.map((type) => (
+                        <button
+                          key={type.value}
+                          type="button"
+                          onClick={() => setModificationType(type.value)}
+                          disabled={uploading}
+                          className={`p-2 rounded-lg border-2 text-center transition-all ${modificationType === type.value
+                            ? `${type.color} border-current font-semibold`
+                            : 'bg-white border-gray-200 hover:border-gray-300'
+                            }`}
+                        >
+                          <div className="font-medium text-sm">{type.label}</div>
+                          <div className="text-xs opacity-75">{type.description}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Version Comment */}
+                  <div>
+                    <label className="block text-sm font-medium text-neutral-text-dark mb-2">
+                      Version Comment <span className="text-neutral-text-light font-normal">(optional)</span>
+                    </label>
+                    <textarea
+                      value={versionComment}
+                      onChange={(e) => setVersionComment(e.target.value)}
+                      disabled={uploading}
+                      placeholder="Describe what changed in this version..."
+                      className="w-full p-2 border border-ui rounded-lg text-sm resize-none"
+                      rows={2}
+                    />
+                  </div>
 
                   <div className="flex gap-2">
                     <button
@@ -272,7 +336,7 @@ export default function VersionManagementModal({
           {/* Versions List */}
           <div className="space-y-4">
             <h3 className="text-lg font-semibold text-neutral-text-dark">All Versions</h3>
-            
+
             {loading ? (
               <div className="space-y-3">
                 {[...Array(3)].map((_, i) => (
@@ -302,25 +366,42 @@ export default function VersionManagementModal({
                           {getFileIcon(version.mimeType)}
                         </div>
                         <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-neutral-text-dark">
-                              Version {version.versionNumber}
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-bold text-neutral-text-dark">
+                              v{version.semanticVersion}
+                            </span>
+                            {/* Modification Type Badge */}
+                            <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${version.modificationType === 'MAJOR'
+                                ? 'bg-red-100 text-red-700'
+                                : version.modificationType === 'MINOR'
+                                  ? 'bg-yellow-100 text-yellow-700'
+                                  : version.modificationType === 'RESTORE'
+                                    ? 'bg-purple-100 text-purple-700'
+                                    : 'bg-gray-100 text-gray-600'
+                              }`}>
+                              {version.modificationType}
                             </span>
                             {version.versionId === document.versionId && (
-                              <span className="px-2 py-1 bg-primary text-surface text-xs rounded">
+                              <span className="px-2 py-0.5 bg-primary text-surface text-xs rounded">
                                 Current
                               </span>
                             )}
                           </div>
+                          {/* Version Comment */}
+                          {version.versionComment && (
+                            <p className="text-sm text-neutral-text-light italic mb-1">
+                              &ldquo;{version.versionComment}&rdquo;
+                            </p>
+                          )}
                           <div className="text-sm text-neutral-text-light">
                             {formatFileSize(version.sizeBytes)} • {version.mimeType}
                           </div>
                           <div className="text-xs text-neutral-text-light">
-                            Created by {version.createdBy.firstName} {version.createdBy.lastName} • {formatDate(version.createdAt)}
+                            {version.createdBy ? `${version.createdBy.firstName} ${version.createdBy.lastName} • ` : ''}{formatDate(version.createdAt)}
                           </div>
                         </div>
                       </div>
-                      
+
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => handleViewVersion(version.versionId)}

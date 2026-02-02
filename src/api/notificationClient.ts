@@ -32,7 +32,7 @@ const DEFAULT_MESSAGES = {
     error: 'Failed to create item'
   },
   update: {
-    success: 'Item updated successfully', 
+    success: 'Item updated successfully',
     error: 'Failed to update item'
   },
   delete: {
@@ -96,26 +96,26 @@ class NotificationApiClient {
 
     try {
       const result = await apiCall()
-      
+
       // Only show success notifications if not silent and showSuccess is true
       // This means GET operations (silent=true) won't show success notifications
       if (!silent && showSuccess) {
         const message = successMessage || DEFAULT_MESSAGES[operation].success
         this.showNotification('success', 'Success', message)
       }
-      
+
       return result
     } catch (error: any) {
       // Always show error notifications (even for GET operations or silent requests)
       // Only respect showError if explicitly set to false
       if (showError !== false) {
         let message = errorMessage || DEFAULT_MESSAGES[operation].error
-        
+
         // Extract error message from API response if not a 500 error
         if (error?.response) {
           const status = error.response?.status
           const errorData = error.response?.data
-          
+
           // For non-500 errors, try to extract the message from the response
           if (status !== 500 && errorData) {
             // Try different common error message fields
@@ -135,7 +135,7 @@ class NotificationApiClient {
           // Network error or other client-side error
           message = error.message
         }
-        
+
         this.showNotification('error', 'Error', message)
       }
       throw error
@@ -143,7 +143,7 @@ class NotificationApiClient {
   }
 
   // ==================== USER ENDPOINTS ====================
-  
+
   async createUser(data: any, options?: ApiNotificationOptions) {
     return this.withNotification(
       () => userManagementService.createUser(data),
@@ -161,7 +161,26 @@ class NotificationApiClient {
 
   async getAllUsers(params?: any, options?: ApiNotificationOptions) {
     return this.withNotification(
-      () => userManagementService.getUsers(params?.page || 0, params?.size || 20),
+      () => {
+        if (params?.search) {
+          // Note: searchUsers also supports sort in service but maybe not in backend yet properly?
+          // Using params.sortBy if available
+          return userManagementService.searchUsers(
+            params.search,
+            undefined,
+            params?.page || 0,
+            params?.size || 20,
+            params?.sortBy,
+            params?.sortDirection
+          );
+        }
+        return userManagementService.getUsers(
+          params?.page || 0,
+          params?.size || 20,
+          params?.sortBy,
+          params?.sortDirection
+        );
+      },
       { silent: true, ...options } // Silent for GET operations
     )
   }
@@ -187,6 +206,22 @@ class NotificationApiClient {
       () => userManagementService.updateUserStatus(id, enabled),
       { successMessage: `User ${enabled ? 'enabled' : 'disabled'} successfully`, errorMessage: 'Failed to update user status', ...options },
       'update'
+    )
+  }
+
+  // Recycle Bin
+  async getDeletedUsers(page: number = 0, size: number = 20, sortBy?: any, sortDirection?: any, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => userManagementService.getDeletedUsers(page, size, sortBy, sortDirection),
+      { silent: true, ...options }
+    )
+  }
+
+  async restoreUser(id: string, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => userManagementService.restoreUser(id),
+      { successMessage: 'User restored successfully', errorMessage: 'Failed to restore user', ...options },
+      'create' // or update
     )
   }
 
@@ -273,11 +308,11 @@ class NotificationApiClient {
   async getAllRoles(params?: any, options?: ApiNotificationOptions) {
     return this.withNotification(
       () => roleManagementService.getRoles(
-        params?.page || 0, 
+        params?.page || 0,
         params?.size || 20,
         'name',
         params?.desc ? 'desc' : 'asc',
-        params?.name
+        params?.search || params?.name
       ),
       { silent: true, ...options }
     )
@@ -364,7 +399,7 @@ class NotificationApiClient {
         params?.size || 20,
         'name',
         params?.desc ? 'desc' : 'asc',
-        params?.name
+        params?.search || params?.name
       ),
       { silent: true, ...options }
     )
@@ -393,7 +428,7 @@ class NotificationApiClient {
       'assign'
     )
   }
-  
+
   async assignUsersToGroup(groupId: string, userIds: string[], options?: ApiNotificationOptions) {
     return this.withNotification(
       () => groupManagementService.assignUsersToGroup(groupId, userIds),
@@ -410,16 +445,124 @@ class NotificationApiClient {
     )
   }
 
+  // ==================== LDAP SERVER ENDPOINTS ====================
+
+  async getAllLdapServers(params?: any, options?: ApiNotificationOptions) {
+    const { ldapServerService } = await import('./services/ldapServerService');
+    return this.withNotification(
+      () => ldapServerService.getServers(params?.page || 0, params?.size || 20, params?.search),
+      { silent: true, ...options }
+    )
+  }
+
+  async getLdapServerById(id: string, options?: ApiNotificationOptions) {
+    const { ldapServerService } = await import('./services/ldapServerService');
+    return this.withNotification(
+      () => ldapServerService.getServerById(id),
+      { silent: true, ...options }
+    )
+  }
+
+  async createLdapServer(data: any, options?: ApiNotificationOptions) {
+    const { ldapServerService } = await import('./services/ldapServerService');
+    return this.withNotification(
+      () => ldapServerService.createServer(data),
+      { successMessage: 'LDAP server created successfully', errorMessage: 'Failed to create LDAP server', ...options },
+      'create'
+    )
+  }
+
+  async updateLdapServer(id: string, data: any, options?: ApiNotificationOptions) {
+    const { ldapServerService } = await import('./services/ldapServerService');
+    return this.withNotification(
+      () => ldapServerService.updateServer(id, data),
+      { successMessage: 'LDAP server updated successfully', errorMessage: 'Failed to update LDAP server', ...options },
+      'update'
+    )
+  }
+
+  async deleteLdapServer(id: string, options?: ApiNotificationOptions) {
+    const { ldapServerService } = await import('./services/ldapServerService');
+    return this.withNotification(
+      () => ldapServerService.deleteServer(id),
+      { successMessage: 'LDAP server deleted successfully', errorMessage: 'Failed to delete LDAP server', ...options },
+      'delete'
+    )
+  }
+
+  async toggleLdapServer(id: string, enabled: boolean, options?: ApiNotificationOptions) {
+    const { ldapServerService } = await import('./services/ldapServerService');
+    return this.withNotification(
+      () => ldapServerService.toggleServer(id, enabled),
+      { successMessage: `LDAP server ${enabled ? 'enabled' : 'disabled'} successfully`, errorMessage: 'Failed to toggle LDAP server', ...options },
+      'update'
+    )
+  }
+
+  async testLdapConnection(id: string, options?: ApiNotificationOptions) {
+    const { ldapServerService } = await import('./services/ldapServerService');
+    return this.withNotification(
+      () => ldapServerService.testConnection(id),
+      { successMessage: 'Connection test completed', errorMessage: 'Failed to test connection', ...options },
+      'update'
+    )
+  }
+
+  async syncLdapUsers(id: string, options?: ApiNotificationOptions) {
+    const { ldapServerService } = await import('./services/ldapServerService');
+    return this.withNotification(
+      () => ldapServerService.syncUsers(id),
+      { successMessage: 'User sync completed', errorMessage: 'Failed to sync users', ...options },
+      'update'
+    )
+  }
+
+  async getLdapStatistics(options?: ApiNotificationOptions) {
+    const { ldapServerService } = await import('./services/ldapServerService');
+    return this.withNotification(
+      () => ldapServerService.getStatistics(),
+      { silent: true, ...options }
+    )
+  }
+
   // ==================== DOCUMENT ENDPOINTS ====================
 
-  async uploadDocument(file: File, folderId: number, title: string, lang: any, filingCategoryDto: FilingCategoryDocDto | null, fileName?: string, tags?: number[], options?: ApiNotificationOptions) {
+  async uploadDocument(file: File, folderId: number, title: string, lang: any, filingCategoryDto: FilingCategoryDocDto | null, fileName?: string, tags?: number[], convertToPdf?: boolean, options?: ApiNotificationOptions) {
     const tagsJson = tags ? JSON.stringify(tags) : undefined;
     return this.withNotification(
-      () => documentService.uploadDocument(file, folderId, title, lang, fileName, tagsJson, filingCategoryDto || undefined),
-      { 
-        successMessage: `File "${file.name}" uploaded successfully`, 
-        errorMessage: `Failed to upload "${file.name}"`, 
-        ...options 
+      () => documentService.uploadDocument(file, folderId, title, lang, fileName, tagsJson, filingCategoryDto || undefined, convertToPdf),
+      {
+        successMessage: `File "${file.name}" uploaded successfully`,
+        errorMessage: `Failed to upload "${file.name}"`,
+        ...options
+      },
+      'upload'
+    )
+  }
+
+  // Bulk upload multiple documents at once
+  async uploadBulkDocuments(
+    files: File[],
+    folderId: number,
+    lang: string = 'ENG',
+    metadataList?: Array<{
+      fileName?: string;
+      title?: string;
+      filingCategoryId?: number;
+      metadataJson?: string;
+      tagsJson?: string;
+      convertToPdf?: boolean;
+    }>,
+    onProgress?: (current: number, total: number, fileName: string) => void,
+    onByteProgress?: (loaded: number, total: number, percentage: number) => void,
+    options?: ApiNotificationOptions
+  ) {
+    return this.withNotification(
+      () => documentService.uploadBulkDocuments(files, folderId, lang, metadataList, onProgress, onByteProgress),
+      {
+        successMessage: `Successfully uploaded ${files.length} files. OCR processing queued.`,
+        errorMessage: `Failed to upload files`,
+        ...options
       },
       'upload'
     )
@@ -429,10 +572,10 @@ class NotificationApiClient {
   async uploadUnclassifiedDocument(file: File, folderId: number, categoryId: number, createdBy: string, title?: string, fileName?: string, options?: ApiNotificationOptions) {
     return this.withNotification(
       () => unclassifiedDocumentService.uploadUnclassifiedDocument(file, folderId, categoryId, createdBy, title, fileName),
-      { 
-        successMessage: `File "${file.name}" uploaded to unclassified successfully`, 
-        errorMessage: `Failed to upload "${file.name}" to unclassified`, 
-        ...options 
+      {
+        successMessage: `File "${file.name}" uploaded to unclassified successfully`,
+        errorMessage: `Failed to upload "${file.name}" to unclassified`,
+        ...options
       },
       'upload'
     )
@@ -485,14 +628,6 @@ class NotificationApiClient {
       () => documentService.renameDocument(id, name),
       { successMessage: 'Document renamed successfully', errorMessage: 'Failed to rename document', ...options },
       'rename'
-    )
-  }
-
-  async editDocumentTitle(id: number, data: any, options?: ApiNotificationOptions) {
-    return this.withNotification(
-      () => documentService.editDocumentTitle(id, data),
-      { successMessage: 'Document title updated successfully', errorMessage: 'Failed to update document title', ...options },
-      'update'
     )
   }
 
@@ -616,13 +751,21 @@ class NotificationApiClient {
 
   // Get related documents with search and filters
 
-  async uploadDocumentVersion(file: File, documentId: number, lang: any, filingCategory?: any, options?: ApiNotificationOptions) {
+  async uploadDocumentVersion(
+    file: File,
+    documentId: number,
+    lang: any,
+    filingCategory?: any,
+    modificationType?: 'MAJOR' | 'MINOR' | 'PATCH',
+    versionComment?: string,
+    options?: ApiNotificationOptions
+  ) {
     return this.withNotification(
-      () => documentService.uploadNewVersion(file, documentId, lang, filingCategory),
-      { 
-        successMessage: `Document version uploaded successfully`, 
-        errorMessage: `Failed to upload document version`, 
-        ...options 
+      () => documentService.uploadNewVersion(file, documentId, lang, filingCategory, modificationType, versionComment),
+      {
+        successMessage: `Document version uploaded successfully`,
+        errorMessage: `Failed to upload document version`,
+        ...options
       },
       'upload'
     )
@@ -683,6 +826,20 @@ class NotificationApiClient {
         params?.size || 20,
         params?.name,
         params?.showFolder !== undefined ? params.showFolder : true,
+        params?.sort,
+        params?.desc ? 'desc' : 'asc'
+      ),
+      { silent: true, ...options }
+    )
+  }
+
+  async getUserRepository(userId: string, params?: any, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => folderService.getUserRepository(
+        userId,
+        params?.page || 0,
+        params?.size || 20,
+        params?.name,
         params?.sort,
         params?.desc ? 'desc' : 'asc'
       ),
@@ -760,7 +917,14 @@ class NotificationApiClient {
     )
   }
 
-  async moveFolder(id: number, to: number, options?: ApiNotificationOptions) {
+  async changeDescriptionFolder(id: number, description: string, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => folderService.changeDescription(id, description),
+      { successMessage: 'Folder description changed successfully', errorMessage: 'Failed to change folder description', ...options },
+    )
+  }
+
+  async moveFolder(id: number, to: number | null, options?: ApiNotificationOptions) {
     return this.withNotification(
       () => folderService.moveFolder(id, to),
       { successMessage: 'Folder moved successfully', errorMessage: 'Failed to move folder', ...options },
@@ -770,7 +934,7 @@ class NotificationApiClient {
 
 
   async availableFolders(
-    id: number, 
+    id: number,
     type: MovingType = MovingType.FOLDER,
     params?: {
       page?: number;
@@ -842,7 +1006,7 @@ class NotificationApiClient {
   async getAllFilingCategories(params?: any, options?: ApiNotificationOptions) {
     return this.withNotification(
       () => filingCategoryService.getFilingCategories(
-        params?.page || 0, 
+        params?.page || 0,
         params?.size || 20,
         params?.name
       ),
@@ -886,7 +1050,7 @@ class NotificationApiClient {
   async getAllMetadataLists(params?: any, options?: ApiNotificationOptions) {
     return this.withNotification(
       () => filingCategoryService.getMetadataLists(
-        params?.page || 0, 
+        params?.page || 0,
         params?.size || 20,
         params?.name
       ),
@@ -1043,10 +1207,10 @@ class NotificationApiClient {
   async createDocumentPermission(documentId: number, data: any, options?: ApiNotificationOptions) {
     return this.withNotification(
       () => documentService.createDocumentPermission(documentId, data),
-      { 
+      {
         successMessage: 'Permission added successfully',
         errorMessage: 'Failed to add permission',
-        ...options 
+        ...options
       }
     )
   }
@@ -1054,10 +1218,10 @@ class NotificationApiClient {
   async updateDocumentPermission(documentId: number, data: any, options?: ApiNotificationOptions) {
     return this.withNotification(
       () => documentService.updateDocumentPermission(documentId, data),
-      { 
+      {
         successMessage: 'Permission updated successfully',
         errorMessage: 'Failed to update permission',
-        ...options 
+        ...options
       }
     )
   }
@@ -1065,10 +1229,10 @@ class NotificationApiClient {
   async deleteDocumentPermission(documentId: number, granteeId: string, options?: ApiNotificationOptions) {
     return this.withNotification(
       () => documentService.revokeDocumentAccess(documentId, granteeId),
-      { 
+      {
         successMessage: 'Permission removed successfully',
         errorMessage: 'Failed to remove permission',
-        ...options 
+        ...options
       }
     )
   }

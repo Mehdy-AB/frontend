@@ -1,0 +1,111 @@
+import { apiClient } from '../client';
+import {
+  StampResponse,
+  CreateStampRequest,
+  UpdateStampRequest,
+  PageResponse,
+  ApplyStampRequest,
+  StampApplicationResponse
+} from '../../types/api';
+
+const STAMP_BASE_URL = '/api/v1/documents/stamps';
+
+export const stampService = {
+  getAllStamps: async (
+    page: number = 0, 
+    size: number = 20,
+    search?: string,
+    category?: string,
+    stampType?: string,
+    isActive?: boolean
+  ): Promise<PageResponse<StampResponse>> => {
+    const params = new URLSearchParams();
+    params.append('page', page.toString());
+    params.append('size', size.toString());
+    if (search) params.append('search', search);
+    if (category && category !== 'All') params.append('category', category);
+    if (stampType && stampType !== 'All') params.append('stampType', stampType);
+    if (isActive !== undefined) params.append('isActive', isActive.toString());
+    
+    return await apiClient.get<PageResponse<StampResponse>>(
+      `${STAMP_BASE_URL}?${params.toString()}`
+    );
+  },
+  
+  getStatistics: async (): Promise<any> => {
+    return await apiClient.get(`${STAMP_BASE_URL}/statistics`);
+  },
+
+  getStampById: async (id: number, includeApplications: boolean = false): Promise<StampResponse> => {
+    return await apiClient.get<StampResponse>(
+      `${STAMP_BASE_URL}/${id}?includeApplications=${includeApplications}`
+    );
+  },
+
+  getStampsByCreator: async (creatorId: string, page: number = 0, size: number = 20): Promise<PageResponse<StampResponse>> => {
+    return await apiClient.get<PageResponse<StampResponse>>(
+      `${STAMP_BASE_URL}/creator/${creatorId}?page=${page}&size=${size}`
+    );
+  },
+
+  searchStamps: async (query: string, page: number = 0, size: number = 20): Promise<PageResponse<StampResponse>> => {
+    return await apiClient.get<PageResponse<StampResponse>>(
+      `${STAMP_BASE_URL}/search?query=${encodeURIComponent(query)}&page=${page}&size=${size}`
+    );
+  },
+
+  getStampsByType: async (type: string): Promise<StampResponse[]> => {
+    return await apiClient.get<StampResponse[]>(`${STAMP_BASE_URL}/type/${type}`);
+  },
+
+  getStampsByCategory: async (category: string): Promise<StampResponse[]> => {
+    return await apiClient.get<StampResponse[]>(`${STAMP_BASE_URL}/category/${category}`);
+  },
+
+  getPopularStamps: async (limit: number = 10): Promise<StampResponse[]> => {
+    return await apiClient.get<StampResponse[]>(`${STAMP_BASE_URL}/popular?limit=${limit}`);
+  },
+
+  createStamp: async (request: CreateStampRequest): Promise<StampResponse> => {
+    return await apiClient.post<StampResponse>(STAMP_BASE_URL, request);
+  },
+
+  updateStamp: async (id: number, request: UpdateStampRequest): Promise<StampResponse> => {
+    return await apiClient.put<StampResponse>(`${STAMP_BASE_URL}/${id}`, request);
+  },
+
+  toggleStampActive: async (id: number): Promise<StampResponse> => {
+    return await apiClient.post<StampResponse>(`${STAMP_BASE_URL}/${id}/toggle-active`);
+  },
+
+  deleteStamp: async (id: number): Promise<void> => {
+    await apiClient.delete(`${STAMP_BASE_URL}/${id}`);
+  },
+
+  uploadImage: async (file: File): Promise<{ imageUrl: string }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return await apiClient.uploadFile<{ imageUrl: string }>(`${STAMP_BASE_URL}/upload-image`, formData);
+  },
+
+  // Stamp application methods
+  applyStampToDocument: async (request: ApplyStampRequest): Promise<StampApplicationResponse> => {
+    return await apiClient.post<StampApplicationResponse>(`${STAMP_BASE_URL}/apply`, request);
+  },
+
+  getStampApplicationsByDocument: async (documentId: number): Promise<StampApplicationResponse[]> => {
+    return await apiClient.get<StampApplicationResponse[]>(`${STAMP_BASE_URL}/applications/document/${documentId}`);
+  },
+
+  getStampApplicationsByVersion: async (versionId: number): Promise<StampApplicationResponse[]> => {
+    return await apiClient.get<StampApplicationResponse[]>(`${STAMP_BASE_URL}/applications/version/${versionId}`);
+  },
+
+  getStampApplications: async (stampId: number): Promise<StampApplicationResponse[]> => {
+    return await apiClient.get<StampApplicationResponse[]>(`${STAMP_BASE_URL}/${stampId}/applications`);
+  },
+
+  removeStampApplication: async (applicationId: number): Promise<void> => {
+    await apiClient.delete(`${STAMP_BASE_URL}/applications/${applicationId}`);
+  },
+};

@@ -89,7 +89,7 @@ export function ItemMenu({
   const canDelete = item.userPermissions?.canDelete;
   const canManagePermissions = item.userPermissions?.canManagePermissions;
   const canView = item.userPermissions?.canView;
-  const canShare = item.userPermissions?.canShare;
+  const canShare = isFolder ? (item.userPermissions as any)?.canShare : false;
 
   // 💡 Don’t render until position is known
   if (!position) return null;

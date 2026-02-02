@@ -30,7 +30,7 @@ export default function WorkflowInstanceStepsTab({
     onActionComplete
 }: WorkflowInstanceStepsTabProps) {
 
-    if (!instance.stepInstances || instance.stepInstances.length === 0) {
+    if (!instance.nodeInstances || instance.nodeInstances.length === 0) {
         return (
             <div className="text-center py-12 text-muted-foreground">
                 <GitBranch className="h-12 w-12 mx-auto mb-4 opacity-50" />
@@ -72,7 +72,7 @@ export default function WorkflowInstanceStepsTab({
                     {/* Vertical Line */}
                     <div className="absolute left-8 top-4 bottom-0 w-0.5 bg-gradient-to-b from-gray-200 via-gray-200 to-transparent" />
 
-                    {instance.stepInstances.map((stepInstance, index) => {
+                    {instance.nodeInstances.map((stepInstance, index) => {
                         const isCompleted = stepInstance.status === 'COMPLETED';
                         const isActive = stepInstance.status === 'ACTIVE';
                         const isPending = stepInstance.status === 'PENDING';
@@ -90,15 +90,12 @@ export default function WorkflowInstanceStepsTab({
                                         <div>
                                             <div className="flex items-center gap-2">
                                                 <Badge variant="outline" className="text-xs font-normal bg-gray-50">
-                                                    Step {stepInstance.workflowStep?.stepOrder || index + 1}
+                                                    Node {stepInstance.nodeId}
                                                 </Badge>
                                                 <h4 className="text-lg font-bold text-gray-900">
-                                                    {stepInstance.workflowStep?.name || 'Unknown Step'}
+                                                    {stepInstance.nodeName || 'Unknown Node'}
                                                 </h4>
                                             </div>
-                                            {stepInstance.workflowStep?.description && (
-                                                <p className="text-sm text-gray-500 mt-1">{stepInstance.workflowStep.description}</p>
-                                            )}
                                         </div>
                                         <Badge className={`${getStatusColor(stepInstance.status)} border-none`}>
                                             {stepInstance.status}
@@ -187,8 +184,8 @@ export default function WorkflowInstanceStepsTab({
                                                 <WorkflowInstanceActions
                                                     instanceId={instance.id}
                                                     stepInstanceId={stepInstance.id}
-                                                    workflowStepId={stepInstance.workflowStep?.id || 0}
-                                                    stepName={stepInstance.workflowStep?.name || 'Unknown Step'}
+                                                    nodeId={stepInstance.nodeId}
+                                                    stepName={stepInstance.nodeName || 'Unknown Node'}
                                                     status={stepInstance.status}
                                                     onActionComplete={onActionComplete}
                                                     isCompletedStep={isCompleted}

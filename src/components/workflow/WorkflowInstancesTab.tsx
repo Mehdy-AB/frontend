@@ -27,7 +27,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Loader2, FileText, Calendar, User, Search, Filter } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { workflowService } from '@/api/services/workflowService';
+import { workflowAdminService } from '@/api/services/workflowAdminService';
 import { WorkflowInstanceResponse } from '@/types/api';
 import { formatDate } from '@/lib/dateFormatter';
 import { useNotifications } from '@/hooks/useNotifications';
@@ -53,7 +53,7 @@ export default function WorkflowInstancesTab({ workflowId }: WorkflowInstancesTa
     const loadInstances = async () => {
         try {
             setLoading(true);
-            const response = await workflowService.getWorkflowInstances(
+            const response = await workflowAdminService.getWorkflowInstances(
                 workflowId,
                 page,
                 pageSize,
@@ -210,10 +210,10 @@ export default function WorkflowInstancesTab({ workflowId }: WorkflowInstancesTa
                                                 </Badge>
 
                                                 {/* Current Step */}
-                                                {instance.currentStep && (
+                                                {instance.currentNodeLabel && (
                                                     <div className="text-sm text-right">
                                                         <p className="text-muted-foreground text-xs">Current Step</p>
-                                                        <p className="font-medium">{instance.currentStep.name}</p>
+                                                        <p className="font-medium">{instance.currentNodeLabel}</p>
                                                     </div>
                                                 )}
 
@@ -236,14 +236,14 @@ export default function WorkflowInstancesTab({ workflowId }: WorkflowInstancesTa
                                         <div className="mt-3 pt-3 border-t">
                                             <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
                                                 <span>Progress</span>
-                                                <span>{instance.completedStepsCount} / {instance.totalStepsCount} steps</span>
+                                                <span>{instance.completedNodesCount} / {instance.totalNodesCount} nodes</span>
                                             </div>
                                             <div className="w-full bg-muted rounded-full h-2">
                                                 <div
                                                     className="bg-primary h-2 rounded-full transition-all"
                                                     style={{
-                                                        width: `${instance.totalStepsCount > 0
-                                                            ? (instance.completedStepsCount / instance.totalStepsCount * 100)
+                                                        width: `${instance.totalNodesCount > 0
+                                                            ? (instance.completedNodesCount / instance.totalNodesCount * 100)
                                                             : 0}%`
                                                     }}
                                                 />

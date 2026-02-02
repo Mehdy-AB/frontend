@@ -175,7 +175,7 @@ export interface UserDto {
   status: string;
   attributes?: Record<string, any>;
   roles: string[];
-  groups: string[];
+  groups: GroupDto[];
 }
 
 export type UserStatus = 'ACTIVE' | 'INACTIVE';
@@ -241,7 +241,8 @@ export interface GroupDto {
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
-  userCount: number;
+  userCount?: number; // Optional as it may not be present in all responses
+  users?: string[]; // Array of usernames included in permission responses
 }
 
 export interface CreateGroupRequest {
@@ -294,7 +295,6 @@ export interface DocumentResponseDto {
   createdBy: UserDto;
   ownedBy: UserDto;
   name: string;
-  title: string;
   description?: string;
   path: string;
   folderId: number;
@@ -309,6 +309,24 @@ export interface DocumentResponseDto {
   filingCategory?: DocumentFilingCategoryResponseDto;
   userPermissions: DocumentPermissionResDto;
   workflowInstance?: DocumentWorkflowInstanceDto;
+  stamp?: StampResponse; // Stamp applied to the active version
+}
+
+// Bulk upload response types
+export interface BulkUploadResult {
+  fileName: string;
+  documentId?: number;
+  versionId?: number;
+  success: boolean;
+  error?: string;
+}
+
+export interface BulkUploadResponse {
+  totalFiles: number;
+  successCount: number;
+  failedCount: number;
+  results: BulkUploadResult[];
+  message: string;
 }
 
 export interface DocumentVersionResponseDto {
@@ -320,6 +338,7 @@ export interface DocumentVersionResponseDto {
   mimeType: string;
   createdAt: string;
   updatedAt: string;
+  stamp?: StampResponse; // Stamp applied to this version
 }
 
 export interface DocumentUploadRequestDto {
@@ -327,7 +346,6 @@ export interface DocumentUploadRequestDto {
   folderId: number;
   createdBy: string;
   lang: ExtractorLanguage;
-  title: string;
   fileName?: string;
   tagsJson?: string;
 }
@@ -339,24 +357,17 @@ export interface DocumentVersionUploadRequestDto {
   createdBy: string;
 }
 
-export interface EditDocumentTitleRequestDto {
-  title: string;
-}
-
 export interface DocumentPermissionResDto {
   canView: boolean;
   canEdit: boolean;
   canDelete: boolean;
   canManagePermissions: boolean;
-  canShare: boolean;
 }
 
 export interface DocumentPermissionReq {
   canView: boolean;
-  canUpload: boolean;
   canEdit: boolean;
   canDelete: boolean;
-  canShare: boolean;
   canManagePermissions: boolean;
 }
 
@@ -533,7 +544,7 @@ export interface RelatedDocumentResponseDto {
   ownedBy: RelatedDocumentUserDto;
   linkType: string;
   description?: string;
-  isManual: boolean;
+  manual: boolean;
   ruleName?: string;
   ruleId?: number;
   linkedAt: string;
@@ -604,7 +615,7 @@ export interface FolderResDto {
   parentId?: number;
   createdBy: UserDto;
   ownedBy: UserDto;
-  isPublic: boolean;
+  public: boolean;
   size: number;
   createdAt: string;
   updatedAt: string;
@@ -635,6 +646,7 @@ export interface CreateFolderDto {
   name: string;
   description?: string;
   parentId?: number;
+  ownerId?: string; // Optional: Owner user ID for creating folders in another user's repository (admin only)
   sharedWith?: TypeShareAccessWithTypeReq[];
   subfolders?: SubfolderDto[];
 }
@@ -646,16 +658,16 @@ export interface SubfolderDto {
 }
 
 export interface FolderPermissionReq {
+  // Folder permissions
   canView: boolean;
-  canUpload: boolean;
   canEdit: boolean;
   canDelete: boolean;
-  canShare: boolean;
   canManagePermissions: boolean;
   canCreateSubFolders: boolean;
+  // Document permissions (apply to all documents in folder)
+  canUpload: boolean;
   canEditDoc: boolean;
   canDeleteDoc: boolean;
-  canShareDoc: boolean;
   canManagePermissionsDoc: boolean;
   inherits: boolean;
 }
@@ -680,6 +692,12 @@ export interface FilingCategoryRequestDto {
   name: string;
   description?: string;
   metadataDefinitions?: CategoryMetadataDefinitionDto[];
+  // Auto-classification config
+  autoClassificationEnabled?: boolean;
+  targetFolderId?: number;
+  classificationRules?: string[];
+  // Name structure pattern for filename generation
+  nameStructure?: string;
 }
 
 export interface FilingCategoryResponseDto {
@@ -688,6 +706,19 @@ export interface FilingCategoryResponseDto {
   description?: string;
   createdBy?: UserDto | null;
   metadataDefinitions?: CategoryMetadataDefinitionDto[];
+  // Auto-classification fields
+  autoClassificationEnabled?: boolean;
+  autoClassificationTarget?: AutoClassificationTargetDto;
+  classificationRules?: string[];
+  // Name structure pattern for filename generation
+  nameStructure?: string;
+}
+
+export interface AutoClassificationTargetDto {
+  folderId: number;
+  folderName: string;
+  folderPath: string;
+  hasUploadPermission: boolean;
 }
 
 export interface MetaDataListReq {
@@ -806,7 +837,6 @@ export interface SearchDocumentsRes {
   documentId: number;
   versionId: number;
   name: string;
-  title: string;
   description?: string;
   path: string;
   sizeBytes: number;
@@ -1131,7 +1161,6 @@ export interface UnclassifiedDocumentUploadRequestDto {
 export interface UnclassifiedDocumentResponseDto {
   id: number;
   name: string;
-  title?: string;
   fileName: string;
   folderId: number;
   folderPath?: string;
@@ -1173,7 +1202,6 @@ export interface UnclassifiedDocumentStatisticsResponseDto {
 }
 
 export interface ClassifyUnclassifiedDocumentRequestDto {
-  title: string;
   lang: ExtractorLanguage;
   filingCategory?: FilingCategoryDocDto;
   tags?: string;
@@ -1184,7 +1212,6 @@ export interface ClassifyUnclassifiedDocumentRequestDto {
 export interface BulkUploadRequestDto {
   files: FileDataDto[];
   folderId: number;
-  title: string;
   lang: ExtractorLanguage;
   fileName?: string;
   tagsJson?: string;
@@ -1242,12 +1269,17 @@ export interface RuleExecutionResponse {
 export interface RuleStatistics {
   ruleId: number;
   ruleName: string;
+  ruleDescription?: string;
+  enabled?: boolean;
+  linkType?: string;
   totalExecutions: number;
-  totalLinksCreated: number;
+  totalLinksCreated?: number;
   linksCreated?: number;
   averageExecutionTime: number;
   lastExecutedAt?: string;
   successRate: number;
+  conditionsCount?: number;
+  bidirectional?: boolean;
 }
 
 export interface BulkRuleExecutionRequest {
@@ -1267,13 +1299,19 @@ export interface BulkRuleExecutionResponse {
 }
 
 export interface LinkRuleCacheStatistics {
-  totalCacheEntries: number;
-  cacheHitRate: number;
-  averageCacheSize: number;
-  cacheEvictions: number;
-  totalCachedLinks?: number;
-  activeRules?: number;
-  lastRevalidation?: string;
+  totalLinks: number;
+  automaticLinks: number;
+  manualLinks: number;
+  totalRules: number;
+  enabledRules: number;
+  disabledRules: number;
+  averageLinksPerRule: number;
+  linksByType: {
+    RELATED: number;
+    SUPERSEDES: number;
+    REFERENCES: number;
+    CONTAINS: number;
+  };
 }
 
 // ==================== MOVING TYPES ====================
@@ -1296,7 +1334,6 @@ export interface AllowedFoldersToMove {
 export interface ClassAUploadRequestDto {
   file?: File;
   folderId: number;
-  title: string;
   lang: ExtractorLanguage;
   fileName?: string;
   tagsIds?: number[];
@@ -1307,7 +1344,6 @@ export interface ClassAUploadRequestDto {
 export interface ClassAResponseDto {
   id: number;
   name: string;
-  title?: string;
   description?: string;
   folderId: number;
   sizeBytes: number;
@@ -1397,6 +1433,7 @@ export interface WorkflowResponse {
 
 export interface WorkflowDetailResponse extends WorkflowResponse {
   steps: WorkflowStepResponse[];
+  workflowDefinitionJson?: string;
 }
 
 export interface WorkflowStepResponse {
@@ -1424,6 +1461,18 @@ export interface StepAssignmentResponse {
   canEdit: boolean;
 }
 
+export interface WorkflowInstanceAssignmentResponse {
+  id: number;
+  stepInstanceId: number;
+  assigneeType: 'USER' | 'ROLE' | 'GROUP';
+  user?: UserDto;
+  role?: RoleDto;
+  group?: GroupDto;
+  canEdit: boolean;
+  assignedBy?: UserDto;
+  assignedAt: string;
+}
+
 export interface WorkflowInstanceResponse {
   id: number;
   workflow: WorkflowResponse;
@@ -1435,38 +1484,40 @@ export interface WorkflowInstanceResponse {
   cancelledAt?: string;
   cancelledBy?: UserDto;
   cancellationReason?: string;
-  currentStep?: WorkflowStepResponse;
+  currentNodeId?: string;
+  currentNodeLabel?: string;
+  currentNodeType?: string;
+  createdAt?: string;
   notes?: string;
   updatedAt: string;
-  stepInstances: WorkflowStepInstanceResponse[];
-  completedStepsCount: number;
-  totalStepsCount: number;
+  nodeInstances: WorkflowNodeInstanceResponse[];
+  completedNodesCount: number;
+  totalNodesCount: number;
 }
 
-export interface WorkflowStepInstanceResponse {
+export interface WorkflowNodeInstanceResponse {
   id: number;
-  workflowStep: WorkflowStepResponse;
-  status: 'PENDING' | 'ACTIVE' | 'COMPLETED' | 'REJECTED' | 'EXPIRED' | 'SKIPPED' | 'CANCELLED';
-  assignedToUser?: UserDto;
-  assignedToRoleName?: string;
-  assignedToGroupName?: string;
-  startedAt: string;
-  dueDate?: string;
+  workflowInstanceId: number;
+  nodeId: string;
+  nodeType: string;
+  nodeName: string;
+  status: 'PENDING' | 'ACTIVE' | 'COMPLETED' | 'REJECTED' | 'EXPIRED' | 'SKIPPED' | 'CANCELLED' | 'SCHEDULED';
+  createdAt: string;
+  startedAt?: string;
   completedAt?: string;
   completedBy?: UserDto;
+  dueDate?: string;
   comment?: string;
-  rejectionReason?: string;
-  approvalsCount: number;
   isOverdue: boolean;
-  isActionable: boolean;
+  approvalsCount: number;
   documentId?: number;
-  workflowInstanceId?: number;
+  documentTitle?: string;
   workflowId?: number;
-  documentName?: string;
   workflowName?: string;
-  updatedAt: string;
-  assignments: StepAssignmentResponse[];
+  assignments: WorkflowInstanceAssignmentResponse[];
 }
+// Keeping alias for backward compatibility during refactor if needed, or just remove
+export type WorkflowStepInstanceResponse = WorkflowNodeInstanceResponse;
 
 export interface WorkflowHistoryResponse {
   id: number;
@@ -1476,7 +1527,7 @@ export interface WorkflowHistoryResponse {
   performedBy?: UserDto;
   performedAt: string;
   comment?: string;
-  step?: WorkflowStepResponse;
+  nodeId?: string;
 }
 
 export interface WorkflowAdminResponse {
@@ -1486,6 +1537,7 @@ export interface WorkflowAdminResponse {
 }
 
 // Request DTOs
+// Request DTOs
 export interface CreateWorkflowRequest {
   name: string;
   description?: string;
@@ -1493,6 +1545,7 @@ export interface CreateWorkflowRequest {
   isActive?: boolean;
   admins?: AddWorkflowAdminRequest[];
   trigger: AddWorkflowTriggerRequest;
+  workflowDefinitionJson?: string;
 }
 
 export interface CreateWorkflowStepRequest {
@@ -1502,10 +1555,15 @@ export interface CreateWorkflowStepRequest {
   expirationDays?: number;
   onCompleteAction?: 'NONE' | 'MOVE_TO_FOLDER' | 'NOTIFY_USERS' | 'COMPLETE_WORKFLOW';
   targetFolderId?: number;
+  targetFolderName?: string;
   isRequired?: boolean;
   allowParallelApproval?: boolean;
   minApprovalsNeeded?: number;
   assignments: CreateStepAssignmentRequest[];
+  nodeType?: string;
+  nodeConfigJson?: string;
+  positionX?: number;
+  positionY?: number;
 }
 
 export interface CreateStepAssignmentRequest {
@@ -1521,6 +1579,7 @@ export interface UpdateWorkflowRequest {
   steps?: CreateWorkflowStepRequest[];
   admins?: AddWorkflowAdminRequest[];
   trigger: AddWorkflowTriggerRequest;
+  workflowDefinitionJson?: string;
 }
 
 export interface WorkflowTriggerResponse {
@@ -1571,3 +1630,451 @@ export interface AddWorkflowAdminRequest {
 // ==================== COMMON TYPES ====================
 
 // Additional types can be added here if needed
+
+
+// ==================== DIGITAL CERTIFICATES ====================
+
+export interface CertificateResponse {
+  id: number;
+  name: string;
+  description?: string;
+  certificateType: 'ROOT_CA' | 'INTERMEDIATE_CA' | 'PERSONAL' | 'ORGANIZATION' | 'CODE_SIGNING' | 'DOCUMENT_SIGNING';
+  issuer: string;
+  subject: string;
+  serialNumber: string;
+  thumbprint: string;
+  validFrom: string;
+  validTo: string;
+  keySize: number;
+  algorithm: string;
+  status: 'VALID' | 'EXPIRED' | 'REVOKED' | 'SUSPENDED' | 'PENDING';
+  isActive: boolean;
+  isTrusted: boolean;
+  usageCount: number;
+  lastUsedAt?: string;
+  owner?: UserDto;
+  creator?: UserDto;
+  createdAt: string;
+  updatedAt: string;
+  revokedAt?: string;
+  revocationReason?: string;
+  isExpired: boolean;
+  isValid: boolean;
+}
+
+export interface CreateCertificateRequest {
+  name: string;
+  description?: string;
+  certificateType: string;
+  issuer: string;
+  subject: string;
+  serialNumber: string;
+  thumbprint: string;
+  validFrom: string;
+  validTo: string;
+  keySize: number;
+  algorithm: string;
+  publicKey?: string;
+  certificateData?: string;
+  isTrusted?: boolean;
+  ownerId?: string;
+}
+
+export interface UpdateCertificateRequest {
+  name?: string;
+  description?: string;
+  isActive?: boolean;
+  isTrusted?: boolean;
+}
+
+export interface RevokeCertificateRequest {
+  reason: string;
+}
+
+// ==================== STAMPS ====================
+
+export interface StampResponse {
+  id: number;
+  name: string;
+  description?: string;
+  stampType: 'TEXT' | 'IMAGE' | 'DYNAMIC' | 'QR_CODE';
+  content?: string;
+  color?: string;
+  backgroundColor?: string;
+  borderColor?: string;
+  fontSize?: number;
+  fontFamily?: string;
+  fontWeight?: string;
+  imagePath?: string;
+  imageUrl?: string;
+  position?: string;
+  opacity?: number;
+  rotation?: number;
+  width?: number;
+  height?: number;
+  category?: string;
+  language?: string;
+  isActive: boolean;
+  usageCount: number;
+  lastUsedAt?: string;
+  creator?: UserDto;
+  createdAt: string;
+  updatedAt: string;
+  applications?: StampApplicationResponse[];
+}
+
+export interface StampApplicationResponse {
+  id: number;
+  documentId: number;
+  documentName?: string;
+  documentVersionId: number;
+  versionNumber?: number;
+  stampId: number;
+  stampName?: string;
+  stampType?: string;
+  pageNumber?: number;
+  positionX?: number;
+  positionY?: number;
+  width?: number;
+  height?: number;
+  appliedBy?: string;
+  appliedByName?: string;
+  appliedAt: string;
+  reason?: string;
+  notes?: string;
+}
+
+export interface ApplyStampRequest {
+  documentId: number;
+  documentVersionId: number;
+  stampId: number;
+  pageNumber?: number;
+  positionX?: number;
+  positionY?: number;
+  width?: number;
+  height?: number;
+  reason?: string;
+  notes?: string;
+}
+
+export interface CreateStampRequest {
+  name: string;
+  description?: string;
+  stampType: string;
+  content?: string;
+  color?: string;
+  backgroundColor?: string;
+  borderColor?: string;
+  fontSize?: number;
+  fontFamily?: string;
+  fontWeight?: string;
+  imagePath?: string;
+  imageUrl?: string;
+  position?: string;
+  opacity?: number;
+  rotation?: number;
+  width?: number;
+  height?: number;
+  category?: string;
+  language?: string;
+}
+
+export interface UpdateStampRequest {
+  name?: string;
+  description?: string;
+  content?: string;
+  color?: string;
+  backgroundColor?: string;
+  borderColor?: string;
+  fontSize?: number;
+  fontFamily?: string;
+  fontWeight?: string;
+  imagePath?: string;
+  imageUrl?: string;
+  position?: string;
+  opacity?: number;
+  rotation?: number;
+  width?: number;
+  height?: number;
+  category?: string;
+  isActive?: boolean;
+}
+
+// ==================== SIGNATURES ====================
+
+export interface SignatureResponse {
+  id: number;
+  documentId: number;
+  documentVersionId?: number;
+  stamp?: StampResponse;
+  certificate?: CertificateResponse;
+  signer?: UserDto;
+  signerName?: string;
+  signerEmail?: string;
+  signatureType: 'DIGITAL_CERTIFICATE' | 'VISUAL_STAMP' | 'ELECTRONIC' | 'BIOMETRIC' | 'HANDWRITTEN';
+  signatureHash?: string;
+  reason?: string;
+  location?: string;
+  contactInfo?: string;
+  pageNumber?: number;
+  positionX?: number;
+  positionY?: number;
+  width?: number;
+  height?: number;
+  status: 'VALID' | 'INVALID' | 'EXPIRED' | 'REVOKED' | 'PENDING_VERIFICATION';
+  isVerified: boolean;
+  verifiedAt?: string;
+  signedAt: string;
+  notes?: string;
+}
+
+export interface CreateSignatureRequest {
+  documentId: number;
+  documentVersionId?: number;
+  stampId?: number;
+  certificateId?: number;
+  signatureType: string;
+  signatureData?: string;
+  reason?: string;
+  location?: string;
+  contactInfo?: string;
+  pageNumber?: number;
+  positionX?: number;
+  positionY?: number;
+  width?: number;
+  height?: number;
+  notes?: string;
+}
+
+export interface VerifySignatureRequest {
+  signatureData?: string;
+  expectedHash?: string;
+}
+
+// ==================== FORMS ====================
+
+export interface FormResponse {
+  id: number;
+  name: string;
+  slug: string;
+  description?: string;
+  status: 'DRAFT' | 'PUBLISHED' | 'CLOSED' | 'ARCHIVED';
+  category?: string;
+
+  // Configuration
+  allowMultipleSubmissions: boolean;
+  requireAuthentication: boolean;
+  isPublic: boolean;
+  showProgressBar: boolean;
+  isMultiStep: boolean;
+
+  // Notifications
+  sendEmailNotification: boolean;
+  notificationEmail?: string;
+  sendConfirmationEmail: boolean;
+
+  // Submission settings
+  maxSubmissions?: number;
+  submissionDeadline?: string;
+  closeAfterMaxSubmissions: boolean;
+
+  // Messages
+  successMessage?: string;
+  redirectUrl?: string;
+
+  // Styling
+  themeColor?: string;
+  backgroundColor?: string;
+  customCss?: string;
+
+  // Document integration
+  saveToFolderId?: number;
+  saveToFolderName?: string;
+  createDocumentOnSubmit: boolean;
+  templateMinioKey?: string;
+  templateFilename?: string;
+
+  // Statistics
+  viewCount: number;
+  submissionCount: number;
+  completionRate?: number;
+  avgCompletionTimeSeconds?: number;
+
+  // Fields
+  fields: FormFieldResponse[];
+
+  // Metadata
+  creator?: UserDto;
+  createdAt: string;
+  updatedAt: string;
+  publishedAt?: string;
+  closedAt?: string;
+}
+
+export interface FormFieldResponse {
+  id: number;
+  label: string;
+  fieldKey: string;
+  fieldType: 'TEXT' | 'EMAIL' | 'NUMBER' | 'PHONE' | 'URL' | 'TEXTAREA' | 'RICH_TEXT' |
+  'SELECT' | 'RADIO' | 'CHECKBOX' | 'MULTI_SELECT' | 'DATE' | 'TIME' | 'DATETIME' |
+  'FILE_UPLOAD' | 'IMAGE_UPLOAD' | 'RATING' | 'SLIDER' | 'SIGNATURE' | 'LOCATION' |
+  'SECTION_HEADER' | 'DIVIDER' | 'HTML_CONTENT';
+  placeholder?: string;
+  description?: string;
+  defaultValue?: string;
+
+  // Validation
+  isRequired: boolean;
+  minLength?: number;
+  maxLength?: number;
+  minValue?: number;
+  maxValue?: number;
+  pattern?: string;
+  validationMessage?: string;
+
+  // Options and conditional logic
+  options?: Record<string, any>;
+  conditionalLogic?: Record<string, any>;
+
+  // Layout
+  orderIndex: number;
+  stepNumber: number;
+  width: string;
+
+  // File settings
+  allowedFileTypes?: string;
+  maxFileSizeMb?: number;
+  allowMultipleFiles: boolean;
+
+  // Additional config
+  config?: Record<string, any>;
+}
+
+export interface CreateFormRequest {
+  name: string;
+  slug: string;
+  description?: string;
+  category?: string;
+
+  // Configuration
+  allowMultipleSubmissions?: boolean;
+  requireAuthentication?: boolean;
+  isPublic?: boolean;
+  showProgressBar?: boolean;
+  isMultiStep?: boolean;
+
+  // Notifications
+  sendEmailNotification?: boolean;
+  notificationEmail?: string;
+  sendConfirmationEmail?: boolean;
+
+  // Submission settings
+  maxSubmissions?: number;
+  submissionDeadline?: string;
+  closeAfterMaxSubmissions?: boolean;
+
+  // Messages
+  successMessage?: string;
+  redirectUrl?: string;
+
+  // Styling
+  themeColor?: string;
+  backgroundColor?: string;
+  customCss?: string;
+
+  // Document integration
+  saveToFolderId?: number;
+  createDocumentOnSubmit?: boolean;
+  templateMinioKey?: string;
+  templateFilename?: string;
+
+  // Fields
+  fields?: CreateFormFieldRequest[];
+}
+
+export interface CreateFormFieldRequest {
+  label: string;
+  fieldKey: string;
+  fieldType: string;
+  placeholder?: string;
+  description?: string;
+  defaultValue?: string;
+
+  // Validation
+  isRequired?: boolean;
+  minLength?: number;
+  maxLength?: number;
+  minValue?: number;
+  maxValue?: number;
+  pattern?: string;
+  validationMessage?: string;
+
+  // Options and conditional logic
+  options?: string[];
+  conditionalLogic?: Record<string, any>;
+
+  // Layout
+  orderIndex: number;
+  stepNumber?: number;
+  width?: string;
+
+  // File settings
+  allowedFileTypes?: string;
+  maxFileSizeMb?: number;
+  allowMultipleFiles?: boolean;
+
+  // Additional config
+  config?: Record<string, any>;
+}
+
+export type UpdateFormRequest = Partial<CreateFormRequest>;
+
+export interface FormSubmissionResponse {
+  id: number;
+  formId: number;
+  formName?: string;
+
+  // Submitter
+  submitter?: UserDto;
+  submitterName?: string;
+  submitterEmail?: string;
+  submitterIp?: string;
+
+  // Data
+  submissionData: Record<string, any>;
+  values: FormSubmissionValueResponse[];
+
+  // Status
+  status: 'SUBMITTED' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'ARCHIVED';
+  isRead: boolean;
+  isStarred: boolean;
+
+  // Timing
+  submittedAt: string;
+  completionTimeSeconds?: number;
+
+  // Review
+  reviewer?: UserDto;
+  reviewedAt?: string;
+  reviewNotes?: string;
+
+  // Metadata
+  metadata?: Record<string, any>;
+}
+
+export interface FormSubmissionValueResponse {
+  id: number;
+  fieldId: number;
+  fieldKey: string;
+  fieldLabel: string;
+  value?: string;
+  fileUrl?: string;
+}
+
+export interface SubmitFormRequest {
+  submissionData: Record<string, any>;
+  submitterName?: string;
+  submitterEmail?: string;
+  completionTimeSeconds?: number;
+  metadata?: Record<string, any>;
+}

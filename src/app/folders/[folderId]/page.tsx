@@ -1,4 +1,3 @@
-// app/folders/[folderId]/page.tsx
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -10,20 +9,20 @@ import CreateFolderModal from '@/components/modals/CreateFolderModal';
 import FileUploadModal from '@/components/modals/FileUploadModal';
 import EditFolderModal from '@/components/modals/EditFolderModal';
 import EditDocumentModal from '@/components/modals/EditDocumentModal';
-import AdvancedSearchModal from '@/components/modals/AdvancedSearchModal';
 import { DocumentResponseDto, FolderRepoResDto, FolderResDto, SortFields, AuditLog, UserDto } from '@/types/api';
 import { auditLogService, AuditLog as ServiceAuditLog } from '@/api/services/auditLogService';
 import { favoriteService } from '@/api/services/favoriteService';
-import FolderActionModal from '@/components/modals/FolderActionModal';
+import RenameModal from '@/components/modals/RenameModal';
+import MoveModal from '@/components/modals/MoveModal';
+import ChangeDescriptionModal from '@/components/modals/ChangeDescriptionModal';
 import ConfirmationModal from '@/components/modals/ConfirmationModal';
 import { CommentsModal } from '@/components/modals/CommentsModal';
+import { FolderActivityModal } from '@/components/modals/FolderActivityModal';
 
 // Import extracted components
 import {
   BreadcrumbNavigation,
   FolderHeader,
-  ActivitySection,
-  FolderCommentsSection,
   FolderToolbar,
   UnifiedTableView,
   FolderDetailsSkeleton
@@ -34,7 +33,7 @@ import Pagination from '@/components/main/Pagination';
 type TableItem = (FolderResDto & { type: 'folder' }) | (DocumentResponseDto & { type: 'document' });
 
 // Sort options for folder contents
-type SortOption = 'name' | 'createdAt' | 'updatedAt' | 'size' | 'type';
+type SortOption = 'name' | 'createdAt' | 'updatedAt' | 'size';
 
 export default function FolderDetailsPage() {
   const { t } = useLanguage();
@@ -61,66 +60,24 @@ export default function FolderDetailsPage() {
   const [selectedDocument, setSelectedDocument] = useState<DocumentResponseDto | null>(null);
   const [selectedFolder, setSelectedFolder] = useState<FolderResDto | null>(null);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
-  const [showFolderActionModal, setShowFolderActionModal] = useState(false);
-  const [folderAction, setFolderAction] = useState<'rename' | 'move' | null>(null);
+
+  // New state for separate modals
+  const [showRenameModal, setShowRenameModal] = useState(false);
+  const [showMoveModal, setShowMoveModal] = useState(false);
+  const [showChangeDescriptionModal, setShowChangeDescriptionModal] = useState(false);
   const [actionItem, setActionItem] = useState<TableItem | null>(null);
+
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteItem, setDeleteItem] = useState<TableItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [showAdvancedSearchModal, setShowAdvancedSearchModal] = useState(false);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [isLoadingAuditLogs, setIsLoadingAuditLogs] = useState<boolean>(false);
-  const [showActivitySection, setShowActivitySection] = useState<boolean>(false);
-  const [showCommentsSection, setShowCommentsSection] = useState<boolean>(false);
   const [isFolderFavorite, setIsFolderFavorite] = useState<boolean>(false);
   const [isLoadingFavorite, setIsLoadingFavorite] = useState<boolean>(false);
   const [showCommentsModal, setShowCommentsModal] = useState<boolean>(false);
   const [commentsModalItem, setCommentsModalItem] = useState<TableItem | null>(null);
-
-  // Combine folders and documents for unified table
-  const getTableItems = (): TableItem[] => {
-    if (!data) return [];
-    
-    const folderItems: TableItem[] = data.folders.map(folder => ({
-      ...folder,
-      type: 'folder' as const
-    }));
-    
-    const documentItems: TableItem[] = data.documents.map(doc => ({
-      ...doc,
-      type: 'document' as const
-    }));
-    
-    // Sort by name (you can change the sorting logic)
-    const allItems = [...folderItems, ...documentItems];
-    
-    return allItems;
-  };
-
-  // Get display items (local search results or API results)
-  const getDisplayItems = (): TableItem[] => {
-    if (isLocalFiltering && localSearchResults.length > 0) {
-      return localSearchResults;
-    }
-    return getTableItems();
-  };
-
-  // Local filtering function for table items
-  const filterTableItemsLocally = (query: string, allItems: TableItem[]) => {
-    if (!query.trim()) {
-      return allItems;
-    }
-    
-    const lowerQuery = query.toLowerCase();
-    return allItems.filter(item => {
-      const matchesName = item.name.toLowerCase().includes(lowerQuery);
-      // Check folder description (using type assertion since description exists at runtime but not in type def)
-      const matchesDescription = item.type === 'folder' && (item as any).description 
-        ? (item as any).description.toLowerCase().includes(lowerQuery) 
-        : false;
-      return matchesName || matchesDescription;
-    });
-  };
+  const [showDocumentsOnly, setShowDocumentsOnly] = useState<boolean>(false);
+  const [showActivityModal, setShowActivityModal] = useState(false);
 
   // Map sort option to API sort field
   const mapSortOptionToApiField = (sortOption: SortOption): SortFields => {
@@ -133,8 +90,6 @@ export default function FolderDetailsPage() {
         return SortFields.UPDATED_AT;
       case 'size':
         return SortFields.NAME; // API doesn't have size sorting, fallback to name
-      case 'type':
-        return SortFields.NAME; // API doesn't have type sorting, fallback to name
       default:
         return SortFields.NAME;
     }
@@ -149,16 +104,16 @@ export default function FolderDetailsPage() {
         setLoading(true);
       }
       setError(null);
-      
+
       const response = await notificationApiClient.getFolder(parseInt(folderId), {
         page: currentPage - 1, // API uses 0-based pagination
         size: 20,
         name: searchQuery || undefined,
-        showFolder: true,
+        showFolder: !showDocumentsOnly, // When showDocumentsOnly is true, set showFolder to false
         sort: mapSortOptionToApiField(sortBy),
-        desc: sortDesc
+        desc: sortDesc,
       });
-      
+
       setData(response);
       // Extract folder from response (API includes it when showFolder=true)
       if (response.folder) {
@@ -173,8 +128,7 @@ export default function FolderDetailsPage() {
           // Don't set error here, just log it - folder might not be critical
         }
       }
-      // Store all items for local filtering (will be updated after data is set)
-      
+
       // Fetch audit logs and favorite status for the folder
       if (!isSearchRequest) {
         await Promise.all([
@@ -194,6 +148,51 @@ export default function FolderDetailsPage() {
     }
   };
 
+  // Combine folders and documents for unified table
+  const getTableItems = (): TableItem[] => {
+    if (!data) return [];
+
+    const folderItems: TableItem[] = data.folders.map(folder => ({
+      ...folder,
+      type: 'folder' as const
+    }));
+
+    const documentItems: TableItem[] = data.documents.map(doc => ({
+      ...doc,
+      type: 'document' as const
+    }));
+
+    // Sort by name (you can change the sorting logic)
+    const allItems = [...folderItems, ...documentItems];
+
+    return allItems;
+  };
+
+  // Get display items (local search results or API results)
+  const getDisplayItems = (): TableItem[] => {
+    if (isLocalFiltering && localSearchResults.length > 0) {
+      return localSearchResults;
+    }
+    return getTableItems();
+  };
+
+  // Local filtering function for table items
+  const filterTableItemsLocally = (query: string, allItems: TableItem[]) => {
+    if (!query.trim()) {
+      return allItems;
+    }
+
+    const lowerQuery = query.toLowerCase();
+    return allItems.filter(item => {
+      const matchesName = item.name.toLowerCase().includes(lowerQuery);
+      // Check folder description (using type assertion since description exists at runtime but not in type def)
+      const matchesDescription = item.type === 'folder' && (item as any).description
+        ? (item as any).description.toLowerCase().includes(lowerQuery)
+        : false;
+      return matchesName || matchesDescription;
+    });
+  };
+
   // Update allTableItems when data changes
   useEffect(() => {
     if (data) {
@@ -202,32 +201,42 @@ export default function FolderDetailsPage() {
     }
   }, [data]);
 
-  // Track previous sort values to detect sort changes
+  // Track previous values to detect changes
   const prevSortBy = useRef(sortBy);
   const prevSortDesc = useRef(sortDesc);
+  const prevShowDocumentsOnly = useRef(showDocumentsOnly);
+  const isFirstLoad = useRef(true);
 
   // Fetch folder data when dependencies change (excluding searchQuery)
   useEffect(() => {
     if (folderId) {
-      // Reset to page 1 only when sort changes (not when pagination changes)
+      // Reset to page 1 only when sort changes or showDocumentsOnly changes (not when pagination changes)
       const sortChanged = prevSortBy.current !== sortBy || prevSortDesc.current !== sortDesc;
-      if (sortChanged && currentPage !== 1) {
+      const filterChanged = prevShowDocumentsOnly.current !== showDocumentsOnly;
+
+      if ((sortChanged || filterChanged) && currentPage !== 1) {
         prevSortBy.current = sortBy;
         prevSortDesc.current = sortDesc;
+        prevShowDocumentsOnly.current = showDocumentsOnly;
         setCurrentPage(1);
         return; // Will trigger another fetch when currentPage updates
       }
-      
+
       // Update refs
       prevSortBy.current = sortBy;
       prevSortDesc.current = sortDesc;
-      
-      // Use full page loading for initial load, table loading for pagination and sorting
-      const isInitialLoad = currentPage === 1 && sortBy === 'name' && sortDesc === false && !searchQuery;
+      prevShowDocumentsOnly.current = showDocumentsOnly;
+
+      // Use full page loading only for the very first load, table loading for everything else
+      const isInitialLoad = isFirstLoad.current;
+      if (isInitialLoad) {
+        isFirstLoad.current = false;
+      }
+
       fetchFolderData(!isInitialLoad);
     }
-  }, [folderId, currentPage, sortBy, sortDesc]);
-  
+  }, [folderId, currentPage, sortBy, sortDesc, showDocumentsOnly]);
+
   // Handle search with local filtering first, then API fetch
   useEffect(() => {
     if (!searchQuery.trim()) {
@@ -262,7 +271,7 @@ export default function FolderDetailsPage() {
         setLocalSearchResults([]); // Clear local results when API results come in
       });
     }, 800); // Increased delay for better UX
-    
+
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
@@ -319,10 +328,10 @@ export default function FolderDetailsPage() {
   // Toggle folder favorite status
   const toggleFolderFavorite = async () => {
     if (!folderId || isLoadingFavorite) return;
-    
+
     const folderIdNum = parseInt(folderId, 10);
     if (isNaN(folderIdNum)) return;
-    
+
     try {
       setIsLoadingFavorite(true);
       if (isFolderFavorite) {
@@ -342,10 +351,10 @@ export default function FolderDetailsPage() {
   // Navigate to folder by path
   const navigateToPath = async (cumulativePath: string) => {
     if (!cumulativePath) return;
-    
+
     try {
       const response = await notificationApiClient.getFolderIdByPath(cumulativePath);
-      
+
       // Navigate to the folder by ID
       router.push(`/folders/${response.id}`);
     } catch (error) {
@@ -381,14 +390,17 @@ export default function FolderDetailsPage() {
 
   const handleMove = (item: TableItem) => {
     setActionItem(item);
-    setFolderAction('move');
-    setShowFolderActionModal(true);
+    setShowMoveModal(true);
   };
 
   const handleRename = (item: TableItem) => {
     setActionItem(item);
-    setFolderAction('rename');
-    setShowFolderActionModal(true);
+    setShowRenameModal(true);
+  };
+
+  const handleChangeDescription = (item: TableItem) => {
+    setActionItem(item);
+    setShowChangeDescriptionModal(true);
   };
 
   const handleDelete = (item: TableItem) => {
@@ -400,6 +412,10 @@ export default function FolderDetailsPage() {
   const handleShowComments = (item: TableItem) => {
     setCommentsModalItem(item);
     setShowCommentsModal(true);
+  };
+
+  const handleShowActivity = () => {
+    setShowActivityModal(true);
   };
 
   const handleView = (item: TableItem) => {
@@ -422,6 +438,12 @@ export default function FolderDetailsPage() {
         window.document.body.removeChild(link);
       } catch (error) {
         console.error('Error downloading document:', error);
+      }
+    } else if (item.type === 'folder') {
+      try {
+        await folderService.downloadFolder(item.id, item.name);
+      } catch (error) {
+        console.error('Error downloading folder:', error);
       }
     }
   };
@@ -458,7 +480,7 @@ export default function FolderDetailsPage() {
 
   const handleConfirmDelete = async () => {
     if (!deleteItem) return;
-    
+
     setIsDeleting(true);
     try {
       if (deleteItem.type === 'folder') {
@@ -466,11 +488,11 @@ export default function FolderDetailsPage() {
       } else {
         await notificationApiClient.deleteDocument(deleteItem.documentId);
       }
-      
+
       // Update the frontend list directly instead of refetching
       setData(prevData => {
         if (!prevData) return prevData;
-        
+
         if (deleteItem.type === 'folder') {
           const updatedFolders = prevData.folders.filter(folder => folder.id !== deleteItem.id);
           return { ...prevData, folders: updatedFolders };
@@ -479,7 +501,7 @@ export default function FolderDetailsPage() {
           return { ...prevData, documents: updatedDocuments };
         }
       });
-      
+
       // Update the table items as well
       setAllTableItems(prevItems => prevItems.filter(tableItem => {
         if (tableItem.type === 'folder' && deleteItem.type === 'folder') {
@@ -489,11 +511,11 @@ export default function FolderDetailsPage() {
         }
         return true; // Keep items of different types
       }));
-      
+
       // Close the modal
       setShowDeleteModal(false);
       setDeleteItem(null);
-      
+
     } catch (error) {
       console.error('Error deleting item:', error);
     } finally {
@@ -507,47 +529,60 @@ export default function FolderDetailsPage() {
     setIsDeleting(false);
   };
 
-  const handleFolderActionSuccess = (updatedItem?: { id: number; name: string; type: 'folder' | 'document'; action: 'rename' | 'move' }) => {
+  const handleFolderActionSuccess = (updatedItem?: { id: number; name?: string; description?: string; type: 'folder' | 'document'; action: 'rename' | 'move' | 'change-description' }) => {
     if (updatedItem) {
       setData(prevData => {
         if (!prevData) return prevData;
-        
-        if (updatedItem.action === 'rename') {
+
+        if (updatedItem.action === 'rename' && updatedItem.name) {
           // Update the name in the local state
           if (updatedItem.type === 'folder') {
-            const updatedFolders = prevData.folders.map(folder => 
-              folder.id === updatedItem.id 
-                ? { ...folder, name: updatedItem.name }
+            const updatedFolders = prevData.folders.map(folder =>
+              folder.id === updatedItem.id
+                ? { ...folder, name: updatedItem.name! }
                 : folder
             );
             return { ...prevData, folders: updatedFolders };
           } else if (updatedItem.type === 'document') {
-            const updatedDocuments = prevData.documents.map(doc => 
-              doc.documentId === updatedItem.id 
-                ? { ...doc, name: updatedItem.name }
+            const updatedDocuments = prevData.documents.map(doc =>
+              doc.documentId === updatedItem.id
+                ? { ...doc, name: updatedItem.name! }
                 : doc
             );
             return { ...prevData, documents: updatedDocuments };
+          }
+        } else if (updatedItem.action === 'change-description' && updatedItem.description !== undefined) {
+          if (updatedItem.type === 'folder') {
+            const updatedFolders = prevData.folders.map(folder =>
+              folder.id === updatedItem.id
+                ? { ...folder, description: updatedItem.description }
+                : folder
+            );
+            // Also update current folder if it's the one being edited (though usually it's subfolders in the list)
+            if (folder && folder.id === updatedItem.id) {
+              setFolder({ ...folder, description: updatedItem.description });
+            }
+            return { ...prevData, folders: updatedFolders };
           }
         } else if (updatedItem.action === 'move') {
           // Remove the item from the current list since it's moved to another location
           if (updatedItem.type === 'folder') {
             const updatedFolders = prevData.folders.filter(f => f.id !== updatedItem.id);
-            return { 
-              ...prevData, 
+            return {
+              ...prevData,
               folders: updatedFolders,
               totalElements: prevData.totalElements - 1
             };
           } else if (updatedItem.type === 'document') {
             const updatedDocuments = prevData.documents.filter(doc => doc.documentId !== updatedItem.id);
-            return { 
-              ...prevData, 
+            return {
+              ...prevData,
               documents: updatedDocuments,
               totalElements: prevData.totalElements - 1
             };
           }
         }
-        
+
         return prevData;
       });
     }
@@ -606,7 +641,7 @@ export default function FolderDetailsPage() {
     return (
       <div className="flex flex-col items-center justify-center py-12">
         <div className="text-error text-lg mb-4">{error || 'Folder not found'}</div>
-        <button 
+        <button
           onClick={() => router.back()}
           className="bg-primary text-surface px-4 py-2 rounded-lg hover:bg-primary-dark transition-colors"
         >
@@ -619,18 +654,18 @@ export default function FolderDetailsPage() {
   const tableItems = getDisplayItems();
 
   return (
-    <div className="bg-gray-50 flex flex-col flex-1">
+    <div className="bg-gray-50 flex flex-col flex-1 h-full overflow-hidden">
       {/* Breadcrumb Navigation */}
-      <div className="bg-white border-b border-gray-200 px-6 py-3">
-      <BreadcrumbNavigation 
-        folderPath={folder.path || ''}
-        folderOwnerId={folder.ownedBy?.id || ''}
-        folderOwnerDisplayName={folder.ownedBy?.displayName || ''}
-        currentFolderName={folder.name || ''}
-        onNavigateToPath={navigateToPath}
-      />
-          </div>
-          
+      <div className="bg-white border-b border-gray-200 px-6 py-3 shrink-0">
+        <BreadcrumbNavigation
+          folderPath={folder.path || ''}
+          folderOwnerId={folder.ownedBy?.id || ''}
+          folderOwnerDisplayName={folder.ownedBy?.displayName || ''}
+          currentFolderName={folder.name || ''}
+          onNavigateToPath={navigateToPath}
+        />
+      </div>
+
       {/* Folder Header */}
       <FolderHeader
         folder={folder}
@@ -641,11 +676,35 @@ export default function FolderDetailsPage() {
         onEditPermissions={() => handleEditFolderPermissions(folder)}
         onUpload={handleUpload}
         onCreateFolder={handleCreateFolder}
+        onShowComments={() => setShowCommentsModal(true)}
+        onShowActivity={handleShowActivity}
         formatFileSize={formatFileSize}
         formatDate={formatDate}
-        getProfileImage={getProfileImage}
-        getUserInitials={getUserInitials}
         isLoading={loading}
+        onChangeDescription={() => {
+          // For the current folder header
+          setActionItem({ ...folder, type: 'folder' } as TableItem);
+          setShowChangeDescriptionModal(true);
+        }}
+        onRename={() => {
+          setActionItem({ ...folder, type: 'folder' } as TableItem);
+          setShowRenameModal(true);
+        }}
+        onMove={() => {
+          setActionItem({ ...folder, type: 'folder' } as TableItem);
+          setShowMoveModal(true);
+        }}
+        onDelete={() => {
+          setDeleteItem({ ...folder, type: 'folder' } as TableItem);
+          setShowDeleteModal(true);
+        }}
+        onDownload={async () => {
+          try {
+            await folderService.downloadFolder(folder.id, folder.name);
+          } catch (error) {
+            console.error('Error downloading folder:', error);
+          }
+        }}
       />
 
       {/* Toolbar */}
@@ -657,84 +716,58 @@ export default function FolderDetailsPage() {
         onSortByChange={setSortBy}
         sortDesc={sortDesc}
         onSortDescToggle={() => setSortDesc(!sortDesc)}
+        showDocumentsOnly={showDocumentsOnly}
+        onToggleDocumentsOnly={setShowDocumentsOnly}
       />
 
       {/* Main Content Area */}
-      <div className="flex">
+      <div className="flex flex-1 overflow-hidden">
         {/* File List */}
-        <div className="flex-1 bg-white">
+        <div className="flex-1 bg-white overflow-y-auto">
           {/* Unified Table View */}
-      <UnifiedTableView 
-        items={tableItems} 
-        formatFileSize={formatFileSize} 
-        formatDate={formatDate}
-        currentFolderId={folder.id}
-        onEditPermissions={handleEditDocumentPermissions}
-        onEditFolderPermissions={handleEditFolderPermissions}
-        onMove={handleMove}
-        onRename={handleRename}
-        onDelete={handleDelete}
-        onShowComments={handleShowComments}
-        onDownload={handleDownload}
-        onShare={handleShare}
-        onCopyLink={handleCopyLink}
-        onView={handleView}
-        openDropdownId={openDropdownId}
-        setOpenDropdownId={setOpenDropdownId}
-        showLoadingRows={tableLoading}
-      />
+          <UnifiedTableView
+            items={tableItems}
+            formatFileSize={formatFileSize}
+            formatDate={formatDate}
+            currentFolderId={folder.id}
+            onEditPermissions={handleEditDocumentPermissions}
+            onEditFolderPermissions={handleEditFolderPermissions}
+            onMove={handleMove}
+            onRename={handleRename}
+            onDelete={handleDelete}
+            onShowComments={handleShowComments}
+            onDownload={handleDownload}
+            onShare={handleShare}
+            onCopyLink={handleCopyLink}
+            onView={handleView}
+            onChangeDescription={handleChangeDescription}
+            openDropdownId={openDropdownId}
+            setOpenDropdownId={setOpenDropdownId}
+            showLoadingRows={tableLoading}
+          />
 
-      {/* Loading indicator */}
-      {tableLoading && (
+          {/* Loading indicator */}
+          {tableLoading && (
             <div className="flex items-center justify-center py-4 text-sm text-gray-500">
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
-          {isLocalFiltering ? 'Fetching comprehensive results...' : 'Loading items...'}
-        </div>
-      )}
+              {isLocalFiltering ? 'Fetching comprehensive results...' : 'Loading items...'}
+            </div>
+          )}
 
-      {/* Pagination */}
-      {data && data.totalPages > 1 && (
-        <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
-          <Pagination
-            currentPage={currentPage - 1}
-            totalPages={data.totalPages}
-            totalElements={data.totalElements}
-            pageSize={data.pageable?.pageSize || 20}
-            onPageChange={(page) => {
-              setCurrentPage(page + 1);
-            }}
-          />
-        </div>
-      )}
-        </div>
-
-        {/* Sidebar */}
-        <div className="w-96 bg-white border-l border-gray-200 h-screen overflow-y-auto">
-          <div className=" space-y-2">
-            {/* Activity Section */}
-            <div className="bg-gray-50 rounded-lg px-2 ">
-              {/* Comments Section */}
-            <div className="bg-gray-50 rounded-lg px-2 pt-4">
-              <FolderCommentsSection
-                showCommentsSection={showCommentsSection}
-                onToggleCommentsSection={() => setShowCommentsSection(!showCommentsSection)}
-                folder={folder}
-                isLoading={loading}
+          {/* Pagination */}
+          {data && data.totalPages > 1 && (
+            <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
+              <Pagination
+                currentPage={currentPage - 1}
+                totalPages={data.totalPages}
+                totalElements={data.totalElements}
+                pageSize={data.pageable?.pageSize || 20}
+                onPageChange={(page) => {
+                  setCurrentPage(page + 1);
+                }}
               />
             </div>
-
-              <ActivitySection
-                showActivitySection={showActivitySection}
-                onToggleActivitySection={() => setShowActivitySection(!showActivitySection)}
-                auditLogs={auditLogs}
-                isLoadingAuditLogs={isLoadingAuditLogs}
-                formatDate={formatDate}
-                isLoading={loading}
-              />
-            </div>
-
-            
-          </div>
+          )}
         </div>
       </div>
 
@@ -748,14 +781,14 @@ export default function FolderDetailsPage() {
         />
       )}
 
-      {showUploadModal && (
-        <FileUploadModal
-          isOpen={showUploadModal}
-          onClose={() => setShowUploadModal(false)}
-          onSuccess={handleFileUploaded}
-          folderId={parseInt(folderId)}
-        />
-      )}
+
+      {/* Always render to prevent remounting and refetching on parent state changes */}
+      <FileUploadModal
+        isOpen={showUploadModal}
+        onClose={() => setShowUploadModal(false)}
+        onSuccess={handleFileUploaded}
+        folderId={parseInt(folderId)}
+      />
 
       {showEditFolderModal && selectedFolder && (
         <EditFolderModal
@@ -763,7 +796,6 @@ export default function FolderDetailsPage() {
           onClose={() => {
             setShowEditFolderModal(false);
             setSelectedFolder(null);
-            handleRefresh();
           }}
           folder={selectedFolder}
         />
@@ -775,30 +807,49 @@ export default function FolderDetailsPage() {
           onClose={() => {
             setShowEditDocumentModal(false);
             setSelectedDocument(null);
-            handleRefresh();
           }}
           document={selectedDocument}
         />
       )}
 
-      <FolderActionModal
-        isOpen={showFolderActionModal}
-        onClose={() => {
-          setShowFolderActionModal(false);
-          setActionItem(null);
-          setFolderAction(null);
-        }}
-        folder={actionItem && actionItem.type === 'folder' ? actionItem as FolderResDto : null}
-        document={actionItem && actionItem.type === 'document' ? actionItem as DocumentResponseDto : null}
-        action={folderAction}
-        onSuccess={handleFolderActionSuccess}
-      />
+      {showRenameModal && actionItem && (
+        <RenameModal
+          isOpen={showRenameModal}
+          onClose={() => {
+            setShowRenameModal(false);
+            setActionItem(null);
+          }}
+          item={actionItem.type === 'folder' ? actionItem as FolderResDto : actionItem as DocumentResponseDto}
+          itemType={actionItem.type}
+          onSuccess={handleFolderActionSuccess}
+        />
+      )}
 
-      <AdvancedSearchModal
-        open={showAdvancedSearchModal}
-        onClose={() => setShowAdvancedSearchModal(false)}
-        initialQuery={searchQuery}
-      />
+      {showMoveModal && actionItem && (
+        <MoveModal
+          isOpen={showMoveModal}
+          onClose={() => {
+            setShowMoveModal(false);
+            setActionItem(null);
+          }}
+          item={actionItem.type === 'folder' ? actionItem as FolderResDto : actionItem as DocumentResponseDto}
+          itemType={actionItem.type}
+          onSuccess={handleFolderActionSuccess}
+        />
+      )}
+
+      {showChangeDescriptionModal && actionItem && (
+        <ChangeDescriptionModal
+          isOpen={showChangeDescriptionModal}
+          onClose={() => {
+            setShowChangeDescriptionModal(false);
+            setActionItem(null);
+          }}
+          item={actionItem.type === 'folder' ? actionItem as FolderResDto : actionItem as DocumentResponseDto}
+          itemType={actionItem.type}
+          onSuccess={handleFolderActionSuccess}
+        />
+      )}
 
       <ConfirmationModal
         isOpen={showDeleteModal}
@@ -815,19 +866,26 @@ export default function FolderDetailsPage() {
       />
 
       {/* Comments Modal */}
-      {commentsModalItem && (
-        <CommentsModal
-          isOpen={showCommentsModal}
-          onClose={() => {
-            setShowCommentsModal(false);
-            setCommentsModalItem(null);
-          }}
-          entityType={commentsModalItem.type === 'folder' ? 'FOLDER' : 'DOCUMENT'}
-          entityId={commentsModalItem.type === 'folder' ? commentsModalItem.id : commentsModalItem.documentId}
-          entityName={commentsModalItem.name}
-          canComment={commentsModalItem.userPermissions?.canEdit}
-        />
-      )}
+      <CommentsModal
+        isOpen={showCommentsModal}
+        onClose={() => {
+          setShowCommentsModal(false);
+          setCommentsModalItem(null);
+        }}
+        entityType={commentsModalItem ? (commentsModalItem.type === 'folder' ? 'FOLDER' : 'DOCUMENT') : 'FOLDER'}
+        entityId={commentsModalItem ? (commentsModalItem.type === 'folder' ? commentsModalItem.id : commentsModalItem.documentId) : parseInt(folderId)}
+        entityName={commentsModalItem ? commentsModalItem.name : folder.name}
+        canComment={true} // Simplify for now, or derive from permissions
+      />
+
+      {/* Activity Modal */}
+      <FolderActivityModal
+        isOpen={showActivityModal}
+        onClose={() => setShowActivityModal(false)}
+        auditLogs={auditLogs}
+        isLoadingAuditLogs={isLoadingAuditLogs}
+        formatDate={formatDate}
+      />
     </div>
   );
 }

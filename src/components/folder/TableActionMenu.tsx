@@ -9,7 +9,8 @@ import {
     Share2,
     Eye,
     Copy,
-    MoreVertical
+    MoreVertical,
+    FileText
 } from 'lucide-react';
 import { DocumentResponseDto, FolderResDto } from '@/types/api';
 import {
@@ -36,6 +37,7 @@ interface TableActionMenuProps {
     onShare?: (item: TableItem) => void;
     onCopyLink?: (item: TableItem) => void;
     onView?: (item: TableItem) => void;
+    onChangeDescription?: (item: TableItem) => void;
 }
 
 export function TableActionMenu({
@@ -49,7 +51,8 @@ export function TableActionMenu({
     onDownload,
     onShare,
     onCopyLink,
-    onView
+    onView,
+    onChangeDescription
 }: TableActionMenuProps) {
     const isFolder = item.type === 'folder';
 
@@ -58,7 +61,7 @@ export function TableActionMenu({
     const canDelete = item.userPermissions?.canDelete;
     const canManagePermissions = item.userPermissions?.canManagePermissions;
     const canView = item.userPermissions?.canView;
-    const canShare = item.userPermissions?.canShare;
+    const canShare = isFolder ? (item.userPermissions as any)?.canShare : false;
 
     return (
         <DropdownMenu>
@@ -91,17 +94,6 @@ export function TableActionMenu({
                     </DropdownMenuItem>
                 )}
 
-                {onShare && (
-                    <DropdownMenuItem
-                        onClick={() => onShare(item)}
-                        disabled={!canShare}
-                        className="cursor-pointer"
-                    >
-                        <Share2 className="mr-2 h-4 w-4" />
-                        <span>Share</span>
-                    </DropdownMenuItem>
-                )}
-
                 {onCopyLink && (
                     <DropdownMenuItem
                         onClick={() => onCopyLink(item)}
@@ -119,6 +111,17 @@ export function TableActionMenu({
                     >
                         <MessageSquare className="mr-2 h-4 w-4" />
                         <span>Comments</span>
+                    </DropdownMenuItem>
+                )}
+
+                {onChangeDescription && isFolder && (
+                    <DropdownMenuItem
+                        onClick={() => onChangeDescription(item)}
+                        disabled={!canRename} // Assuming edit permission is needed for description too
+                        className="cursor-pointer"
+                    >
+                        <FileText className="mr-2 h-4 w-4" />
+                        <span>Change Description</span>
                     </DropdownMenuItem>
                 )}
 

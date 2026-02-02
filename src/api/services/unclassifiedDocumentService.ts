@@ -31,11 +31,11 @@ export class UnclassifiedDocumentService {
     formData.append('file', file);
     formData.append('folderId', folderId.toString());
     formData.append('categoryId', categoryId.toString());
-    
+
     if (title) {
       formData.append('title', title);
     }
-    
+
     if (fileName) {
       formData.append('fileName', fileName);
     }
@@ -105,6 +105,7 @@ export class UnclassifiedDocumentService {
     payload: {
       folderId: number,
       title: string,
+      description?: string,
       lang: ExtractorLanguage,
       fileName?: string,
       tagsIds?: number[],
@@ -114,6 +115,9 @@ export class UnclassifiedDocumentService {
     const form = new FormData();
     form.append('folderId', String(payload.folderId));
     form.append('title', payload.title);
+    if (payload.description) {
+      form.append('description', payload.description);
+    }
     // Backend expects enum names (ENG/FRA/ARA)
     const langEnum = (payload.lang || '').toString().toUpperCase();
     form.append('lang', langEnum);
@@ -121,9 +125,22 @@ export class UnclassifiedDocumentService {
     if (payload.tagsIds && payload.tagsIds.length) {
       form.append('tags', JSON.stringify(payload.tagsIds));
     }
-    if (payload.filingCategory && (payload.filingCategory as any).id != null) {
-      form.append('filingCategory', new Blob([JSON.stringify(payload.filingCategory)], { type: 'application/json' }));
+    
+    // Always send filingCategory if it exists, even with empty metadata
+    if (payload.filingCategory) {
+      const filingCategoryJson = JSON.stringify(payload.filingCategory);
+      console.log('=== Sending FilingCategory to Backend ===');
+      console.log('FilingCategory JSON:', filingCategoryJson);
+      console.log('FilingCategory Object:', payload.filingCategory);
+      console.log('==========================================');
+      form.append('filingCategory', filingCategoryJson);
+    } else {
+      console.warn('No filingCategory provided in payload!');
     }
+    
+    // Debug: Log all form data keys
+    console.log('FormData keys:', Array.from(form.keys()));
+    
     return apiClient.uploadFile<DocumentResponseDto>(`${this.baseUrl}/${id}/classify`, form);
   }
 
@@ -148,6 +165,14 @@ export class UnclassifiedDocumentService {
     return apiClient.delete<void>(`${this.baseUrl}/bulk`, {
       data: { documentIds },
     });
+  }
+
+  /**
+   * Get all unclassified document IDs for the current user (for sequential validation)
+   * Returns only IDs, sorted ascending
+   */
+  async getAllUnclassifiedDocumentIds(): Promise<number[]> {
+    return apiClient.get<number[]>(`${this.baseUrl}/ids`);
   }
 }
 

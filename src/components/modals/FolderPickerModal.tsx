@@ -1,428 +1,316 @@
-import React, { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
+'use client';
+
+import React, { useState, useEffect, useCallback } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Folder, Home, ChevronRight, Check, Loader2, Share2, X, Search } from 'lucide-react';
-import { folderService } from '@/api/services/folderService';
-import { FolderRepoResDto, FolderResDto } from '@/types/api';
-import Pagination from '@/components/main/Pagination';
+import { Input } from '@/components/ui/input';
+import { Folder, ChevronRight, Search, Check, Home, Loader2 } from 'lucide-react';
+import { notificationApiClient } from '@/api/notificationClient';
+import { FolderRepoResDto, SortFields } from '@/types/api';
+import Pagination from '../main/Pagination';
 
 interface FolderPickerModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSelect: (folderId: number, folderName: string) => void;
-    selectedFolderId?: number | null;
+    onSelect: (folderId: number, folderName: string, folderPath: string) => void;
 }
 
-export function FolderPickerModal({ isOpen, onClose, onSelect, selectedFolderId }: FolderPickerModalProps) {
-    const [activeTab, setActiveTab] = useState<'folders' | 'shared'>('folders');
+interface BreadcrumbItem {
+    id: number;
+    name: string;
+}
 
-    // My Folders state
-    const [myFoldersCurrentFolderId, setMyFoldersCurrentFolderId] = useState<number | null>(null);
-    const [myFoldersBreadcrumbs, setMyFoldersBreadcrumbs] = useState<{ id: number; name: string }[]>([]);
-    const [myFoldersSearchQuery, setMyFoldersSearchQuery] = useState('');
-    const [myFoldersCurrentPage, setMyFoldersCurrentPage] = useState(0);
-    const [myFoldersData, setMyFoldersData] = useState<FolderRepoResDto | null>(null);
-    const [myFoldersLoading, setMyFoldersLoading] = useState(false);
-    const myFoldersPageSize = 10;
+export default function FolderPickerModal({ isOpen, onClose, onSelect }: FolderPickerModalProps) {
+    const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null);
+    const [selectedFolderName, setSelectedFolderName] = useState<string | null>(null);
+    const [selectedFolderPath, setSelectedFolderPath] = useState<string>('');
 
-    // Shared Folders state
-    const [sharedCurrentFolderId, setSharedCurrentFolderId] = useState<number | null>(null);
-    const [sharedBreadcrumbs, setSharedBreadcrumbs] = useState<{ id: number; name: string }[]>([]);
-    const [sharedSearchQuery, setSharedSearchQuery] = useState('');
-    const [sharedCurrentPage, setSharedCurrentPage] = useState(0);
-    const [sharedData, setSharedData] = useState<FolderRepoResDto | null>(null);
-    const [sharedLoading, setSharedLoading] = useState(false);
-    const sharedPageSize = 10;
+    const [foldersData, setFoldersData] = useState<FolderRepoResDto | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [debouncedQuery, setDebouncedQuery] = useState('');
+    const [currentPage, setCurrentPage] = useState(0);
+    const [pageSize] = useState(20);
+    const [currentFolderId, setCurrentFolderId] = useState<number | null>(null);
+    const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([]);
 
-    // Load My Folders
+    // Reset state when modal opens
     useEffect(() => {
-        if (isOpen && activeTab === 'folders') {
-            loadMyFolders();
+        if (isOpen) {
+            setSelectedFolderId(null);
+            setSelectedFolderName(null);
+            setSelectedFolderPath('');
+            setSearchQuery('');
+            setDebouncedQuery('');
+            setCurrentPage(0);
+            setCurrentFolderId(null);
+            setBreadcrumbs([]);
         }
-    }, [isOpen, activeTab, myFoldersCurrentFolderId, myFoldersSearchQuery, myFoldersCurrentPage]);
+    }, [isOpen]);
 
-    // Load Shared Folders
+    // Debounce search
     useEffect(() => {
-        if (isOpen && activeTab === 'shared') {
-            loadSharedFolders();
-        }
-    }, [isOpen, activeTab, sharedCurrentFolderId, sharedSearchQuery, sharedCurrentPage]);
+        const timer = setTimeout(() => {
+            setDebouncedQuery(searchQuery);
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [searchQuery]);
 
-    const loadMyFolders = async () => {
+    // Reset page when search changes
+    useEffect(() => {
+        setCurrentPage(0);
+    }, [debouncedQuery]);
+
+    // Build folder path from breadcrumbs
+    const buildPath = useCallback(() => {
+        if (breadcrumbs.length === 0) return '/';
+        return '/' + breadcrumbs.map(b => b.name).join('/');
+    }, [breadcrumbs]);
+
+    // Load folders
+    const loadFolders = useCallback(async () => {
+        setLoading(true);
         try {
-            setMyFoldersLoading(true);
-            let data: FolderRepoResDto;
-            if (myFoldersCurrentFolderId) {
-                data = await folderService.getFolderContents(
-                    myFoldersCurrentFolderId,
-                    myFoldersCurrentPage,
-                    myFoldersPageSize,
-                    myFoldersSearchQuery || undefined,
-                    true
-                );
-            } else {
-                // Use getMyRepository for root level
-                const response = await folderService.getMyRepository(
-                    myFoldersCurrentPage,
-                    myFoldersPageSize,
-                    myFoldersSearchQuery || undefined
-                );
+            let response: FolderRepoResDto;
 
-                // Convert PageResponse to FolderRepoResDto
-                data = {
-                    folders: response.content,
+            if (currentFolderId !== null) {
+                // Fetch folder contents
+                response = await notificationApiClient.getFolder(currentFolderId, {
+                    page: currentPage,
+                    size: pageSize,
+                    showFolder: true,
+                    name: debouncedQuery || undefined,
+                    sort: SortFields.NAME,
+                    desc: false
+                });
+            } else {
+                // Fetch root repository
+                const repoResponse = await notificationApiClient.getRepository({
+                    page: currentPage,
+                    size: pageSize,
+                    name: debouncedQuery || undefined
+                });
+                // Convert PageResponse<FolderResDto> to FolderRepoResDto format
+                response = {
+                    folder: undefined,
+                    folders: repoResponse.content || [],
                     documents: [],
                     pageable: {
-                        pageNumber: response.number,
-                        pageSize: response.size
+                        pageNumber: repoResponse.number ?? currentPage,
+                        pageSize: repoResponse.size ?? pageSize
                     },
-                    totalElements: response.totalElements,
-                    totalPages: response.totalPages
+                    totalElements: repoResponse.totalElements || 0,
+                    totalPages: repoResponse.totalPages || 0
                 };
             }
-            setMyFoldersData(data);
+
+            setFoldersData(response);
+
+            // Update breadcrumbs when navigating into a folder
+            if (currentFolderId !== null && response.folder) {
+                const existingIndex = breadcrumbs.findIndex(b => b.id === currentFolderId);
+                if (existingIndex === -1) {
+                    setBreadcrumbs(prev => [...prev, { id: response.folder!.id, name: response.folder!.name }]);
+                }
+            } else if (currentFolderId === null) {
+                setBreadcrumbs([]);
+            }
         } catch (error) {
             console.error('Error loading folders:', error);
         } finally {
-            setMyFoldersLoading(false);
+            setLoading(false);
         }
-    };
+    }, [currentPage, debouncedQuery, currentFolderId, pageSize, breadcrumbs]);
 
-    const loadSharedFolders = async () => {
-        try {
-            setSharedLoading(true);
-            const data = await folderService.getSharedFolders(
-                sharedCurrentPage,
-                sharedPageSize,
-                sharedSearchQuery || undefined,
-                true
-            );
-            setSharedData(data);
-        } catch (error) {
-            console.error('Error loading shared folders:', error);
-        } finally {
-            setSharedLoading(false);
+    // Load folders when dependencies change
+    useEffect(() => {
+        if (isOpen) {
+            loadFolders();
         }
+    }, [isOpen, currentPage, debouncedQuery, currentFolderId]);
+
+    // Navigate to folder
+    const navigateToFolder = (folderId: number, folderName: string) => {
+        setCurrentFolderId(folderId);
+        setCurrentPage(0);
     };
 
-    const navigateToMyFolder = (folderId: number, folderName: string) => {
-        setMyFoldersCurrentFolderId(folderId);
-        setMyFoldersBreadcrumbs(prev => [...prev, { id: folderId, name: folderName }]);
-        setMyFoldersCurrentPage(0);
-    };
-
-    const navigateMyFoldersBreadcrumb = (folderId: number | null, index?: number) => {
+    // Navigate back via breadcrumb
+    const navigateBreadcrumb = (folderId: number | null, breadcrumbIndex?: number) => {
         if (folderId === null) {
-            setMyFoldersCurrentFolderId(null);
-            setMyFoldersBreadcrumbs([]);
+            setCurrentFolderId(null);
+            setBreadcrumbs([]);
         } else {
-            setMyFoldersCurrentFolderId(folderId);
-            if (index !== undefined) {
-                setMyFoldersBreadcrumbs(prev => prev.slice(0, index + 1));
+            setCurrentFolderId(folderId);
+            if (breadcrumbIndex !== undefined) {
+                setBreadcrumbs(prev => prev.slice(0, breadcrumbIndex + 1));
             }
         }
-        setMyFoldersCurrentPage(0);
+        setCurrentPage(0);
     };
 
-    const navigateToSharedFolder = (folderId: number, folderName: string) => {
-        setSharedCurrentFolderId(folderId);
-        setSharedBreadcrumbs(prev => [...prev, { id: folderId, name: folderName }]);
-        setSharedCurrentPage(0);
-    };
-
-    const navigateSharedBreadcrumb = (folderId: number | null, index?: number) => {
-        if (folderId === null) {
-            setSharedCurrentFolderId(null);
-            setSharedBreadcrumbs([]);
-        } else {
-            setSharedCurrentFolderId(folderId);
-            if (index !== undefined) {
-                setSharedBreadcrumbs(prev => prev.slice(0, index + 1));
-            }
+    const handleSelect = () => {
+        if (selectedFolderId && selectedFolderName) {
+            onSelect(selectedFolderId, selectedFolderName, selectedFolderPath);
+            onClose();
         }
-        setSharedCurrentPage(0);
     };
 
-    const handleFolderSelect = (folderId: number, folderName: string) => {
-        onSelect(folderId, folderName);
-        handleClose();
-    };
-
-    const handleClose = () => {
-        // Reset state
-        setMyFoldersCurrentFolderId(null);
-        setMyFoldersBreadcrumbs([]);
-        setMyFoldersSearchQuery('');
-        setMyFoldersCurrentPage(0);
-        setSharedCurrentFolderId(null);
-        setSharedBreadcrumbs([]);
-        setSharedSearchQuery('');
-        setSharedCurrentPage(0);
-        onClose();
+    const selectFolder = (folderId: number, folderName: string) => {
+        setSelectedFolderId(folderId);
+        setSelectedFolderName(folderName);
+        // Build full path including this folder
+        const path = currentFolderId === null
+            ? `/${folderName}`
+            : `${buildPath()}/${folderName}`;
+        setSelectedFolderPath(path);
     };
 
     return (
-        <Dialog open={isOpen} onOpenChange={handleClose}>
-            <DialogContent className="max-w-4xl max-h-[90vh] p-0 overflow-hidden flex flex-col">
-                <DialogHeader className="p-6 border-b">
-                    <DialogTitle className="text-lg font-semibold">Select Folder for Workflow Trigger</DialogTitle>
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="sm:max-w-[700px] max-w-[95vw] w-full overflow-hidden flex flex-col max-h-[90vh]">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                        <Folder className="h-5 w-5" />
+                        Select Target Folder
+                    </DialogTitle>
                 </DialogHeader>
 
-                <div className="flex-1 overflow-y-auto p-6">
-                    {/* Tab Selection */}
-                    <div className="flex gap-2 border-b mb-4">
-                        <button
-                            onClick={() => setActiveTab('folders')}
-                            className={`px-4 py-2 font-medium text-sm transition-colors border-b-2 ${activeTab === 'folders'
-                                ? 'border-blue-600 text-blue-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700'
-                                }`}
-                        >
-                            <div className="flex items-center gap-2">
-                                <Folder className="h-4 w-4" />
-                                My Folders
+                <div className="space-y-4 flex flex-col flex-1 min-h-0">
+                    <div className="flex flex-col border rounded-lg overflow-hidden flex-1 min-h-0">
+                        {/* Search Bar */}
+                        <div className="p-3 border-b bg-gray-50">
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                                <Input
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    placeholder="Search folders..."
+                                    className="pl-10"
+                                />
                             </div>
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('shared')}
-                            className={`px-4 py-2 font-medium text-sm transition-colors border-b-2 ${activeTab === 'shared'
-                                ? 'border-blue-600 text-blue-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700'
-                                }`}
-                        >
-                            <div className="flex items-center gap-2">
-                                <Share2 className="h-4 w-4" />
-                                Shared with Me
-                            </div>
-                        </button>
-                    </div>
+                        </div>
 
-                    {/* Tab Content */}
-                    {activeTab === 'folders' ? (
-                        <div className="flex flex-col border rounded-lg overflow-hidden">
-                            {/* Search Bar */}
-                            <div className="p-3 border-b bg-gray-50">
-                                <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                                    <Input
-                                        value={myFoldersSearchQuery}
-                                        onChange={(e) => setMyFoldersSearchQuery(e.target.value)}
-                                        placeholder="Search folders..."
-                                        className="pl-10"
-                                    />
+                        {/* Breadcrumb Navigation */}
+                        <div className="p-3 border-b bg-white flex items-center gap-2 text-sm overflow-x-auto">
+                            <button
+                                onClick={() => navigateBreadcrumb(null)}
+                                className={`flex items-center gap-1 px-2 py-1 rounded transition-colors flex-shrink-0 ${currentFolderId === null
+                                    ? 'font-medium text-blue-600'
+                                    : 'hover:bg-gray-100 text-gray-700'
+                                    }`}
+                            >
+                                <Home className="h-4 w-4" />
+                                <span>Root</span>
+                            </button>
+
+                            {breadcrumbs.map((crumb, index) => (
+                                <div key={`${crumb.id}-${index}`} className="flex items-center gap-2 flex-shrink-0">
+                                    <ChevronRight className="h-4 w-4 text-gray-400" />
+                                    <button
+                                        onClick={() => navigateBreadcrumb(crumb.id, index)}
+                                        className={`px-2 py-1 rounded transition-colors truncate max-w-[150px] ${index === breadcrumbs.length - 1 && currentFolderId === crumb.id
+                                            ? 'font-medium text-blue-600'
+                                            : 'hover:bg-gray-100 text-gray-700'
+                                            }`}
+                                        title={crumb.name}
+                                    >
+                                        {crumb.name}
+                                    </button>
                                 </div>
-                            </div>
+                            ))}
+                        </div>
 
-                            {/* Breadcrumb Navigation */}
-                            <div className="p-3 border-b bg-white flex items-center gap-2 text-sm overflow-x-auto">
-                                <button
-                                    onClick={() => navigateMyFoldersBreadcrumb(null)}
-                                    className={`flex items-center gap-1 px-2 py-1 rounded transition-colors flex-shrink-0 ${myFoldersCurrentFolderId === null
-                                        ? 'font-medium text-blue-600'
-                                        : 'hover:bg-gray-100 text-gray-700'
-                                        }`}
-                                >
-                                    <Home className="h-4 w-4" />
-                                    <span>Root</span>
-                                </button>
+                        {/* Folders List */}
+                        <div className="flex-1 overflow-y-auto bg-white min-h-0">
+                            {loading ? (
+                                <div className="flex items-center justify-center p-8">
+                                    <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+                                </div>
+                            ) : (foldersData?.folders || []).length === 0 ? (
+                                <div className="p-4 text-center text-gray-500">
+                                    No folders found
+                                </div>
+                            ) : (
+                                <div className="p-2">
+                                    {(foldersData?.folders || []).map(folder => {
+                                        const isSelected = selectedFolderId === folder.id;
+                                        return (
+                                            <div
+                                                key={folder.id}
+                                                className={`flex items-center py-2 px-3 rounded-md transition-colors ${isSelected
+                                                    ? 'bg-blue-100 border border-blue-300'
+                                                    : 'hover:bg-gray-100'
+                                                    }`}
+                                            >
+                                                <Folder className="h-4 w-4 mr-2 text-blue-500" />
 
-                                {myFoldersBreadcrumbs.map((crumb, index) => (
-                                    <div key={`${crumb.id}-${index}`} className="flex items-center gap-2 flex-shrink-0">
-                                        <ChevronRight className="h-4 w-4 text-gray-400" />
-                                        <button
-                                            onClick={() => navigateMyFoldersBreadcrumb(crumb.id, index)}
-                                            className={`px-2 py-1 rounded transition-colors truncate max-w-[150px] ${index === myFoldersBreadcrumbs.length - 1 && myFoldersCurrentFolderId === crumb.id
-                                                ? 'font-medium text-blue-600'
-                                                : 'hover:bg-gray-100 text-gray-700'
-                                                }`}
-                                            title={crumb.name}
-                                        >
-                                            {crumb.name}
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-
-                            {/* Folders List */}
-                            <div className="flex-1 overflow-y-auto bg-white min-h-[300px] max-h-[400px]">
-                                {myFoldersLoading ? (
-                                    <div className="flex items-center justify-center p-8">
-                                        <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
-                                    </div>
-                                ) : myFoldersData && myFoldersData.folders && myFoldersData.folders.length > 0 ? (
-                                    <div className="p-2">
-                                        {myFoldersData.folders.map((folder) => {
-                                            const isSelected = selectedFolderId === folder.id;
-                                            return (
                                                 <div
-                                                    key={folder.id}
-                                                    className={`flex items-center py-2 px-3 rounded-md transition-colors ${isSelected
-                                                        ? 'bg-blue-100 border border-blue-300'
-                                                        : 'hover:bg-gray-100'
-                                                        }`}
+                                                    className="flex-1 min-w-0 cursor-pointer"
+                                                    onClick={() => selectFolder(folder.id, folder.name)}
+                                                    onDoubleClick={(e) => {
+                                                        e.stopPropagation();
+                                                        navigateToFolder(folder.id, folder.name);
+                                                    }}
                                                 >
-                                                    <Folder className="h-4 w-4 mr-2 text-blue-500" />
-
-                                                    <div
-                                                        className="flex-1 min-w-0 cursor-pointer"
-                                                        onClick={() => handleFolderSelect(folder.id, folder.name)}
-                                                    >
-                                                        <div className="text-sm truncate">{folder.name}</div>
-                                                        {folder.description && (
-                                                            <div className="text-xs text-gray-500 mt-1 truncate">{folder.description}</div>
-                                                        )}
+                                                    <div className="text-sm truncate">
+                                                        {folder.name}
                                                     </div>
-
-                                                    {isSelected && (
-                                                        <Check className="h-4 w-4 text-blue-600 flex-shrink-0 mr-2" />
-                                                    )}
-
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            navigateToMyFolder(folder.id, folder.name);
-                                                        }}
-                                                        className="ml-2 p-1 hover:bg-gray-200 rounded transition-colors"
-                                                        title="Navigate into folder"
-                                                    >
-                                                        <ChevronRight className="h-4 w-4 text-gray-600" />
-                                                    </button>
                                                 </div>
-                                            );
-                                        })}
-                                    </div>
-                                ) : (
-                                    <div className="p-4 text-center text-gray-500">No folders found</div>
-                                )}
-                            </div>
 
-                            {/* Pagination */}
-                            {myFoldersData && myFoldersData.totalPages > 1 && (
-                                <div className="p-3 border-t bg-gray-50">
-                                    <Pagination
-                                        currentPage={myFoldersCurrentPage}
-                                        totalPages={myFoldersData.totalPages}
-                                        totalElements={myFoldersData.totalElements || 0}
-                                        pageSize={myFoldersPageSize}
-                                        onPageChange={setMyFoldersCurrentPage}
-                                    />
+                                                {isSelected && (
+                                                    <Check className="h-4 w-4 text-blue-600 flex-shrink-0 mr-2" />
+                                                )}
+
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        navigateToFolder(folder.id, folder.name);
+                                                    }}
+                                                    className="ml-2 p-1 hover:bg-gray-200 rounded transition-colors"
+                                                    title="Navigate into folder"
+                                                >
+                                                    <ChevronRight className="h-4 w-4 text-gray-600" />
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>
-                    ) : (
-                        <div className="flex flex-col border rounded-lg overflow-hidden">
-                            {/* Search Bar */}
-                            <div className="p-3 border-b bg-gray-50">
-                                <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                                    <Input
-                                        value={sharedSearchQuery}
-                                        onChange={(e) => setSharedSearchQuery(e.target.value)}
-                                        placeholder="Search shared folders..."
-                                        className="pl-10"
-                                    />
-                                </div>
+
+                        {/* Pagination */}
+                        {foldersData && foldersData.totalPages > 1 && (
+                            <div className="p-3 border-t bg-gray-50">
+                                <Pagination
+                                    currentPage={currentPage}
+                                    totalPages={foldersData.totalPages}
+                                    totalElements={foldersData.totalElements || 0}
+                                    pageSize={pageSize}
+                                    onPageChange={setCurrentPage}
+                                />
                             </div>
+                        )}
+                    </div>
 
-                            {/* Breadcrumb Navigation */}
-                            <div className="p-3 border-b bg-white flex items-center gap-2 text-sm overflow-x-auto">
-                                <button
-                                    onClick={() => navigateSharedBreadcrumb(null)}
-                                    className={`flex items-center gap-1 px-2 py-1 rounded transition-colors flex-shrink-0 ${sharedCurrentFolderId === null
-                                        ? 'font-medium text-blue-600'
-                                        : 'hover:bg-gray-100 text-gray-700'
-                                        }`}
-                                >
-                                    <Home className="h-4 w-4" />
-                                    <span>Root</span>
-                                </button>
-
-                                {sharedBreadcrumbs.map((crumb, index) => (
-                                    <div key={`${crumb.id}-${index}`} className="flex items-center gap-2 flex-shrink-0">
-                                        <ChevronRight className="h-4 w-4 text-gray-400" />
-                                        <button
-                                            onClick={() => navigateSharedBreadcrumb(crumb.id, index)}
-                                            className={`px-2 py-1 rounded transition-colors truncate max-w-[150px] ${index === sharedBreadcrumbs.length - 1 && sharedCurrentFolderId === crumb.id
-                                                ? 'font-medium text-blue-600'
-                                                : 'hover:bg-gray-100 text-gray-700'
-                                                }`}
-                                            title={crumb.name}
-                                        >
-                                            {crumb.name}
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-
-                            {/* Folders List */}
-                            <div className="flex-1 overflow-y-auto bg-white min-h-[300px] max-h-[400px]">
-                                {sharedLoading ? (
-                                    <div className="flex items-center justify-center p-8">
-                                        <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
-                                    </div>
-                                ) : sharedData && sharedData.folders && sharedData.folders.length > 0 ? (
-                                    <div className="p-2">
-                                        {sharedData.folders.map((folder) => {
-                                            const isSelected = selectedFolderId === folder.id;
-                                            return (
-                                                <div
-                                                    key={folder.id}
-                                                    className={`flex items-center py-2 px-3 rounded-md transition-colors ${isSelected
-                                                        ? 'bg-blue-100 border border-blue-300'
-                                                        : 'hover:bg-gray-100'
-                                                        }`}
-                                                >
-                                                    <Folder className="h-4 w-4 mr-2 text-blue-500" />
-
-                                                    <div
-                                                        className="flex-1 min-w-0 cursor-pointer"
-                                                        onClick={() => handleFolderSelect(folder.id, folder.name)}
-                                                    >
-                                                        <div className="text-sm truncate">{folder.name}</div>
-                                                        {folder.description && (
-                                                            <div className="text-xs text-gray-500 mt-1 truncate">{folder.description}</div>
-                                                        )}
-                                                    </div>
-
-                                                    {isSelected && (
-                                                        <Check className="h-4 w-4 text-blue-600 flex-shrink-0 mr-2" />
-                                                    )}
-
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            navigateToSharedFolder(folder.id, folder.name);
-                                                        }}
-                                                        className="ml-2 p-1 hover:bg-gray-200 rounded transition-colors"
-                                                        title="Navigate into folder"
-                                                    >
-                                                        <ChevronRight className="h-4 w-4 text-gray-600" />
-                                                    </button>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                ) : (
-                                    <div className="p-4 text-center text-gray-500">No folders found</div>
-                                )}
-                            </div>
-
-                            {/* Pagination */}
-                            {sharedData && sharedData.totalPages > 1 && (
-                                <div className="p-3 border-t bg-gray-50">
-                                    <Pagination
-                                        currentPage={sharedCurrentPage}
-                                        totalPages={sharedData.totalPages}
-                                        totalElements={sharedData.totalElements || 0}
-                                        pageSize={sharedPageSize}
-                                        onPageChange={setSharedCurrentPage}
-                                    />
-                                </div>
-                            )}
+                    {/* Selected Folder Display */}
+                    {selectedFolderName && (
+                        <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                            <div className="text-sm font-medium text-blue-900">Selected Folder:</div>
+                            <div className="text-sm text-blue-700 mt-1">{selectedFolderPath}</div>
                         </div>
                     )}
                 </div>
+
+                <DialogFooter>
+                    <Button variant="outline" onClick={onClose}>
+                        Cancel
+                    </Button>
+                    <Button onClick={handleSelect} disabled={!selectedFolderId}>
+                        <Check className="h-4 w-4 mr-2" />
+                        Select Folder
+                    </Button>
+                </DialogFooter>
             </DialogContent>
         </Dialog>
     );

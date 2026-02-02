@@ -1,25 +1,39 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { CalendarIcon, X } from 'lucide-react';
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 import { Badge } from '@/components/ui/badge';
-import { 
-  Calendar,
-  User,
-  FileText,
-  X,
-  Filter,
-  RotateCcw,
-  Search,
-  ChevronDown,
-  Loader2
-} from 'lucide-react';
-import { filingCategoryService } from '@/api/services/filingCategoryService';
+import { notificationApiClient } from '@/api/notificationClient';
 import { FilingCategoryResponseDto } from '@/types/api';
+import { SearchSelect } from '@/components/main/SearchSelect';
+
+export interface ClassAFilters {
+  query?: string;
+  userId?: string;
+  categoryId?: number;
+  dateFrom?: string;
+  dateTo?: string;
+  exactDate?: string;
+}
 
 interface ClassAFilterPanelProps {
   isOpen: boolean;
@@ -28,365 +42,355 @@ interface ClassAFilterPanelProps {
   currentFilters: ClassAFilters;
 }
 
-export interface ClassAFilters {
-  query?: string;
-  userId?: string;
-  categoryId?: number;
-  name?: string;
-  dateFrom?: string;
-  dateTo?: string;
-  exactDate?: string;
-  dateSearchType?: 'exact' | 'range';
-  page?: number;
-  size?: number;
-}
-
 export default function ClassAFilterPanel({
   isOpen,
   onClose,
   onApplyFilters,
-  currentFilters
+  currentFilters,
 }: ClassAFilterPanelProps) {
-  const [filters, setFilters] = useState<ClassAFilters>(currentFilters);
-  
-  // Removed Created By filter per request
-
-  // Category selection state
-  const [categories, setCategories] = useState<FilingCategoryResponseDto[]>([]);
-  const [filteredCategories, setFilteredCategories] = useState<FilingCategoryResponseDto[]>([]);
+  const [filters, setFilters] = React.useState<ClassAFilters>(currentFilters);
   const [selectedCategory, setSelectedCategory] = useState<FilingCategoryResponseDto | null>(null);
-  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
-  const [loadingCategories, setLoadingCategories] = useState(false);
-  const [categorySearchQuery, setCategorySearchQuery] = useState('');
 
+  // Load selected category when filters change
   useEffect(() => {
-    if (isOpen) {
-      fetchCategories();
-      setFilters(currentFilters);
+    if (filters.categoryId && isOpen) {
+      const loadCategory = async () => {
+        try {
+          const response = await notificationApiClient.getAllFilingCategories({ size: 100 }, { silent: true });
+          const category = response.content?.find(c => c.id === filters.categoryId);
+          setSelectedCategory(category || null);
+        } catch (error) {
+          console.error('Error loading category:', error);
+        }
+      };
+      loadCategory();
+    } else {
+      setSelectedCategory(null);
     }
-  }, [isOpen, currentFilters]);
+  }, [filters.categoryId, isOpen]);
 
-  // Removed Created By filter logic
+  // Sync internal state when external filters change
+  React.useEffect(() => {
+    setFilters(currentFilters);
+  }, [currentFilters, isOpen]);
 
-  // Local filter for categories
-  useEffect(() => {
-    if (!categorySearchQuery.trim()) {
-      setFilteredCategories(categories);
-      return;
-    }
-
-    const q = categorySearchQuery.toLowerCase();
-    setFilteredCategories(
-      categories.filter(
-        (category) => 
-          category.name.toLowerCase().includes(q) ||
-          (category.description && category.description.toLowerCase().includes(q))
-      )
-    );
-  }, [categorySearchQuery, categories]);
-
-  // Removed Created By fetch
-
-  const fetchCategories = async (searchQuery?: string) => {
-    try {
-      setLoadingCategories(true);
-      const params = searchQuery ? { name: searchQuery, size: 100 } : { size: 100 };
-      const response = await filingCategoryService.getAllFilingCategories(params);
-      const fetchedCategories = response.content || [];
-      setCategories(fetchedCategories);
-      setFilteredCategories(fetchedCategories);
-    } catch (error) {
-      console.error("Error fetching categories:", error);
-    } finally {
-      setLoadingCategories(false);
-    }
-  };
-
-  const handleFilterChange = (key: keyof ClassAFilters, value: any) => {
-    setFilters(prev => ({
-      ...prev,
-      [key]: value
-    }));
-  };
-
-  const handleApplyFilters = () => {
+  const handleApply = () => {
     onApplyFilters(filters);
     onClose();
   };
 
-  const handleClearFilters = () => {
-    const clearedFilters: ClassAFilters = {};
-    setFilters(clearedFilters);
-    onApplyFilters(clearedFilters);
-  };
-
-  const getActiveFiltersCount = () => {
-    let count = 0;
-    if (filters.query) count++;
-    if (filters.categoryId) count++;
-    if (filters.dateFrom || filters.dateTo || filters.exactDate) count++;
-    return count;
-  };
-
-  // Selection functions
-  // Removed Created By selector
-
-  const selectCategory = (category: FilingCategoryResponseDto) => {
-    setSelectedCategory(category);
-    handleFilterChange('categoryId', category.id);
-    setShowCategoryDropdown(false);
-    setCategorySearchQuery('');
-  };
-
-  // Removed Created By remove
-
-  const removeCategory = () => {
+  const handleClear = () => {
+    const emptyFilters = {};
+    setFilters(emptyFilters);
     setSelectedCategory(null);
-    handleFilterChange('categoryId', undefined);
+    onApplyFilters(emptyFilters);
+    onClose();
   };
 
-  if (!isOpen) return null;
+  const handleCategorySelect = (category: FilingCategoryResponseDto) => {
+    setSelectedCategory(category);
+    setFilters(prev => ({ ...prev, categoryId: category.id }));
+  };
+
+  const handleCategoryRemove = () => {
+    setSelectedCategory(null);
+    setFilters(prev => ({ ...prev, categoryId: undefined }));
+  };
+
+  const handleDateTimeSelect = (field: 'dateFrom' | 'dateTo' | 'exactDate', date: Date | undefined) => {
+    setFilters(prev => ({
+      ...prev,
+      [field]: date ? date.toISOString() : undefined
+    }));
+  };
+
+  const formatDateTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return format(date, "PPP p"); // Date with time
+  };
+
+  const getActiveCount = () => {
+    return Object.values(filters).filter(v => v !== undefined && v !== '').length;
+  };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-end justify-center z-50">
-      <div className="bg-surface rounded-t-lg border-t border-ui w-full max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
-        {/* Header */}
-        <div className="flex justify-between items-center p-6 border-b border-ui">
-          <div className="flex items-center gap-2">
-            <Filter className="h-5 w-5 text-primary" />
-            <h2 className="text-lg font-semibold">Filter Documents</h2>
-            {getActiveFiltersCount() > 0 && (
-              <Badge variant="secondary" className="ml-2">
-                {getActiveFiltersCount()} active
-              </Badge>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader className="pb-6 border-b border-gray-100">
+          <DialogTitle className="text-xl font-semibold">Filter Documents</DialogTitle>
+          <DialogDescription>
+            Refine your search with specific criteria.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="py-6 space-y-6">
+          {/* General Search */}
+          <div className="space-y-2">
+            <Label htmlFor="query">General Search</Label>
+            <Input
+              id="query"
+              placeholder="Search by document name (starts with)..."
+              value={filters.query || ''}
+              onChange={(e) => setFilters({ ...filters, query: e.target.value })}
+              className="h-10"
+            />
+            <p className="text-xs text-muted-foreground">Searches document names that start with the entered text</p>
+          </div>
+
+          {/* Document Model */}
+          <div className="space-y-2">
+            <Label htmlFor="categoryId">Document Model</Label>
+            {selectedCategory ? (
+              <div className="flex items-center gap-2 p-3 border border-gray-200 rounded-lg bg-gray-50">
+                <div className="flex-1">
+                  <div className="font-medium text-gray-900">{selectedCategory.name}</div>
+                  {selectedCategory.description && (
+                    <div className="text-xs text-gray-500 mt-1">{selectedCategory.description}</div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCategoryRemove}
+                  className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <SearchSelect
+                openUpward={false}
+                items={[]}
+                fetchFunction={async (query: string) => {
+                  const response = await notificationApiClient.getAllFilingCategories(
+                    { size: 100, search: query },
+                    { silent: true }
+                  );
+                  return response.content || [];
+                }}
+                onSelect={handleCategorySelect}
+                placeholder="Search document models..."
+                displayField="name"
+                descriptionField="description"
+                debounceMs={300}
+              />
             )}
           </div>
-          <button 
-            onClick={onClose}
-            className="p-2 rounded-lg hover:bg-neutral-background transition-colors text-neutral-text-light"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Query Search */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Search className="h-4 w-4" />
-                  Search Query
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Input
-                  placeholder="Enter search query for documents"
-                  value={filters.query || ''}
-                  onChange={(e) => handleFilterChange('query', e.target.value || undefined)}
-                />
-              </CardContent>
-            </Card>
-
-            {/* Date Search */}
-            <Card className="md:col-span-2">
-              <CardHeader>
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Calendar className="h-4 w-4" />
-                  Date Search
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Search Type</Label>
-                    <Select
-                      value={filters.dateSearchType || 'exact'}
-                      onValueChange={(value) => handleFilterChange('dateSearchType', value as 'exact' | 'range')}
+          {/* Date Time Range Section */}
+          <div className="space-y-4">
+            <Label className="text-base font-medium">Date & Time Range</Label>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">From</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant={"outline"}
+                      className={cn(
+                        "w-full justify-start text-left font-normal h-10",
+                        !filters.dateFrom && "text-muted-foreground"
+                      )}
                     >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select date search type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="exact">Exact Date</SelectItem>
-                        <SelectItem value="range">Date Range</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {filters.dateSearchType === 'exact' ? (
-                    <div>
-                      <Label htmlFor="exactDate" className="text-xs text-muted-foreground">Exact Date & Time</Label>
-                      <Input
-                        id="exactDate"
-                        type="datetime-local"
-                        value={filters.exactDate ? filters.exactDate.slice(0, 16) : ''}
-                        onChange={(e) => handleFilterChange('exactDate', e.target.value ? e.target.value + ':00Z' : undefined)}
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {filters.dateFrom ? formatDateTime(filters.dateFrom) : <span>Pick date & time</span>}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <div className="p-3 space-y-3">
+                      <Calendar
+                        mode="single"
+                        selected={filters.dateFrom ? new Date(filters.dateFrom) : undefined}
+                        onSelect={(date) => {
+                          if (date) {
+                            const current = filters.dateFrom ? new Date(filters.dateFrom) : new Date();
+                            const newDate = new Date(date);
+                            // If no existing date, set to start of day; otherwise preserve time
+                            if (!filters.dateFrom) {
+                              newDate.setHours(0, 0, 0, 0);
+                            } else {
+                              newDate.setHours(current.getHours(), current.getMinutes(), current.getSeconds());
+                            }
+                            handleDateTimeSelect('dateFrom', newDate);
+                          } else {
+                            handleDateTimeSelect('dateFrom', undefined);
+                          }
+                        }}
+                        initialFocus
                       />
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="dateFrom" className="text-xs text-muted-foreground">From Date</Label>
+                      <div className="space-y-2">
+                        <Label className="text-xs">Time</Label>
                         <Input
-                          id="dateFrom"
-                          type="date"
-                          value={filters.dateFrom || ''}
-                          onChange={(e) => handleFilterChange('dateFrom', e.target.value || undefined)}
+                          type="time"
+                          value={filters.dateFrom ? new Date(filters.dateFrom).toTimeString().slice(0, 5) : '00:00'}
+                          onChange={(e) => {
+                            const [hours, minutes] = e.target.value.split(':');
+                            if (filters.dateFrom) {
+                              const date = new Date(filters.dateFrom);
+                              date.setHours(parseInt(hours), parseInt(minutes));
+                              handleDateTimeSelect('dateFrom', date);
+                            } else {
+                              // If no date selected, create a new date with today's date and selected time
+                              const date = new Date();
+                              date.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                              handleDateTimeSelect('dateFrom', date);
+                            }
+                          }}
+                          className="h-8"
                         />
                       </div>
-                      <div>
-                        <Label htmlFor="dateTo" className="text-xs text-muted-foreground">To Date</Label>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">To</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant={"outline"}
+                      className={cn(
+                        "w-full justify-start text-left font-normal h-10",
+                        !filters.dateTo && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {filters.dateTo ? formatDateTime(filters.dateTo) : <span>Pick date & time</span>}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <div className="p-3 space-y-3">
+                      <Calendar
+                        mode="single"
+                        selected={filters.dateTo ? new Date(filters.dateTo) : undefined}
+                        onSelect={(date) => {
+                          if (date) {
+                            const current = filters.dateTo ? new Date(filters.dateTo) : new Date();
+                            const newDate = new Date(date);
+                            // If no existing date, set to end of day; otherwise preserve time
+                            if (!filters.dateTo) {
+                              newDate.setHours(23, 59, 59, 999);
+                            } else {
+                              newDate.setHours(current.getHours(), current.getMinutes(), current.getSeconds());
+                            }
+                            handleDateTimeSelect('dateTo', newDate);
+                          } else {
+                            handleDateTimeSelect('dateTo', undefined);
+                          }
+                        }}
+                        initialFocus
+                      />
+                      <div className="space-y-2">
+                        <Label className="text-xs">Time</Label>
                         <Input
-                          id="dateTo"
-                          type="date"
-                          value={filters.dateTo || ''}
-                          onChange={(e) => handleFilterChange('dateTo', e.target.value || undefined)}
+                          type="time"
+                          value={filters.dateTo ? new Date(filters.dateTo).toTimeString().slice(0, 5) : '23:59'}
+                          onChange={(e) => {
+                            const [hours, minutes] = e.target.value.split(':');
+                            if (filters.dateTo) {
+                              const date = new Date(filters.dateTo);
+                              date.setHours(parseInt(hours), parseInt(minutes));
+                              handleDateTimeSelect('dateTo', date);
+                            } else {
+                              // If no date selected, create a new date with today's date and selected time
+                              const date = new Date();
+                              date.setHours(parseInt(hours), parseInt(minutes), 59, 999);
+                              handleDateTimeSelect('dateTo', date);
+                            }
+                          }}
+                          className="h-8"
                         />
                       </div>
                     </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Category Search Dropdown */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm font-medium">Document Model</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="relative">
-                  <input 
-                    type="text" 
-                    value={categorySearchQuery} 
-                    onChange={(e) => { setCategorySearchQuery(e.target.value); setShowCategoryDropdown(true); }} 
-                    onFocus={() => setShowCategoryDropdown(true)} 
-                    placeholder={selectedCategory ? selectedCategory.name : "Search or select a model..."} 
-                    className="w-full px-4 py-2 pr-10 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" 
-                  />
-                  <ChevronDown className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 ${showCategoryDropdown ? 'rotate-180' : ''}`} />
-                </div>
-
-                {showCategoryDropdown && (
-                  <div className="absolute z-30 w-full mt-2 bg-white border border-gray-100 rounded-md shadow-lg max-h-64 overflow-auto">
-                    {loadingCategories ? (
-                      <div className="p-4 text-center text-sm text-slate-500">
-                        <Loader2 className="w-4 h-4 animate-spin mx-auto mb-2" />
-                        Loading...
-                      </div>
-                    ) : filteredCategories.length === 0 ? (
-                      <div className="p-4 text-center text-sm text-slate-500">No models found</div>
-                    ) : (
-                      filteredCategories.map((cat) => {
-                        const isSelected = selectedCategory?.id === cat.id;
-                        return (
-                          <button key={cat.id} onClick={() => selectCategory(cat)} className={`w-full px-4 py-3 text-left text-sm hover:bg-gray-50 border-b last:border-b-0 ${isSelected ? 'bg-blue-50' : ''}`}>
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="min-w-0">
-                                <div className="font-medium text-slate-900 truncate">{cat.name}</div>
-                                {cat.description && <div className="text-xs text-slate-500 truncate">{cat.description}</div>}
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <div className="text-xs text-slate-400">{cat.metadataDefinitions?.length || 0} fields</div>
-                                <div className={`h-4 w-4 rounded-sm border ${isSelected ? 'bg-blue-600 border-blue-600' : 'bg-white border-gray-200'}`}></div>
-                              </div>
-                            </div>
-                          </button>
-                        );
-                      })
-                    )}
-                  </div>
-                )}
-
-                {selectedCategory && (
-                  <div className="mt-4">
-                    <div className="flex items-center justify-between p-3 bg-blue-50 rounded-md">
-                      <div>
-                        <div className="font-medium text-slate-900 text-sm">{selectedCategory.name}</div>
-                        {selectedCategory.description && <div className="text-xs text-slate-500">{selectedCategory.description}</div>}
-                      </div>
-                      <button onClick={() => removeCategory()} className="text-gray-400 hover:text-gray-600">
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
           </div>
 
-          {/* Active Filters Summary */}
-          {getActiveFiltersCount() > 0 && (
-            <Card className="mt-6">
-              <CardHeader>
-                <CardTitle className="text-sm font-medium">Active Filters</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  {filters.query && (
-                    <Badge variant="outline" className="flex items-center gap-1">
-                      Query: {filters.query}
-                      <X 
-                        className="h-3 w-3 cursor-pointer" 
-                        onClick={() => handleFilterChange('query', undefined)}
-                      />
-                    </Badge>
+          {/* Exact Date & Time */}
+          <div className="space-y-2">
+            <Label>Exact Date & Time</Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant={"outline"}
+                  className={cn(
+                    "w-full justify-start text-left font-normal h-10",
+                    !filters.exactDate && "text-muted-foreground"
                   )}
-                  {/* Created By filter removed */}
-                  {selectedCategory && (
-                    <Badge variant="outline" className="flex items-center gap-1">
-                      Model: {selectedCategory.name}
-                      <X 
-                        className="h-3 w-3 cursor-pointer" 
-                        onClick={() => removeCategory()}
-                      />
-                    </Badge>
-                  )}
-                  {filters.exactDate && (
-                    <Badge variant="outline" className="flex items-center gap-1">
-                      Exact Date: {new Date(filters.exactDate).toLocaleDateString()}
-                      <X 
-                        className="h-3 w-3 cursor-pointer" 
-                        onClick={() => handleFilterChange('exactDate', undefined)}
-                      />
-                    </Badge>
-                  )}
-                  {(filters.dateFrom || filters.dateTo) && (
-                    <Badge variant="outline" className="flex items-center gap-1">
-                      Date Range: {filters.dateFrom || 'Start'} - {filters.dateTo || 'End'}
-                      <X 
-                        className="h-3 w-3 cursor-pointer" 
-                        onClick={() => {
-                          handleFilterChange('dateFrom', undefined);
-                          handleFilterChange('dateTo', undefined);
-                        }}
-                      />
-                    </Badge>
-                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {filters.exactDate ? formatDateTime(filters.exactDate) : <span>Pick specific date & time</span>}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <div className="p-3 space-y-3">
+                  <Calendar
+                    mode="single"
+                    selected={filters.exactDate ? new Date(filters.exactDate) : undefined}
+                    onSelect={(date) => {
+                      if (date) {
+                        const current = filters.exactDate ? new Date(filters.exactDate) : new Date();
+                        const newDate = new Date(date);
+                        // If no existing date, set to current time; otherwise preserve time
+                        if (!filters.exactDate) {
+                          newDate.setHours(current.getHours(), current.getMinutes(), current.getSeconds());
+                        } else {
+                          newDate.setHours(current.getHours(), current.getMinutes(), current.getSeconds());
+                        }
+                        handleDateTimeSelect('exactDate', newDate);
+                      } else {
+                        handleDateTimeSelect('exactDate', undefined);
+                      }
+                    }}
+                    initialFocus
+                  />
+                  <div className="space-y-2">
+                    <Label className="text-xs">Time</Label>
+                    <Input
+                      type="time"
+                      value={filters.exactDate ? new Date(filters.exactDate).toTimeString().slice(0, 5) : new Date().toTimeString().slice(0, 5)}
+                      onChange={(e) => {
+                        const [hours, minutes] = e.target.value.split(':');
+                        if (filters.exactDate) {
+                          const date = new Date(filters.exactDate);
+                          date.setHours(parseInt(hours), parseInt(minutes));
+                          handleDateTimeSelect('exactDate', date);
+                        } else {
+                          // If no date selected, create a new date with today's date and selected time
+                          const date = new Date();
+                          date.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                          handleDateTimeSelect('exactDate', date);
+                        }
+                      }}
+                      className="h-8"
+                    />
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              </PopoverContent>
+            </Popover>
+          </div>
         </div>
 
-        {/* Actions */}
-        <div className="flex justify-between items-center p-6 border-t border-ui bg-neutral-background">
-          <Button variant="outline" onClick={handleClearFilters}>
-            <RotateCcw className="h-4 w-4 mr-2" />
-            Clear All
+        <DialogFooter className="pt-6 border-t border-gray-100 flex-col sm:flex-row gap-3 sm:gap-0">
+          <Button variant="outline" onClick={handleClear} className="w-full sm:w-auto">
+            Clear Filters
           </Button>
-          <div className="flex gap-3">
-            <Button variant="outline" onClick={onClose}>
+          <div className="flex gap-3 w-full sm:w-auto">
+            <Button variant="ghost" onClick={onClose} className="w-full sm:w-auto">
               Cancel
             </Button>
-            <Button onClick={handleApplyFilters}>
+            <Button onClick={handleApply} className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700">
               Apply Filters
+              {getActiveCount() > 0 && (
+                <Badge variant="secondary" className="ml-2 bg-blue-500 text-white hover:bg-blue-500">
+                  {getActiveCount()}
+                </Badge>
+              )}
             </Button>
           </div>
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

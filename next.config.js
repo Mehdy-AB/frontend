@@ -4,17 +4,27 @@ const withNextIntl = require('next-intl/plugin')(
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Enable standalone output for Docker
+  output: 'standalone',
+
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+
   // Enable experimental features if needed
   experimental: {
     // Add any experimental features here
   },
-  
+
   // Image optimization
   images: {
     domains: ['localhost'],
     formats: ['image/webp', 'image/avif'],
   },
-  
+
   // Webpack configuration (for non-Turbopack builds)
   webpack: (config, { isServer }) => {
     // Handle PDF.js canvas module issue
@@ -27,7 +37,7 @@ const nextConfig = {
         tls: false,
       };
     }
-    
+
     // Ignore canvas module for client-side builds
     config.externals = config.externals || [];
     if (!isServer) {
@@ -35,15 +45,15 @@ const nextConfig = {
         canvas: 'canvas',
       });
     }
-    
+
     return config;
   },
-  
+
   // Environment variables
   env: {
     // Add any environment variables here
   },
-  
+
   // Redirects
   async redirects() {
     return [

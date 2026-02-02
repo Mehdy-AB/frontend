@@ -14,6 +14,8 @@ interface SearchSelectProps<T> {
   displayField: keyof T; // which field to show as label (e.g. 'name')
   descriptionField?: keyof T; // optional description field
   valueLabel?: string; // optional prefilled label for selected item
+  renderItem?: (item: T) => React.ReactNode; // custom render function for dropdown items
+  openUpward?: boolean; // Force dropdown to open upward
 }
 
 export function SearchSelect<T extends { id: string | number }>({
@@ -25,11 +27,21 @@ export function SearchSelect<T extends { id: string | number }>({
   displayField,
   descriptionField,
   valueLabel,
+  renderItem,
+  openUpward,
 }: SearchSelectProps<T>) {
   const [query, setQuery] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const [filteredItems, setFilteredItems] = useState<T[]>(items);
   const [loading, setLoading] = useState(false);
+  const [dropdownPosition, setDropdownPosition] = useState<'bottom' | 'top'>('bottom');
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const fetchFunctionRef = React.useRef(fetchFunction);
+
+  // Keep ref updated with latest fetchFunction
+  React.useEffect(() => {
+    fetchFunctionRef.current = fetchFunction;
+  }, [fetchFunction]);
 
   // Update filtered items when items change
   useEffect(() => {
@@ -58,21 +70,15 @@ export function SearchSelect<T extends { id: string | number }>({
     }
   }, [valueLabel]);
 
-  // Debounce for remote fetch
+  // Debounce for remote fetch - ONLY triggers on query change, not fetchFunction reference change
   useEffect(() => {
-    if (!fetchFunction) return;
+    if (!fetchFunctionRef.current) return;
 
     const handler = setTimeout(async () => {
-      if (query.trim().length === 0) {
-        setFilteredItems(items);
-        return;
-      }
-
       setLoading(true);
       try {
-        const remoteResults = await fetchFunction(query);
+        const remoteResults = await fetchFunctionRef.current!(query);
         setFilteredItems((prev) => {
-          // merge without duplicates
           const all = [...prev, ...remoteResults];
           const unique = Array.from(new Map(all.map((i) => [i.id, i])).values());
           return unique;
@@ -85,7 +91,7 @@ export function SearchSelect<T extends { id: string | number }>({
     }, debounceMs);
 
     return () => clearTimeout(handler);
-  }, [query, fetchFunction, debounceMs]);
+  }, [query, debounceMs]); // Removed fetchFunction from deps!
 
   // Local filtering (instant)
   useEffect(() => {
@@ -103,14 +109,39 @@ export function SearchSelect<T extends { id: string | number }>({
     }
   }, [query, items, displayField, descriptionField]);
 
+  // Automatically determine dropdown position based on viewport space
+  useEffect(() => {
+    if (!showDropdown || !containerRef.current) return;
+
+    // If openUpward is explicitly set, use that
+    if (openUpward !== undefined) {
+      setDropdownPosition(openUpward ? 'top' : 'bottom');
+      return;
+    }
+
+    // Auto-detect based on available space
+    const rect = containerRef.current.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const spaceBelow = viewportHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const dropdownHeight = 240; // max-h-60 = 240px
+
+    // Open upward if there's not enough space below but more space above
+    if (spaceBelow < dropdownHeight && spaceAbove > spaceBelow) {
+      setDropdownPosition('top');
+    } else {
+      setDropdownPosition('bottom');
+    }
+  }, [showDropdown, openUpward, containerRef]);
+
   const handleSelect = (item: T) => {
     onSelect(item);
-    setQuery(String(item[displayField]));
+    setQuery(''); // Clear the search input after selection
     setShowDropdown(false);
   };
 
   return (
-    <div className="relative searchable-select-container">
+    <div ref={containerRef} className="relative searchable-select-container">
       <div className="relative">
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
         <input
@@ -129,7 +160,10 @@ export function SearchSelect<T extends { id: string | number }>({
       </div>
 
       {showDropdown && filteredItems.length > 0 && (
-        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+        <div
+          className={`absolute z-10 w-full bg-white border border-gray-200 rounded-xl shadow-xl max-h-60 overflow-y-auto ${dropdownPosition === 'top' ? 'bottom-full mb-1' : 'top-full mt-1'
+            }`}
+        >
           {filteredItems.map((item) => (
             <button
               key={item.id}
@@ -139,16 +173,20 @@ export function SearchSelect<T extends { id: string | number }>({
                 e.stopPropagation();
                 handleSelect(item);
               }}
-              className="w-full px-4 py-2 text-left text-sm text-gray-900 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none border-b border-gray-100 last:border-b-0"
+              className="w-full px-3 py-2.5 text-left text-sm text-gray-900 hover:bg-blue-50 focus:bg-blue-50 focus:outline-none border-b border-gray-100 last:border-b-0 transition-colors"
             >
-              <div className="flex flex-col">
-                <span className="font-medium">{String(item[displayField])}</span>
-                {descriptionField && item[descriptionField] && (
-                  <span className="text-xs text-gray-500 truncate">
-                    {String(item[descriptionField])}
-                  </span>
-                )}
-              </div>
+              {renderItem ? (
+                renderItem(item)
+              ) : (
+                <div className="flex flex-col">
+                  <span className="font-medium">{String(item[displayField])}</span>
+                  {descriptionField && item[descriptionField] && (
+                    <span className="text-xs text-gray-500 truncate">
+                      {String(item[descriptionField])}
+                    </span>
+                  )}
+                </div>
+              )}
             </button>
           ))}
         </div>

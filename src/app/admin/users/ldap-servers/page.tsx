@@ -1,13 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { 
-  Server, 
-  Plus, 
-  Search, 
+import {
+  Server,
+  Plus,
+  Search,
   Edit,
   Trash2,
-  Wrench ,
+  Wrench,
   MoreVertical,
   ChevronDown,
   ChevronRight,
@@ -72,6 +72,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useLanguage } from '../../../../contexts/LanguageContext';
+import { notificationApiClient } from '@/api/notificationClient';
+import { LdapServerDto, LdapStatistics } from '@/api/services/ldapServerService';
 
 // Mock data for demonstration
 const mockLdapServers = [
@@ -294,19 +296,94 @@ export default function LdapServersPage() {
   const { t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
-  const [ldapServers, setLdapServers] = useState(mockLdapServers);
-  const [filteredServers, setFilteredServers] = useState(mockLdapServers);
+  const [ldapServers, setLdapServers] = useState<any[]>([]);
+  const [filteredServers, setFilteredServers] = useState<any[]>([]);
   const [selectedType, setSelectedType] = useState('All');
   const [selectedStatus, setSelectedStatus] = useState('All');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [expandedServers, setExpandedServers] = useState<string[]>([]);
+  const [statistics, setStatistics] = useState<LdapStatistics | null>(null);
+
+  // Fetch LDAP servers from API
+  const fetchServers = async () => {
+    try {
+      setLoading(true);
+      const response = await notificationApiClient.getAllLdapServers({
+        page: 0,
+        size: 100,
+        search: searchQuery || undefined
+      });
+      // Map API response to component format
+      const servers = response.content.map((server: LdapServerDto) => ({
+        id: server.id,
+        name: server.name,
+        description: server.description || '',
+        hostname: server.hostname,
+        port: server.port,
+        sslPort: server.sslPort,
+        baseDN: server.baseDn,
+        bindDN: server.bindDn || '',
+        isActive: server.enabled,
+        isSecure: server.useSSL || server.useTLS,
+        useSSL: server.useSSL,
+        useTLS: server.useTLS,
+        connectionTimeout: server.connectionTimeout,
+        searchTimeout: server.searchTimeout,
+        maxConnections: 100,
+        currentConnections: 0,
+        lastSync: server.lastSync || '',
+        lastTest: server.lastTest || '',
+        status: server.status === 'CONNECTED' ? 'Connected' :
+          server.status === 'DISCONNECTED' ? 'Disconnected' :
+            server.status === 'ERROR' ? 'Error' : 'Unknown',
+        createdBy: 'System',
+        createdAt: server.createdAt,
+        lastModified: server.updatedAt,
+        syncCount: server.syncCount,
+        errorCount: server.errorCount,
+        userCount: server.userCount,
+        groupCount: server.groupCount,
+        attributes: server.attributeMappings || {},
+        filters: {
+          userFilter: server.userFilter || '',
+          groupFilter: server.groupFilter || '',
+          enabledFilter: ''
+        }
+      }));
+      setLdapServers(servers);
+      setFilteredServers(servers);
+    } catch (error) {
+      console.error('Failed to fetch LDAP servers:', error);
+      setLdapServers([]);
+      setFilteredServers([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch statistics
+  const fetchStatistics = async () => {
+    try {
+      const stats = await notificationApiClient.getLdapStatistics();
+      setStatistics(stats);
+    } catch (error) {
+      console.error('Failed to fetch LDAP statistics:', error);
+    }
+  };
+
+  // Initial data fetch
+  useEffect(() => {
+    fetchServers();
+    fetchStatistics();
+  }, []);
+
 
   // Filter servers based on search, type, and status
   useEffect(() => {
     let filtered = ldapServers;
 
     if (searchQuery) {
-      filtered = filtered.filter(server => 
+      filtered = filtered.filter(server =>
         server.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         server.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
         server.hostname.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -353,19 +430,24 @@ export default function LdapServersPage() {
   };
 
   const handleToggleActive = (serverId: string) => {
-    setLdapServers(prev => prev.map(server => 
-      server.id === serverId ? { 
-        ...server, 
+    setLdapServers(prev => prev.map(server =>
+      server.id === serverId ? {
+        ...server,
         isActive: !server.isActive,
         status: !server.isActive ? 'Connected' : 'Disconnected'
       } : server
     ));
   };
 
-  const handleDeleteServer = (serverId: string) => {
+  const handleDeleteServer = async (serverId: string) => {
     if (confirm('Are you sure you want to delete this LDAP server?')) {
-      setLdapServers(prev => prev.filter(server => server.id !== serverId));
-      setSelectedItems(prev => prev.filter(id => id !== serverId));
+      try {
+        await notificationApiClient.deleteLdapServer(serverId);
+        setLdapServers(prev => prev.filter(server => server.id !== serverId));
+        setSelectedItems(prev => prev.filter(id => id !== serverId));
+      } catch (error) {
+        console.error('Failed to delete LDAP server:', error);
+      }
     }
   };
 
@@ -377,9 +459,9 @@ export default function LdapServersPage() {
   };
 
   const handleBulkToggleActive = () => {
-    setLdapServers(prev => prev.map(server => 
-      selectedItems.includes(server.id) ? { 
-        ...server, 
+    setLdapServers(prev => prev.map(server =>
+      selectedItems.includes(server.id) ? {
+        ...server,
         isActive: !server.isActive,
         status: !server.isActive ? 'Connected' : 'Disconnected'
       } : server
@@ -387,26 +469,35 @@ export default function LdapServersPage() {
     setSelectedItems([]);
   };
 
-  const handleTestConnection = (serverId: string) => {
-    // Simulate connection test
-    setLdapServers(prev => prev.map(server => 
-      server.id === serverId ? {
-        ...server,
-        lastTest: new Date().toISOString(),
-        status: Math.random() > 0.3 ? 'Connected' : 'Error'
-      } : server
-    ));
+  const handleTestConnection = async (serverId: string) => {
+    try {
+      const result = await notificationApiClient.testLdapConnection(serverId);
+      setLdapServers(prev => prev.map(server =>
+        server.id === serverId ? {
+          ...server,
+          lastTest: new Date().toISOString(),
+          status: result.success ? 'Connected' : 'Error'
+        } : server
+      ));
+    } catch (error) {
+      console.error('Failed to test connection:', error);
+    }
   };
 
-  const handleSyncNow = (serverId: string) => {
-    // Simulate sync operation
-    setLdapServers(prev => prev.map(server => 
-      server.id === serverId ? {
-        ...server,
-        lastSync: new Date().toISOString(),
-        syncCount: server.syncCount + 1
-      } : server
-    ));
+  const handleSyncNow = async (serverId: string) => {
+    try {
+      const result = await notificationApiClient.syncLdapUsers(serverId);
+      setLdapServers(prev => prev.map(server =>
+        server.id === serverId ? {
+          ...server,
+          lastSync: new Date().toISOString(),
+          syncCount: server.syncCount + 1,
+          userCount: result.imported || server.userCount
+        } : server
+      ));
+    } catch (error) {
+      console.error('Failed to sync users:', error);
+    }
   };
 
   const getStatusIcon = (status: string) => {
@@ -524,7 +615,7 @@ export default function LdapServersPage() {
               className="pl-10"
             />
           </div>
-          
+
           <Select value={selectedType} onValueChange={setSelectedType}>
             <SelectTrigger className="w-40">
               <SelectValue />
@@ -592,8 +683,8 @@ export default function LdapServersPage() {
             <thead className="bg-muted/50">
               <tr>
                 <th className="text-left p-4 w-8">
-                  <input 
-                    type="checkbox" 
+                  <input
+                    type="checkbox"
                     className="rounded border-input"
                     checked={selectedItems.length === filteredServers.length}
                     onChange={(e) => {
@@ -617,13 +708,13 @@ export default function LdapServersPage() {
             <tbody>
               {filteredServers.map((server) => {
                 const isExpanded = expandedServers.includes(server.id);
-                
+
                 return (
                   <React.Fragment key={server.id}>
                     <tr className="border-b hover:bg-muted/30">
                       <td className="p-4">
-                        <input 
-                          type="checkbox" 
+                        <input
+                          type="checkbox"
                           className="rounded border-input"
                           checked={selectedItems.includes(server.id)}
                           onChange={() => toggleSelectServer(server.id)}
@@ -631,7 +722,7 @@ export default function LdapServersPage() {
                       </td>
                       <td className="p-4">
                         <div className="flex items-center gap-3">
-                          <button 
+                          <button
                             onClick={() => toggleServerExpansion(server.id)}
                             className="p-1 rounded hover:bg-muted transition-colors"
                           >
@@ -731,7 +822,7 @@ export default function LdapServersPage() {
                         </div>
                       </td>
                     </tr>
-                    
+
                     {/* Expanded Details */}
                     {isExpanded && (
                       <tr className="bg-muted/20">
@@ -781,7 +872,7 @@ export default function LdapServersPage() {
                                 {Object.entries(server.attributes).map(([key, value]) => (
                                   <div key={key} className="flex justify-between">
                                     <span className="text-muted-foreground">{key}:</span>
-                                    <span className="font-mono text-xs">{value}</span>
+                                    <span className="font-mono text-xs">{String(value)}</span>
                                   </div>
                                 ))}
                               </div>

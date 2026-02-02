@@ -24,25 +24,22 @@ interface MetadataTabProps {
   onRefreshMetadata?: () => Promise<void>;
 }
 
-export default function MetadataTab({ 
-  document, 
-  isLoading, 
+export default function MetadataTab({
+  document,
+  isLoading,
   onUpdateMetadata,
   onUpdateDocument,
   onRefreshMetadata
 }: MetadataTabProps) {
-  const [isEditingTitle, setIsEditingTitle] = useState<boolean>(false);
-  const [editingTitle, setEditingTitle] = useState<string>(document.title || '');
   const [isEditingDescription, setIsEditingDescription] = useState<boolean>(false);
   const [editingDescription, setEditingDescription] = useState<string>(document.description || '');
-  const [isSavingTitle, setIsSavingTitle] = useState<boolean>(false);
   const [isSavingDescription, setIsSavingDescription] = useState<boolean>(false);
-  
+
   const [tags, setTags] = useState<TagResponseDto[]>([]);
   const [availableTags, setAvailableTags] = useState<TagResponseDto[]>([]);
   const [isLoadingTags, setIsLoadingTags] = useState(false);
   const [isCreateTagModalOpen, setIsCreateTagModalOpen] = useState(false);
-  
+
   const [availableModels, setAvailableModels] = useState<FilingCategoryResponseDto[]>([]);
   const [isEditingModel, setIsEditingModel] = useState(false);
   const [isEditingExistingMetadata, setIsEditingExistingMetadata] = useState(false);
@@ -52,7 +49,7 @@ export default function MetadataTab({
   const [isUpdatingModel, setIsUpdatingModel] = useState(false);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [customValueFields, setCustomValueFields] = useState<Set<number>>(new Set());
-  
+
   const [openSections, setOpenSections] = useState<Set<string>>(new Set(['model', 'tags']));
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -66,9 +63,8 @@ export default function MetadataTab({
 
   // Update editing values when document changes
   useEffect(() => {
-    setEditingTitle(document.title || '');
     setEditingDescription(document.description || '');
-  }, [document.title, document.description]);
+  }, [document.description]);
 
   const loadDocumentTags = async () => {
     try {
@@ -114,12 +110,12 @@ export default function MetadataTab({
     if (selectedModel && 'metadataDefinitions' in selectedModel) {
       return selectedModel.metadataDefinitions;
     }
-    
+
     // If we have document metadata definitions, use those
     if (document.metadataDefinitions && document.metadataDefinitions.length > 0) {
       return document.metadataDefinitions;
     }
-    
+
     // Fallback to empty array
     return [];
   };
@@ -163,10 +159,10 @@ export default function MetadataTab({
   // Helper function to render input based on metadata type
   const renderMetadataInput = (meta: MetaDataDto, metadataDef: any) => {
     const { dataType, key, mandatory } = metadataDef;
-    
+
     const commonInputProps = {
       value: meta.value,
-      onChange: (e: React.ChangeEvent<HTMLInputElement>) => 
+      onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
         updateMetadataValue(meta.id, e.target.value),
       placeholder: key,
       required: mandatory
@@ -184,7 +180,7 @@ export default function MetadataTab({
             />
           </div>
         );
-      
+
       case MetadataType.DATETIME:
         return (
           <div className="relative">
@@ -196,7 +192,7 @@ export default function MetadataTab({
             />
           </div>
         );
-      
+
       case MetadataType.NUMBER:
         return (
           <div className="relative">
@@ -209,7 +205,7 @@ export default function MetadataTab({
             />
           </div>
         );
-      
+
       case MetadataType.FLOAT:
         return (
           <div className="relative">
@@ -222,7 +218,7 @@ export default function MetadataTab({
             />
           </div>
         );
-      
+
       case MetadataType.STRING:
         return (
           <div className="relative">
@@ -234,7 +230,7 @@ export default function MetadataTab({
             />
           </div>
         );
-      
+
       case MetadataType.BOOLEAN:
         return (
           <div className="flex items-center gap-2">
@@ -253,13 +249,13 @@ export default function MetadataTab({
             </Select>
           </div>
         );
-      
+
       case MetadataType.LIST:
         const listData = metadataDef.list;
         const hasOptions = listData?.option && listData.option.length > 0;
         const allowCustomValue = listData?.mandatory ?? false; // When list.mandatory=true, user can enter custom values
         const isCustomValueMode = customValueFields.has(meta.id);
-        
+
         return (
           <div className="space-y-2">
             {isCustomValueMode ? (
@@ -307,17 +303,17 @@ export default function MetadataTab({
                     </SelectContent>
                   </Select>
                 </div>
-                 {allowCustomValue && (
-                   <button
-                     onClick={() => {
-                       setCustomValueFields(prev => new Set(prev).add(meta.id));
-                       updateMetadataValue(meta.id, "");
-                     }}
-                     className="text-xs text-gray-600 hover:text-gray-800 underline"
-                   >
-                     {mandatory ? "Enter custom value" : "Enter custom value instead"}
-                   </button>
-                 )}
+                {allowCustomValue && (
+                  <button
+                    onClick={() => {
+                      setCustomValueFields(prev => new Set(prev).add(meta.id));
+                      updateMetadataValue(meta.id, "");
+                    }}
+                    className="text-xs text-gray-600 hover:text-gray-800 underline"
+                  >
+                    {mandatory ? "Enter custom value" : "Enter custom value instead"}
+                  </button>
+                )}
               </div>
             ) : allowCustomValue ? (
               <div className="relative">
@@ -336,12 +332,12 @@ export default function MetadataTab({
             )}
             {listData?.description && (
               <div className="text-xs text-gray-500 rounded">
-               {listData.description}
+                {listData.description}
               </div>
             )}
           </div>
         );
-      
+
       case MetadataType.STRING:
       default:
         return (
@@ -373,7 +369,7 @@ export default function MetadataTab({
   // Helper function to format metadata value for display
   const formatMetadataValue = (value: string, dataType: MetadataType) => {
     if (!value) return 'Not set';
-    
+
     switch (dataType) {
       case MetadataType.DATE:
         return new Date(value).toLocaleDateString();
@@ -394,13 +390,13 @@ export default function MetadataTab({
         value: ''
       }));
       setEditingMetadata(metadata);
-      
+
       // Refetch categories to get updated metadata definitions
       try {
         const response = await filingCategoryService.getAllFilingCategories({ size: 100 });
         const updatedModels = response.content || [];
         setAvailableModels(updatedModels);
-        
+
         // Update selected model with fresh data
         const updatedModel = updatedModels.find(m => m.id === modelId);
         if (updatedModel) {
@@ -413,7 +409,7 @@ export default function MetadataTab({
   };
 
   const updateMetadataValue = (metadataId: number, value: string) => {
-    setEditingMetadata(prev => 
+    setEditingMetadata(prev =>
       prev.map(meta => meta.id === metadataId ? { ...meta, value } : meta)
     );
   };
@@ -425,7 +421,7 @@ export default function MetadataTab({
       setIsUpdatingModel(true);
       setError(null);
       setSuccess(null);
-      
+
       // Validate mandatory fields
       const metadataDefinitions = getMetadataDefinitionsForEditing();
       if (metadataDefinitions && metadataDefinitions.length > 0) {
@@ -434,7 +430,7 @@ export default function MetadataTab({
           const meta = editingMetadata.find(m => m.id === def.id);
           return !meta || !meta.value.trim();
         });
-        
+
         if (missingFields.length > 0) {
           setError(`Please fill in all mandatory fields: ${missingFields.map((f: any) => f.key).join(', ')}`);
           return;
@@ -451,7 +447,7 @@ export default function MetadataTab({
       };
 
       await documentService.updateDocumentMetadata(
-        document.documentId, 
+        document.documentId,
         request
       );
 
@@ -500,7 +496,7 @@ export default function MetadataTab({
 
       setSuccess('Model and metadata updated successfully');
       setIsEditingModel(false);
-      
+
       // Clear success message after 3 seconds
       setTimeout(() => setSuccess(null), 3000);
     } catch (error) {
@@ -518,7 +514,7 @@ export default function MetadataTab({
       setIsUpdatingModel(true);
       setError(null);
       setSuccess(null);
-      
+
       // Validate mandatory fields
       const metadataDefinitions = getMetadataDefinitionsForEditing();
       if (metadataDefinitions && metadataDefinitions.length > 0) {
@@ -527,7 +523,7 @@ export default function MetadataTab({
           const meta = editingMetadata.find(m => m.id === def.id);
           return !meta || !meta.value.trim();
         });
-        
+
         if (missingFields.length > 0) {
           setError(`Please fill in all mandatory fields: ${missingFields.map((f: any) => f.key).join(', ')}`);
           return;
@@ -544,7 +540,7 @@ export default function MetadataTab({
       };
 
       await documentService.updateDocumentMetadata(
-        document.documentId, 
+        document.documentId,
         request
       );
 
@@ -586,7 +582,7 @@ export default function MetadataTab({
 
       setSuccess('Metadata updated successfully');
       setIsEditingExistingMetadata(false);
-      
+
       // Clear success message after 3 seconds
       setTimeout(() => setSuccess(null), 3000);
     } catch (error) {
@@ -607,11 +603,11 @@ export default function MetadataTab({
 
       // Add tag to document
       await tagService.addTagToDocument(document.documentId, { tagId: tag.id });
-      
+
       // Update local state
       setTags(prev => [...prev, tag]);
       setSuccess(`Tag "${tag.name}" added successfully`);
-      
+
       // Clear success message after 3 seconds
       setTimeout(() => setSuccess(null), 3000);
     } catch (error) {
@@ -623,11 +619,11 @@ export default function MetadataTab({
   const handleTagRemove = async (tagId: number) => {
     try {
       await tagService.removeTagFromDocument(document.documentId, tagId);
-      
+
       // Update local state
       setTags(prev => prev.filter(tag => tag.id !== tagId));
       setSuccess('Tag removed successfully');
-      
+
       // Clear success message after 3 seconds
       setTimeout(() => setSuccess(null), 3000);
     } catch (error) {
@@ -643,17 +639,17 @@ export default function MetadataTab({
         description: tagData.description || `Tag created for document: ${document.name}`,
         color: tagData.color
       };
-      
+
       const createdTag = await tagService.createTag(newTag);
-      
+
       // Add the new tag to the document
       await tagService.addTagToDocument(document.documentId, { tagId: createdTag.id });
-      
+
       // Update local state
       setTags(prev => [...prev, createdTag]);
       setAvailableTags(prev => [...prev, createdTag]);
       setSuccess(`Tag "${createdTag.name}" created and added successfully`);
-      
+
       // Clear success message after 3 seconds
       setTimeout(() => setSuccess(null), 3000);
     } catch (error) {
@@ -663,55 +659,23 @@ export default function MetadataTab({
     }
   };
 
-  // Handle save title
-  const handleSaveTitle = async () => {
-    if (!editingTitle.trim()) {
-      setError('Title cannot be empty');
-      return;
-    }
-
-    try {
-      setIsSavingTitle(true);
-      setError(null);
-      
-      // Call the API to update title
-      await notificationApiClient.editDocumentTitle(document.documentId, { title: editingTitle.trim() });
-      
-      // Update local state
-      if (onUpdateDocument) {
-        onUpdateDocument({ ...document, title: editingTitle.trim() });
-      }
-      
-      setIsEditingTitle(false);
-      setSuccess('Title updated successfully');
-      
-      // Clear success message after 3 seconds
-      setTimeout(() => setSuccess(null), 3000);
-    } catch (error) {
-      console.error('Error updating title:', error);
-      setError('Failed to update title. Please try again.');
-    } finally {
-      setIsSavingTitle(false);
-    }
-  };
-
   // Handle save description
   const handleSaveDescription = async () => {
     try {
       setIsSavingDescription(true);
       setError(null);
-      
+
       // Call the API to update description
       await notificationApiClient.editDocumentDescription(document.documentId, editingDescription.trim());
-      
+
       // Update local state
       if (onUpdateDocument) {
         onUpdateDocument({ ...document, description: editingDescription.trim() });
       }
-      
+
       setIsEditingDescription(false);
       setSuccess('Description updated successfully');
-      
+
       // Clear success message after 3 seconds
       setTimeout(() => setSuccess(null), 3000);
     } catch (error) {
@@ -720,13 +684,6 @@ export default function MetadataTab({
     } finally {
       setIsSavingDescription(false);
     }
-  };
-
-  // Handle cancel title edit
-  const handleCancelTitleEdit = () => {
-    setEditingTitle(document.title || '');
-    setIsEditingTitle(false);
-    setError(null);
   };
 
   // Handle cancel description edit
@@ -757,7 +714,7 @@ export default function MetadataTab({
             Document Information
           </h3>
         </div>
-        
+
         {/* Error and Success Messages */}
         {error && (
           <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
@@ -769,58 +726,8 @@ export default function MetadataTab({
             {success}
           </div>
         )}
-        
-        <div className="space-y-3">
-          {/* Title */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Title
-            </label>
-            {isEditingTitle ? (
-              <div className="space-y-2">
-                <Input
-                  type="text"
-                  value={editingTitle}
-                  onChange={(e) => setEditingTitle(e.target.value)}
-                  placeholder="Enter document title"
-                  className="w-full"
-                  autoFocus
-                />
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleSaveTitle}
-                    disabled={isSavingTitle || !editingTitle.trim()}
-                    className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1"
-                  >
-                    <Save className="h-3 w-3" />
-                    {isSavingTitle ? 'Saving...' : 'Save'}
-                  </button>
-                  <button
-                    onClick={handleCancelTitleEdit}
-                    disabled={isSavingTitle}
-                    className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="group flex items-center gap-2">
-                <span className="text-sm text-gray-900 flex-1">
-                  {document.title || 'No title'}
-                </span>
-                {document.userPermissions?.canEdit && (
-                  <button
-                    onClick={() => setIsEditingTitle(true)}
-                    className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-blue-600 rounded transition-all"
-                  >
-                    <Edit3 className="h-3 w-3" />
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
 
+        <div className="space-y-3">
           {/* Description */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -875,7 +782,7 @@ export default function MetadataTab({
 
       {/* Model Section */}
       <div className="border-b pb-4">
-        <div 
+        <div
           className="flex items-center justify-between cursor-pointer mb-2"
           onClick={() => toggleSection('model')}
         >
@@ -897,7 +804,7 @@ export default function MetadataTab({
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Select Model
                   </label>
-                  
+
                   {selectedModel ? (
                     <div className="space-y-2">
                       <div className="p-3 bg-blue-50 rounded border border-blue-200">
@@ -921,9 +828,9 @@ export default function MetadataTab({
                     <SearchSelect
                       items={availableModels}
                       fetchFunction={async (query: string) => {
-                        const response = await filingCategoryService.getAllFilingCategories({ 
+                        const response = await filingCategoryService.getAllFilingCategories({
                           size: 100,
-                          name: query 
+                          name: query
                         });
                         return response.content || [];
                       }}
@@ -1005,7 +912,7 @@ export default function MetadataTab({
                         )}
                       </div>
                     </div>
-                    
+
                     {document.filingCategory.metadata && document.filingCategory.metadata.length > 0 && (
                       <div>
                         <div className="flex items-center justify-between mb-2">
@@ -1019,7 +926,7 @@ export default function MetadataTab({
                             </button>
                           )}
                         </div>
-                        
+
                         {isEditingExistingMetadata ? (
                           <div className="space-y-3">
                             {editingMetadata.map((meta) => {
@@ -1042,7 +949,7 @@ export default function MetadataTab({
                                 </div>
                               );
                             })}
-                            
+
                             <div className="flex justify-end gap-2 pt-2">
                               <button
                                 onClick={() => setIsEditingExistingMetadata(false)}
@@ -1068,7 +975,7 @@ export default function MetadataTab({
                                 (def: any) => def.id === meta.metadataId
                               );
                               const dataType = metadataDef?.dataType || MetadataType.STRING;
-                              
+
                               return (
                                 <div key={meta.metadataId} className="p-3 bg-gray-50 rounded border">
                                   <div className="flex items-center justify-between mb-2">
@@ -1083,11 +990,11 @@ export default function MetadataTab({
                                       {formatMetadataValue(meta.value, dataType)}
                                     </span>
                                   </div>
-                                  
+
                                   {/* Show list description if it's a LIST type */}
                                   {dataType === MetadataType.LIST && metadataDef?.list?.description && (
                                     <div className="text-xs text-gray-500 rounded ">
-                                       {metadataDef.list.description}
+                                      {metadataDef.list.description}
                                     </div>
                                   )}
                                 </div>
@@ -1120,7 +1027,7 @@ export default function MetadataTab({
 
       {/* Tags Section */}
       <div className="border-b pb-4">
-        <div 
+        <div
           className="flex items-center justify-between cursor-pointer mb-3"
           onClick={() => toggleSection('tags')}
         >
@@ -1151,7 +1058,7 @@ export default function MetadataTab({
                   descriptionField="description"
                   debounceMs={300}
                 />
-                
+
                 {/* Create New Tag Option */}
                 <div className="text-xs text-gray-500">
                   Can't find the tag you're looking for?{' '}
@@ -1171,10 +1078,10 @@ export default function MetadataTab({
                 <div className="text-sm text-gray-500">Loading tags...</div>
               ) : tags.length > 0 ? (
                 tags.map((tag) => (
-                  <div 
-                    key={tag.id} 
+                  <div
+                    key={tag.id}
                     className="group flex items-center gap-1 px-3 py-1.5 rounded-lg border transition-all hover:opacity-80"
-                    style={{ 
+                    style={{
                       backgroundColor: tag.color ? `${tag.color}20` : '#EFF6FF',
                       borderColor: tag.color ? `${tag.color}40` : '#DBEAFE',
                       color: tag.color || '#1D4ED8'
@@ -1182,16 +1089,16 @@ export default function MetadataTab({
                   >
                     <span className="text-sm font-medium">{tag.name}</span>
                     {tag.color && (
-                      <div 
+                      <div
                         className="w-3 h-3 rounded-full border"
-                        style={{ 
+                        style={{
                           backgroundColor: tag.color,
                           borderColor: tag.color
                         }}
                       />
                     )}
                     {document.userPermissions?.canEdit && (
-                      <button 
+                      <button
                         onClick={() => handleTagRemove(tag.id)}
                         className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-black hover:bg-opacity-10"
                         style={{ color: tag.color || '#1D4ED8' }}

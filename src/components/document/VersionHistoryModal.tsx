@@ -2,12 +2,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { 
-  X, 
-  Download, 
-  Eye, 
-  History, 
-  FileText, 
+import {
+  X,
+  Download,
+  Eye,
+  History,
+  FileText,
   AlertCircle,
   CheckCircle,
   Calendar,
@@ -23,14 +23,25 @@ interface VersionInfo {
   id: number;
   documentId: number;
   versionNumber: number;
-  sequentialNumber: number; // New field for sequential numbering
+  sequentialNumber: number; // For display ordering
+  // Semantic versioning
+  majorVersion: number;
+  minorVersion: number;
+  patchVersion: number;
+  semanticVersion: string; // "1.2.3"
+  modificationType: 'MAJOR' | 'MINOR' | 'PATCH' | 'RESTORE';
+  versionComment?: string;
+  // File info
   minioKey: string;
   sizeBytes: number;
   mimeType: string;
   createdAt: string;
+  updatedAt?: string;
   createdBy?: {
+    id: string;
     firstName: string;
     lastName: string;
+    email?: string;
   };
 }
 
@@ -42,9 +53,9 @@ interface VersionHistoryModalProps {
   onRestoreVersion?: (versionId: number, versionNumber: number) => Promise<void>;
 }
 
-export default function VersionHistoryModal({ 
-  document, 
-  isOpen, 
+export default function VersionHistoryModal({
+  document,
+  isOpen,
   onClose,
   onVersionChange,
   onRestoreVersion
@@ -65,24 +76,44 @@ export default function VersionHistoryModal({
       setLoading(true);
       setError(null);
       const versions = await notificationApiClient.getDocumentVersionsList(document.documentId) as any[];
-      
-      // Sort versions by ID (lowest to highest) to create sequential mapping
-      const sortedVersions = versions.sort((a, b) =>  b.id-a.id);
-      
+
+      // Sort versions by semantic version (newest first)
+      const sortedVersions = versions.sort((a, b) => {
+        const aMajor = a.majorVersion || 1;
+        const bMajor = b.majorVersion || 1;
+        if (aMajor !== bMajor) return bMajor - aMajor;
+
+        const aMinor = a.minorVersion || 0;
+        const bMinor = b.minorVersion || 0;
+        if (aMinor !== bMinor) return bMinor - aMinor;
+
+        const aPatch = a.patchVersion || 0;
+        const bPatch = b.patchVersion || 0;
+        return bPatch - aPatch;
+      });
+
       const versionInfos: VersionInfo[] = sortedVersions.map((version: any, index: number) => ({
         id: version.id,
         documentId: version.documentId,
         versionNumber: version.versionNumber,
-        sequentialNumber: index + 1, // Map to sequential numbers (1, 2, 3, etc.)
+        sequentialNumber: index + 1,
+        // Semantic versioning
+        majorVersion: version.majorVersion || 1,
+        minorVersion: version.minorVersion || 0,
+        patchVersion: version.patchVersion || 0,
+        semanticVersion: version.semanticVersion || `${version.majorVersion || 1}.${version.minorVersion || 0}.${version.patchVersion || 0}`,
+        modificationType: version.modificationType || 'MINOR',
+        versionComment: version.versionComment,
+        // File info
         minioKey: version.minioKey,
         sizeBytes: version.sizeBytes,
         mimeType: version.mimeType,
         createdAt: version.createdAt,
+        updatedAt: version.updatedAt,
         createdBy: version.createdBy || document.createdBy
       }));
-      
-      // Sort by sequential number descending (newest first)
-      setVersions(versionInfos.sort((a, b) => a.sequentialNumber - b.sequentialNumber ));
+
+      setVersions(versionInfos);
     } catch (err) {
       console.error('Error fetching versions:', err);
       setError('Failed to load version history');
@@ -96,13 +127,13 @@ export default function VersionHistoryModal({
     try {
       const version = versions.find(v => v.id === versionId);
       const downloadUrl = await notificationApiClient.downloadDocument(document.documentId, versionId);
-      
+
       try {
         await notificationApiClient.fileDownloaded(document.documentId, versionId);
       } catch (logError) {
         console.warn('Failed to log download operation:', logError);
       }
-      
+
       const link = window.document.createElement('a');
       link.href = downloadUrl;
       link.download = `${document.name}_v${version?.versionNumber}`;
@@ -133,14 +164,14 @@ export default function VersionHistoryModal({
   const handleRestoreVersion = async (versionId: number) => {
     try {
       setActiveAction(versionId);
-      
+
       // Find the version to get its version number
       const version = versions.find(v => v.id === versionId);
       if (!version) {
         setError('Version not found');
         return;
       }
-      
+
       // Call the parent handler to handle the restore (includes API call and file content update)
       if (onRestoreVersion) {
         await onRestoreVersion(versionId, version.versionNumber);
@@ -228,7 +259,7 @@ export default function VersionHistoryModal({
                 {versions.length} version{versions.length !== 1 ? 's' : ''}
               </div>
             </div>
-            
+
             {loading ? (
               <div className="space-y-3">
                 {[...Array(3)].map((_, i) => (
@@ -253,13 +284,12 @@ export default function VersionHistoryModal({
             ) : (
               <div className="space-y-3">
                 {versions.map((version) => (
-                  <div 
-                    key={version.id} 
-                    className={`p-4 border rounded-lg transition-all ${
-                      version.id === document.activeVersion 
-                        ? 'bg-blue-50 border-blue-200 shadow-sm' 
-                        : 'bg-white border-gray-200 hover:border-gray-300 hover:shadow-sm'
-                    }`}
+                  <div
+                    key={version.id}
+                    className={`p-4 border rounded-lg transition-all ${version.id === document.activeVersion
+                      ? 'bg-blue-50 border-blue-200 shadow-sm'
+                      : 'bg-white border-gray-200 hover:border-gray-300 hover:shadow-sm'
+                      }`}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-4 flex-1 min-w-0">
@@ -271,24 +301,40 @@ export default function VersionHistoryModal({
                         {/* Version Info */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-3 mb-2">
-                            <span className="font-semibold text-gray-900">
-                              Version {version.versionNumber}
+                            <span className="font-bold text-gray-900 text-lg">
+                              v{version.semanticVersion}
+                            </span>
+                            {/* Modification Type Badge */}
+                            <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${version.modificationType === 'MAJOR'
+                                ? 'bg-red-100 text-red-700 border border-red-200'
+                                : version.modificationType === 'MINOR'
+                                  ? 'bg-yellow-100 text-yellow-700 border border-yellow-200'
+                                  : version.modificationType === 'RESTORE'
+                                    ? 'bg-purple-100 text-purple-700 border border-purple-200'
+                                    : 'bg-gray-100 text-gray-600 border border-gray-200'
+                              }`}>
+                              {version.modificationType}
                             </span>
                             {version.id === document.activeVersion && (
-                              <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full border border-blue-200">
-                                Current Version
+                              <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded-full border border-blue-200">
+                                Current
                               </span>
                             )}
                           </div>
-                          
+
+                          {/* Version Comment */}
+                          {version.versionComment && (
+                            <p className="text-sm text-gray-600 mb-2 italic">
+                              "{version.versionComment}"
+                            </p>
+                          )}
+
                           <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
                             <div className="flex items-center gap-1">
                               <Calendar className="h-3 w-3" />
                               <span>{formatDate(version.createdAt)}</span>
-                              <span className="text-gray-400">•</span>
-                              <span className="text-gray-500">{formatDate(version.createdAt)}</span>
                             </div>
-                            
+
                             <div className="flex items-center gap-1">
                               <FileText className="h-3 w-3" />
                               <span>{formatFileSize(version.sizeBytes)}</span>
@@ -303,7 +349,7 @@ export default function VersionHistoryModal({
                           </div>
                         </div>
                       </div>
-                      
+
                       {/* Actions */}
                       <div className="flex items-center gap-2">
                         <button
@@ -313,7 +359,7 @@ export default function VersionHistoryModal({
                         >
                           <Eye className="h-4 w-4" />
                         </button>
-                        
+
                         <button
                           onClick={() => handleDownloadVersion(version.id)}
                           className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
@@ -321,7 +367,7 @@ export default function VersionHistoryModal({
                         >
                           <Download className="h-4 w-4" />
                         </button>
-                        
+
                         {version.id !== document.activeVersion && (
                           <button
                             onClick={() => handleRestoreVersion(version.id)}

@@ -35,10 +35,10 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { workflowService } from '@/api/services/workflowService';
+import { workflowAdminService } from '@/api/services/workflowAdminService';
 import { useNotifications } from '@/hooks/useNotifications';
 import { WorkflowTriggerResponse, FilingCategoryResponseDto } from '@/types/api';
-import { FolderPickerModal } from '@/components/modals/FolderPickerModal';
+import FolderPickerModal from '@/components/modals/FolderPickerModal';
 import { filingCategoryService } from '@/api/services/filingCategoryService';
 import { useServerSideSearch } from '@/components/main/useServerSideSearch';
 import ServerSearchInput from '@/components/main/ServerSearchInput';
@@ -105,7 +105,7 @@ export default function WorkflowTriggersTab({ workflowId }: WorkflowTriggersTabP
     const loadTriggers = async () => {
         try {
             setLoading(true);
-            const data = await workflowService.getWorkflowTriggers(workflowId);
+            const data = await workflowAdminService.getWorkflowTriggers(workflowId);
             setTriggers(data);
         } catch (error) {
             console.error('Error loading triggers:', error);
@@ -127,7 +127,7 @@ export default function WorkflowTriggersTab({ workflowId }: WorkflowTriggersTabP
 
         try {
             setIsSubmitting(true);
-            await workflowService.addWorkflowTrigger({
+            await workflowAdminService.addWorkflowTrigger({
                 workflowId,
                 triggerType,
                 folderId: selectedFolderId || undefined,
@@ -148,7 +148,7 @@ export default function WorkflowTriggersTab({ workflowId }: WorkflowTriggersTabP
         if (!triggerToDelete) return;
 
         try {
-            await workflowService.deleteWorkflowTrigger(triggerToDelete.id);
+            await workflowAdminService.deleteWorkflowTrigger(triggerToDelete.id);
             showSuccess('Trigger Removed', 'Workflow trigger removed successfully');
             setShowDeleteModal(false);
             setTriggerToDelete(null);
@@ -160,7 +160,7 @@ export default function WorkflowTriggersTab({ workflowId }: WorkflowTriggersTabP
 
     const handleToggleActive = async (trigger: WorkflowTriggerResponse) => {
         try {
-            await workflowService.updateWorkflowTrigger(trigger.id, {
+            await workflowAdminService.updateWorkflowTrigger(trigger.id, {
                 isActive: !trigger.isActive,
             });
             showSuccess(
@@ -476,11 +476,10 @@ export default function WorkflowTriggersTab({ workflowId }: WorkflowTriggersTabP
             <FolderPickerModal
                 isOpen={showFolderPicker}
                 onClose={() => setShowFolderPicker(false)}
-                onSelect={(folderId, folderName) => {
+                onSelect={(folderId, folderName, _folderPath) => {
                     setSelectedFolderId(folderId);
                     setSelectedFolderName(folderName);
                 }}
-                selectedFolderId={selectedFolderId}
             />
 
             {/* Delete Confirmation Modal */}

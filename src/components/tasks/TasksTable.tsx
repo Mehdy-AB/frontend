@@ -26,7 +26,7 @@ import {
     PaginationNext,
     PaginationPrevious,
 } from '@/components/ui/pagination';
-import { workflowService } from '@/api/services/workflowService';
+import { workflowAdminService } from '@/api/services/workflowAdminService';
 import { WorkflowStepInstanceResponse } from '@/types/api';
 import { formatDate } from '@/lib/dateFormatter';
 import { Loader2, Search, ArrowRight, AlertCircle, Clock } from 'lucide-react';
@@ -45,7 +45,7 @@ export function TasksTable() {
     const fetchTasks = async () => {
         setLoading(true);
         try {
-            const response = await workflowService.getActiveSteps(
+            const response = await workflowAdminService.getActiveSteps(
                 page,
                 pageSize,
                 search,
@@ -152,18 +152,18 @@ export function TasksTable() {
                                         <Badge
                                             variant="secondary"
                                             className={cn(
-                                                getPriorityColor(task.workflowStep.priority || 'MEDIUM')
+                                                getPriorityColor('MEDIUM')
                                             )}
                                         >
-                                            {task.workflowStep.priority || 'MEDIUM'}
+                                            {'MEDIUM'}
                                         </Badge>
                                     </TableCell>
                                     <TableCell className="font-medium">
-                                        {task.workflowStep.name}
+                                        {task.nodeName}
                                     </TableCell>
                                     <TableCell>
                                         <span className="text-sm text-muted-foreground">
-                                            {task.documentName || `Document #${task.documentId}`}
+                                            {task.documentTitle || `Document #${task.documentId}`}
                                         </span>
                                     </TableCell>
                                     <TableCell>
