@@ -47,6 +47,8 @@ import {
   ScanText,
   Archive,
   Trash,
+  RefreshCw,
+  Copy,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -96,7 +98,7 @@ import EmailNode from './nodes/EmailNode';
 import TriggerNode from './nodes/TriggerNode';
 import EndSuccessNode from './nodes/EndSuccessNode';
 import EndFailureNode from './nodes/EndFailureNode';
-import SlaNode from './nodes/SlaNode';
+
 import ApiCallNode from './nodes/ApiCallNode';
 import SubWorkflowNode from './nodes/SubWorkflowNode';
 import SetVariableNode from './nodes/SetVariableNode';
@@ -129,7 +131,7 @@ import NotificationNodeModal from './modals/NotificationNodeModal';
 import EmailNodeModal from './modals/EmailNodeModal';
 import ConditionNodeModal from './modals/ConditionNodeModal';
 import TriggerNodeModal from './modals/TriggerNodeModal';
-import SlaNodeModal from './modals/SlaNodeModal';
+
 import ApiCallNodeModal from './modals/ApiCallNodeModal';
 import SubWorkflowNodeModal from './modals/SubWorkflowNodeModal';
 import SetVariableNodeModal from './modals/SetVariableNodeModal';
@@ -137,6 +139,7 @@ import ArchiveNodeModal from './modals/ArchiveNodeModal';
 import DeleteNodeModal from './modals/DeleteNodeModal';
 import ReviewNodeModal from './modals/ReviewNodeModal';
 import ManualTaskNodeModal from './modals/ManualTaskNodeModal';
+import ApprovalNodeModal from './modals/ApprovalNodeModal';
 import SplitNodeModal from './modals/SplitNodeModal';
 import JoinNodeModal from './modals/JoinNodeModal';
 import UpdateMetadataNodeModal from './modals/UpdateMetadataNodeModal';
@@ -173,7 +176,7 @@ const nodeTypeToBackendType: Record<string, string> = {
   splitNode: 'SPLIT',
   joinNode: 'JOIN',
   delayNode: 'DELAY',
-  slaNode: 'SLA',
+
   moveDocumentNode: 'MOVE_DOCUMENT',
   updateMetadataNode: 'UPDATE_METADATA',
   changeStatusNode: 'CHANGE_STATUS',
@@ -218,7 +221,7 @@ const nodeTypes: NodeTypes = {
 
   // Time / Scheduling
   delayNode: DelayNode,
-  slaNode: SlaNode,
+
 
   // Document Actions
   moveDocumentNode: MoveDocumentNode,
@@ -273,6 +276,7 @@ export default function WorkflowDesignerPage() {
   const [workflowDescription, setWorkflowDescription] = useState('');
   const [isActive, setIsActive] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoadingWorkflow, setIsLoadingWorkflow] = useState(!!workflowId); // Start loading if editing existing workflow
   const [workflowAdmins, setWorkflowAdmins] = useState<Array<{
     userId: string;
     user?: { id: string; displayName?: string; username?: string; email?: string; imgUrl?: string };
@@ -385,7 +389,7 @@ export default function WorkflowDesignerPage() {
   const [showConditionModal, setShowConditionModal] = useState(false);
   const [showTriggerModal, setShowTriggerModal] = useState(false);
   // New node modals
-  const [showSlaModal, setShowSlaModal] = useState(false);
+
   const [showApiCallModal, setShowApiCallModal] = useState(false);
   const [showSubWorkflowModal, setShowSubWorkflowModal] = useState(false);
   const [showSetVariableModal, setShowSetVariableModal] = useState(false);
@@ -394,6 +398,7 @@ export default function WorkflowDesignerPage() {
   // New backend-aligned node modals
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [showManualTaskModal, setShowManualTaskModal] = useState(false);
+  const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [showSplitModal, setShowSplitModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [showUpdateMetadataModal, setShowUpdateMetadataModal] = useState(false);
@@ -413,9 +418,9 @@ export default function WorkflowDesignerPage() {
   // Computed flag to disable ReactFlow interactions when any modal is open
   const isAnyModalOpen = showStepModal || showDelayModal || showStampModal || showMoveDocumentModal ||
     showNotificationModal || showEmailModal || showConditionModal || showTriggerModal ||
-    showSlaModal || showApiCallModal || showSubWorkflowModal || showSetVariableModal ||
+    showApiCallModal || showSubWorkflowModal || showSetVariableModal ||
     showArchiveModal || showDeleteModal ||
-    showReviewModal || showManualTaskModal || showSplitModal || showJoinModal ||
+    showReviewModal || showManualTaskModal || showApprovalModal || showSplitModal || showJoinModal ||
     showUpdateMetadataModal || showChangeStatusModal || showNewVersionModal ||
     showLockDocumentModal || showUnlockDocumentModal ||
     showScriptModal || showOcrModal || showCancelModal || showErrorHandlerModal || showGetContextModal;
@@ -432,10 +437,13 @@ export default function WorkflowDesignerPage() {
           // Route to correct modal based on node type
           switch (node.type) {
             case 'workflowStep':
-            case 'approvalNode': // Handle approval node same as workflow step
             case 'firstStep':
               setEditingStepData(node);
               setShowStepModal(true);
+              break;
+            case 'approvalNode':
+              setEditingNodeData(node);
+              setShowApprovalModal(true);
               break;
             case 'delayNode':
               setEditingNodeData(node);
@@ -466,10 +474,7 @@ export default function WorkflowDesignerPage() {
               setEditingNodeData(node);
               setShowTriggerModal(true);
               break;
-            case 'slaNode':
-              setEditingNodeData(node);
-              setShowSlaModal(true);
-              break;
+
             case 'apiCallNode':
               setEditingNodeData(node);
               setShowApiCallModal(true);
@@ -805,8 +810,8 @@ export default function WorkflowDesignerPage() {
     const loadWorkflow = async () => {
       try {
         const [workflow, triggers] = await Promise.all([
-          workflowService.getWorkflow(Number(workflowId)),
-          workflowService.getWorkflowTriggers(Number(workflowId)),
+          workflowAdminService.getWorkflow(Number(workflowId)),
+          workflowAdminService.getWorkflowTriggers(Number(workflowId)),
         ]);
 
         if (!isMounted) return;
@@ -870,6 +875,10 @@ export default function WorkflowDesignerPage() {
         if (!isMounted) return;
         console.error('Failed to load workflow:', error);
         showError('Failed to load workflow', 'Please try again later');
+      } finally {
+        if (isMounted) {
+          setIsLoadingWorkflow(false);
+        }
       }
     };
 
@@ -929,10 +938,13 @@ export default function WorkflowDesignerPage() {
       // Open appropriate modal based on node type
       switch (type) {
         case 'workflowStep':
-        case 'approvalNode': // Handle approval node same as workflow step
         case 'firstStep':
           setEditingStepData(newNode);
           setShowStepModal(true);
+          break;
+        case 'approvalNode':
+          setEditingNodeData(newNode);
+          setShowApprovalModal(true);
           break;
         case 'delayNode':
           setEditingNodeData(newNode);
@@ -962,10 +974,7 @@ export default function WorkflowDesignerPage() {
           setEditingNodeData(newNode);
           setShowTriggerModal(true);
           break;
-        case 'slaNode':
-          setEditingNodeData(newNode);
-          setShowSlaModal(true);
-          break;
+
         case 'apiCallNode':
           setEditingNodeData(newNode);
           setShowApiCallModal(true);
@@ -1433,7 +1442,7 @@ export default function WorkflowDesignerPage() {
     setIsApplyingChanges(true);
     try {
       if (applyToExisting) {
-        const result = await workflowService.applyWorkflowChanges(
+        const result = await workflowAdminService.applyWorkflowChanges(
           workflowToApplyChanges,
           true,
           undefined, // Apply to all instances
@@ -1778,8 +1787,19 @@ export default function WorkflowDesignerPage() {
         };
 
       // Prepare Workflow Definition JSON (Visual Graph)
+      // Strip full entity objects to reduce DB size - they'll be resolved at read time
+      const cleanedNodes = nodes.map(node => ({
+        ...node,
+        data: {
+          ...node.data,
+          // Remove full entity objects - we only need IDs in assignments[]
+          assignmentEntities: undefined,
+          escalationTargetEntities: undefined,
+        }
+      }));
+
       const workflowDefinition = {
-        nodes,
+        nodes: cleanedNodes,
         edges,
         viewport: { x: 0, y: 0, zoom: 1 }
       };
@@ -1796,7 +1816,7 @@ export default function WorkflowDesignerPage() {
 
       if (workflowId) {
         // Update existing workflow
-        const updatedWorkflow = await workflowService.updateWorkflow(Number(workflowId), commonPayload as UpdateWorkflowRequest);
+        const updatedWorkflow = await workflowAdminService.updateWorkflow(Number(workflowId), commonPayload as UpdateWorkflowRequest);
 
         // Store workflow ID for the apply changes dialog
         setWorkflowToApplyChanges(Number(workflowId));
@@ -1805,7 +1825,7 @@ export default function WorkflowDesignerPage() {
         return; // Will navigate after user makes decision
       } else {
         // Create new workflow
-        const newWorkflow = await workflowService.createWorkflow(commonPayload as CreateWorkflowRequest);
+        const newWorkflow = await workflowAdminService.createWorkflow(commonPayload as CreateWorkflowRequest);
         showSuccess('Workflow Created', 'Workflow created successfully');
         // Route to edit mode of the new workflow
         router.push(`/admin/workflow/designer?id=${newWorkflow.id}`);
@@ -1834,6 +1854,18 @@ export default function WorkflowDesignerPage() {
   ]);
 
   const proOptions = { hideAttribution: true };
+
+  // Show loading indicator while workflow is being fetched
+  if (isLoadingWorkflow) {
+    return (
+      <div className="h-full flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Loading workflow...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
@@ -1876,14 +1908,69 @@ export default function WorkflowDesignerPage() {
                   </div>
                 </button>
                 <div className="p-2 border-l flex items-center">
-                  <Button
-                    size="sm"
-                    className="w-full h-full"
-                    onClick={handleSave}
-                    disabled={isSaving}
-                  >
-                    <Save className="h-4 w-4" />
-                  </Button>
+                  {workflowId ? (
+                    // Editing existing workflow - show dropdown with Save as New / Update
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="sm" disabled={isSaving}>
+                          <Save className="h-4 w-4 mr-1" />
+                          Save
+                          <ChevronRight className="h-3 w-3 ml-1 rotate-90" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={async () => {
+                            // Check for active instances before allowing update
+                            try {
+                              const { activeCount } = await workflowAdminService.getActiveInstanceCount(Number(workflowId));
+                              if (activeCount > 0) {
+                                showError(
+                                  'Cannot Update',
+                                  `This workflow has ${activeCount} active instance(s) in progress. Please wait for all instances to complete before updating.`
+                                );
+                                return;
+                              }
+                              // No active instances, proceed with update
+                              handleSave();
+                            } catch (error) {
+                              console.error('Failed to check active instances:', error);
+                              // Allow update if check fails (graceful degradation)
+                              handleSave();
+                            }
+                          }}
+                          disabled={isSaving}
+                        >
+                          <RefreshCw className="h-4 w-4 mr-2" />
+                          Update Workflow
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => {
+                            // Clear workflowId to create new, then save
+                            const url = new URL(window.location.href);
+                            url.searchParams.delete('id');
+                            window.history.replaceState({}, '', url.toString());
+                            // Trigger save as new
+                            handleSave();
+                          }}
+                          disabled={isSaving}
+                        >
+                          <Copy className="h-4 w-4 mr-2" />
+                          Save as New
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  ) : (
+                    // Creating new workflow - single save button
+                    <Button
+                      size="sm"
+                      onClick={handleSave}
+                      disabled={isSaving}
+                    >
+                      <Save className="h-4 w-4 mr-1" />
+                      Save
+                    </Button>
+                  )}
                 </div>
               </div>
 
@@ -2770,25 +2857,7 @@ export default function WorkflowDesignerPage() {
                   }}
                 />
 
-                <SlaNodeModal
-                  isOpen={showSlaModal}
-                  onClose={() => {
-                    setShowSlaModal(false);
-                    setEditingNodeData(null);
-                  }}
-                  nodeData={editingNodeData.data}
-                  onSave={(updatedData) => {
-                    setNodes((nds) =>
-                      nds.map((n) =>
-                        n.id === editingNodeData.id
-                          ? { ...n, data: { ...n.data, ...updatedData } }
-                          : n
-                      )
-                    );
-                    setShowSlaModal(false);
-                    setEditingNodeData(null);
-                  }}
-                />
+
 
                 <ApiCallNodeModal
                   isOpen={showApiCallModal}
@@ -2911,6 +2980,17 @@ export default function WorkflowDesignerPage() {
                   onSave={(updatedData) => {
                     setNodes((nds) => nds.map((n) => n.id === editingNodeData.id ? { ...n, data: { ...n.data, ...updatedData } } : n));
                     setShowManualTaskModal(false);
+                    setEditingNodeData(null);
+                  }}
+                />
+
+                <ApprovalNodeModal
+                  isOpen={showApprovalModal}
+                  onClose={() => { setShowApprovalModal(false); setEditingNodeData(null); }}
+                  nodeData={editingNodeData.data}
+                  onSave={(updatedData) => {
+                    setNodes((nds) => nds.map((n) => n.id === editingNodeData.id ? { ...n, data: { ...n.data, ...updatedData } } : n));
+                    setShowApprovalModal(false);
                     setEditingNodeData(null);
                   }}
                 />

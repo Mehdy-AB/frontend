@@ -1,23 +1,86 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, Circle, Clock, AlertCircle, Users } from 'lucide-react';
+import {
+  CheckCircle2,
+  Circle,
+  Clock,
+  AlertCircle,
+  Users,
+  Info,
+  Calendar,
+  Zap,
+  FileCheck,
+  UserCheck,
+  FileText,
+  ChevronDown,
+  ChevronUp
+} from 'lucide-react';
 import { WorkflowTimelineResponse } from '@/types/workflow';
-import { WorkflowNodeInstanceResponse } from '@/types/api';
 import { formatDate } from '@/lib/dateFormatter';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { workflowAdminService } from '@/api/services/workflowAdminService';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Badge } from '@/components/ui/badge';
+import UserAvatar from '@/components/main/UserAvatar';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 
 interface WorkflowTimelineProps {
   workflowInstanceId: number;
   documentId?: number;
 }
 
+// Calculate duration between two dates
+const getDuration = (start?: string, end?: string) => {
+  if (!start) return null;
+  const startDate = new Date(start);
+  const endDate = end ? new Date(end) : new Date();
+  const diffMs = endDate.getTime() - startDate.getTime();
+
+  const diffMins = Math.floor(diffMs / (1000 * 60));
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays > 0) {
+    return `${diffDays}d ${diffHours % 24}h`;
+  } else if (diffHours > 0) {
+    return `${diffHours}h ${diffMins % 60}m`;
+  } else if (diffMins > 0) {
+    return `${diffMins}m`;
+  }
+  return 'Just now';
+};
+
+// Get node type icon and colors
+const getNodeTypeInfo = (nodeType: string) => {
+  const types: Record<string, { icon: React.ReactNode; label: string; className: string }> = {
+    START: { icon: <Zap className="w-3.5 h-3.5" />, label: 'Start', className: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+    END: { icon: <CheckCircle2 className="w-3.5 h-3.5" />, label: 'End', className: 'bg-gray-100 text-gray-700 border-gray-200' },
+    APPROVAL: { icon: <UserCheck className="w-3.5 h-3.5" />, label: 'Approval', className: 'bg-blue-100 text-blue-700 border-blue-200' },
+    REVIEW: { icon: <FileCheck className="w-3.5 h-3.5" />, label: 'Review', className: 'bg-purple-100 text-purple-700 border-purple-200' },
+    MANUAL_TASK: { icon: <FileText className="w-3.5 h-3.5" />, label: 'Task', className: 'bg-amber-100 text-amber-700 border-amber-200' },
+    SET_METADATA: { icon: <FileText className="w-3.5 h-3.5" />, label: 'Set Metadata', className: 'bg-cyan-100 text-cyan-700 border-cyan-200' },
+    MOVE_DOCUMENT: { icon: <FileText className="w-3.5 h-3.5" />, label: 'Move Document', className: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
+    LOCK_DOCUMENT: { icon: <FileText className="w-3.5 h-3.5" />, label: 'Lock', className: 'bg-red-100 text-red-700 border-red-200' },
+    UNLOCK_DOCUMENT: { icon: <FileText className="w-3.5 h-3.5" />, label: 'Unlock', className: 'bg-green-100 text-green-700 border-green-200' },
+  };
+  return types[nodeType] || { icon: <Circle className="w-3.5 h-3.5" />, label: nodeType, className: 'bg-gray-100 text-gray-700 border-gray-200' };
+};
+
 export function WorkflowTimeline({ workflowInstanceId, documentId }: WorkflowTimelineProps) {
   const [timeline, setTimeline] = useState<WorkflowTimelineResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const fetchTimeline = async () => {
@@ -25,6 +88,11 @@ export function WorkflowTimeline({ workflowInstanceId, documentId }: WorkflowTim
         setLoading(true);
         const data = await workflowAdminService.getInstanceTimeline(workflowInstanceId);
         setTimeline(data);
+        // Auto-expand active nodes
+        const activeNodeIds = data.nodes
+          .filter(n => n.status === 'ACTIVE')
+          .map(n => n.id ? `inst-${n.id}` : `node-${n.nodeId}`);
+        setExpandedNodes(new Set(activeNodeIds));
       } catch (err) {
         console.error('Failed to fetch timeline:', err);
         setError('Failed to load timeline');
@@ -38,15 +106,27 @@ export function WorkflowTimeline({ workflowInstanceId, documentId }: WorkflowTim
     }
   }, [workflowInstanceId]);
 
+  const toggleExpand = (nodeKey: string) => {
+    setExpandedNodes(prev => {
+      const next = new Set(prev);
+      if (next.has(nodeKey)) {
+        next.delete(nodeKey);
+      } else {
+        next.add(nodeKey);
+      }
+      return next;
+    });
+  };
+
   if (loading) {
     return (
       <div className="space-y-4">
         {[1, 2, 3].map((i) => (
           <div key={i} className="flex items-start gap-4">
-            <Skeleton className="h-8 w-8 rounded-full" />
+            <Skeleton className="h-10 w-10 rounded-full" />
             <div className="flex-1 space-y-2">
               <Skeleton className="h-4 w-1/3" />
-              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-20 w-full rounded-lg" />
             </div>
           </div>
         ))}
@@ -65,7 +145,7 @@ export function WorkflowTimeline({ workflowInstanceId, documentId }: WorkflowTim
   const nodes = timeline.nodes;
   const currentNodeId = timeline.nodes.find(s => s.status === 'ACTIVE')?.id;
 
-  const getStepIcon = (status: string, isOverdue: boolean) => {
+  const getStatusIcon = (status: string, isOverdue: boolean) => {
     if (status === 'COMPLETED') {
       return <CheckCircle2 className="w-5 h-5 text-green-600" />;
     }
@@ -81,149 +161,271 @@ export function WorkflowTimeline({ workflowInstanceId, documentId }: WorkflowTim
     return <Circle className="w-5 h-5 text-gray-400" />;
   };
 
-  const getStepColor = (status: string, isOverdue: boolean) => {
-    if (status === 'COMPLETED') return 'border-green-600 bg-green-50';
-    if (status === 'ACTIVE') {
-      if (isOverdue) return 'border-red-600 bg-red-50';
-      return 'border-blue-600 bg-blue-50';
-    }
-    if (status === 'REJECTED') return 'border-red-600 bg-red-50';
-    return 'border-gray-300 bg-gray-50';
-  };
-
-  const getStepBadge = (status: string) => {
+  const getStatusBadge = (status: string, isOverdue: boolean) => {
     const badges: Record<string, { label: string; className: string }> = {
-      PENDING: { label: 'Pending', className: 'bg-gray-100 text-gray-700' },
-      ACTIVE: { label: 'Active', className: 'bg-blue-100 text-blue-700' },
+      PENDING: { label: 'Pending', className: 'bg-gray-100 text-gray-600' },
+      ACTIVE: isOverdue
+        ? { label: 'Overdue', className: 'bg-red-100 text-red-700' }
+        : { label: 'In Progress', className: 'bg-blue-100 text-blue-700' },
       COMPLETED: { label: 'Completed', className: 'bg-green-100 text-green-700' },
       REJECTED: { label: 'Rejected', className: 'bg-red-100 text-red-700' },
       EXPIRED: { label: 'Expired', className: 'bg-orange-100 text-orange-700' },
-      CANCELLED: { label: 'Cancelled', className: 'bg-gray-100 text-gray-700' },
+      CANCELLED: { label: 'Cancelled', className: 'bg-gray-100 text-gray-600' },
     };
-    const badge = badges[status] || { label: status, className: 'bg-gray-100 text-gray-700' };
+    const badge = badges[status] || { label: status, className: 'bg-gray-100 text-gray-600' };
     return (
-      <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded-full ${badge.className}`}>
+      <span className={`px-2 py-0.5 text-[10px] font-semibold rounded-full ${badge.className}`}>
         {badge.label}
       </span>
     );
   };
 
+  const getCardStyle = (status: string, isOverdue: boolean, isCurrent: boolean) => {
+    let base = 'border rounded-xl transition-all duration-200 ';
+    if (status === 'COMPLETED') {
+      base += 'border-green-200 bg-gradient-to-r from-green-50 to-white';
+    } else if (status === 'ACTIVE') {
+      if (isOverdue) {
+        base += 'border-red-300 bg-gradient-to-r from-red-50 to-white';
+      } else {
+        base += 'border-blue-300 bg-gradient-to-r from-blue-50 to-white';
+      }
+    } else if (status === 'REJECTED') {
+      base += 'border-red-200 bg-gradient-to-r from-red-50 to-white';
+    } else {
+      base += 'border-gray-200 bg-gradient-to-r from-gray-50 to-white';
+    }
+    if (isCurrent) {
+      base += ' ring-2 ring-blue-400 shadow-md';
+    }
+    return base;
+  };
+
   return (
-    <div className="space-y-3">
-      {nodes.map((node, index) => {
-        const isLast = index === nodes.length - 1;
-        const isCurrent = node.id === currentNodeId;
+    <TooltipProvider>
+      <div className="space-y-3">
+        {nodes.map((node, index) => {
+          const isLast = index === nodes.length - 1;
+          const nodeKey = node.id ? `inst-${node.id}` : `node-${node.nodeId}`;
+          const isCurrent = node.id === currentNodeId;
+          const isExpanded = expandedNodes.has(nodeKey);
+          const nodeTypeInfo = getNodeTypeInfo(node.nodeType);
+          const duration = getDuration(node.startedAt, node.completedAt);
+          const hasDetails = node.description || (node.assignments && node.assignments.length > 0) || node.comment;
 
-        return (
-          <div key={node.id} className="relative">
-            {/* Connection line */}
-            {!isLast && (
-              <div className="absolute left-[11px] top-9 bottom-0 w-0.5 bg-gray-200" />
-            )}
+          return (
+            <div key={nodeKey} className="relative">
+              {/* Connection line */}
+              {!isLast && (
+                <div className="absolute left-5 top-12 bottom-0 w-0.5 bg-gradient-to-b from-gray-300 to-gray-200" />
+              )}
 
-            {/* Step card */}
-            <div
-              className={`relative flex gap-2 p-2.5 rounded-lg border transition-all ${getStepColor(node.status, node.isOverdue)
-                } ${isCurrent ? 'ring-1 ring-blue-400 shadow-sm' : ''}`}
-            >
-              {/* Icon */}
-              <div className="flex-shrink-0">
-                {getStepIcon(node.status, node.isOverdue)}
-              </div>
-
-              {/* Content */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between gap-2 mb-1">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <span className="text-[10px] font-medium text-gray-500">
-                        {node.nodeType === 'START' ? 'Start' : node.nodeType === 'END' ? 'End' : `Node ${index + 1}`}
-                      </span>
-                      {getStepBadge(node.status)}
-                      {node.isOverdue && (
-                        <span className="px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-red-100 text-red-700">
-                          Overdue
-                        </span>
-                      )}
-                    </div>
-                    <h3 className="font-semibold text-sm text-gray-900">{node.nodeName}</h3>
-                  </div>
-                </div>
-
-                {/* Assigned users */}
-                {node.assignments && node.assignments.length > 0 && (
-                  <div className="flex items-center gap-1.5 mt-2 p-1.5 bg-white/50 rounded">
-                    <Users className="w-3 h-3 text-gray-500 flex-shrink-0" />
-                    <div className="flex items-center gap-1 flex-wrap">
-                      {node.assignments.filter(a => a.user).slice(0, 2).map((assignment, idx) => (
-                        <div key={assignment.id} className="flex items-center gap-1">
-                          <Avatar className="h-4 w-4">
-                            <AvatarImage src={assignment.user?.imgUrl} />
-                            <AvatarFallback className="text-[8px]">
-                              {assignment.user?.firstName?.[0]}{assignment.user?.lastName?.[0]}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span className="text-[10px] text-gray-700">
-                            {assignment.user?.firstName} {assignment.user?.lastName}
-                          </span>
+              {/* Node Card */}
+              <Collapsible open={isExpanded} onOpenChange={() => toggleExpand(nodeKey)}>
+                <div className={getCardStyle(node.status, node.isOverdue, isCurrent)}>
+                  {/* Header - Always visible */}
+                  <CollapsibleTrigger asChild>
+                    <div className="p-3 cursor-pointer hover:bg-white/50 transition-colors rounded-t-xl">
+                      <div className="flex items-start gap-3">
+                        {/* Status Icon */}
+                        <div className="flex-shrink-0 mt-0.5">
+                          {getStatusIcon(node.status, node.isOverdue)}
                         </div>
-                      ))}
-                      {node.assignments.filter(a => a.user).length > 2 && (
-                        <span className="text-[10px] text-gray-500">
-                          +{node.assignments.filter(a => a.user).length - 2}
-                        </span>
+
+                        {/* Main Content */}
+                        <div className="flex-1 min-w-0">
+                          {/* Top row: Type badge + Status + Duration */}
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <Badge variant="outline" className={`${nodeTypeInfo.className} text-[10px] px-1.5 py-0 h-5`}>
+                              {nodeTypeInfo.icon}
+                              <span className="ml-1">{nodeTypeInfo.label}</span>
+                            </Badge>
+                            {getStatusBadge(node.status, node.isOverdue)}
+                            {duration && (
+                              <span className="text-[10px] text-gray-500 flex items-center gap-0.5">
+                                <Clock className="w-3 h-3" />
+                                {duration}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Node Name */}
+                          <h3 className="font-semibold text-sm text-gray-900">{node.nodeName}</h3>
+
+                          {/* Quick info row */}
+                          <div className="flex items-center gap-3 mt-1 text-[10px] text-gray-500 flex-wrap">
+                            {node.startedAt && (
+                              <span>Started: {formatDate(node.startedAt)}</span>
+                            )}
+                            {node.completedAt && (
+                              <span className="text-green-600">Completed: {formatDate(node.completedAt)}</span>
+                            )}
+                            {node.dueDate && (
+                              <span className={node.isOverdue ? 'text-red-600 font-medium' : ''}>
+                                Due: {formatDate(node.dueDate)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Expand/Collapse indicator */}
+                        {hasDetails && (
+                          <div className="flex-shrink-0">
+                            {isExpanded ? (
+                              <ChevronUp className="w-4 h-4 text-gray-400" />
+                            ) : (
+                              <ChevronDown className="w-4 h-4 text-gray-400" />
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </CollapsibleTrigger>
+
+                  {/* Expanded Content */}
+                  <CollapsibleContent>
+                    <div className="px-3 pb-3 pt-0 border-t border-gray-100 space-y-3">
+                      {/* Description/Instructions */}
+                      {node.description && (
+                        <div className="mt-3 p-2.5 bg-blue-50/70 border border-blue-100 rounded-lg">
+                          <div className="flex items-start gap-2">
+                            <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                            <div>
+                              <h4 className="text-xs font-semibold text-blue-700 mb-0.5">Instructions</h4>
+                              <p className="text-xs text-gray-700">{node.description}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Assignees */}
+                      {node.assignments && node.assignments.length > 0 && (
+                        <div className="mt-3 p-2.5 bg-white/70 border border-gray-100 rounded-lg">
+                          <div className="flex items-center gap-1.5 mb-2">
+                            <Users className="w-3.5 h-3.5 text-gray-500" />
+                            <span className="text-xs font-semibold text-gray-700">Assignees</span>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {node.assignments.map((assignment) => (
+                              <Tooltip key={assignment.id}>
+                                <TooltipTrigger asChild>
+                                  <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-50 border border-gray-200 rounded-full cursor-pointer hover:bg-gray-100 transition-colors">
+                                    <UserAvatar
+                                      user={assignment.user ? {
+                                        id: assignment.user.id,
+                                        username: assignment.user.username,
+                                        email: assignment.user.email,
+                                        firstName: assignment.user.firstName,
+                                        lastName: assignment.user.lastName,
+                                        displayName: assignment.user.displayName,
+                                        imgUrl: assignment.user.imgUrl,
+                                        imageUrl: assignment.user.imageUrl,
+                                      } : null}
+                                      size="xs"
+                                    />
+                                    <span className="text-xs text-gray-700">
+                                      {assignment.assigneeName || assignment.user?.displayName || 'Unknown'}
+                                    </span>
+                                    {assignment.action && (
+                                      <Badge
+                                        variant="outline"
+                                        className={`text-[9px] px-1 py-0 h-4 ${assignment.action === 'APPROVED'
+                                          ? 'bg-green-50 text-green-700 border-green-200'
+                                          : assignment.action === 'REJECTED'
+                                            ? 'bg-red-50 text-red-700 border-red-200'
+                                            : 'bg-gray-50 text-gray-600 border-gray-200'
+                                          }`}
+                                      >
+                                        {assignment.action}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" className="p-2 text-xs">
+                                  <div className="space-y-1">
+                                    <div className="font-semibold">
+                                      {assignment.assigneeName || assignment.user?.displayName || 'Unknown'}
+                                    </div>
+                                    {assignment.user?.username && (
+                                      <div className="text-gray-400">@{assignment.user.username}</div>
+                                    )}
+                                    {assignment.user?.email && (
+                                      <div className="text-gray-400">{assignment.user.email}</div>
+                                    )}
+                                    {assignment.role && (
+                                      <div className="text-purple-500">Role: {assignment.role.name}</div>
+                                    )}
+                                    {assignment.group && (
+                                      <div className="text-green-500">Group: {assignment.group.name}</div>
+                                    )}
+                                    {assignment.actedAt && (
+                                      <div className="text-gray-400">Acted: {formatDate(assignment.actedAt)}</div>
+                                    )}
+                                  </div>
+                                </TooltipContent>
+                              </Tooltip>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Completed By */}
+                      {node.completedBy && (
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="text-xs text-gray-500">Completed by:</span>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="flex items-center gap-1.5 cursor-pointer">
+                                <UserAvatar
+                                  user={{
+                                    id: node.completedBy.id,
+                                    firstName: node.completedBy.firstName,
+                                    lastName: node.completedBy.lastName,
+                                    imgUrl: node.completedBy.imgUrl,
+                                    email: node.completedBy.email,
+                                    username: node.completedBy.username,
+                                  }}
+                                  size="xs"
+                                />
+                                <span className="text-xs font-medium text-gray-700">
+                                  {node.completedBy.firstName} {node.completedBy.lastName}
+                                </span>
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" className="text-xs p-2">
+                              <div className="space-y-0.5">
+                                <div className="font-semibold">
+                                  {node.completedBy.firstName} {node.completedBy.lastName}
+                                </div>
+                                {node.completedBy.username && (
+                                  <div className="text-gray-400">@{node.completedBy.username}</div>
+                                )}
+                                {node.completedBy.email && (
+                                  <div className="text-gray-400">{node.completedBy.email}</div>
+                                )}
+                              </div>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                      )}
+
+                      {/* Comment */}
+                      {node.comment && (
+                        <div className="mt-2 p-2 bg-amber-50 border border-amber-100 rounded-lg">
+                          <div className="flex items-start gap-2">
+                            <Info className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
+                            <p className="text-xs text-gray-700 italic">"{node.comment}"</p>
+                          </div>
+                        </div>
                       )}
                     </div>
-                  </div>
-                )}
-
-                {/* Timeline info */}
-                <div className="flex flex-col gap-0.5 mt-2 text-[10px] text-gray-500">
-                  {node.startedAt && (
-                    <div>
-                      Started: {formatDate(node.startedAt)}
-                    </div>
-                  )}
-                  {node.dueDate && (
-                    <div className={node.isOverdue ? 'text-red-600 font-medium' : ''}>
-                      Due: {formatDate(node.dueDate)}
-                    </div>
-                  )}
-                  {node.completedAt && (
-                    <div className="text-green-600">
-                      Completed: {formatDate(node.completedAt)}
-                    </div>
-                  )}
+                  </CollapsibleContent>
                 </div>
-
-                {/* Completed by */}
-                {node.completedBy && (
-                  <div className="flex items-center gap-1.5 mt-1.5 text-[10px] text-gray-600">
-                    <span>Completed by:</span>
-                    <Avatar className="h-4 w-4">
-                      <AvatarImage src={node.completedBy.imgUrl} />
-                      <AvatarFallback className="text-[8px]">
-                        {node.completedBy.firstName?.[0]}{node.completedBy.lastName?.[0]}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="font-medium">
-                      {node.completedBy.firstName} {node.completedBy.lastName}
-                    </span>
-                  </div>
-                )}
-
-                {/* Comment */}
-                {node.comment && (
-                  <div className="mt-1.5 p-1.5 bg-white rounded text-xs text-gray-700 border-l-2 border-gray-300">
-                    {node.comment}
-                  </div>
-                )}
-              </div>
+              </Collapsible>
             </div>
-          </div>
-        );
-      })}
-    </div>
+          );
+        })}
+      </div>
+    </TooltipProvider>
   );
 }
-

@@ -93,6 +93,10 @@ class WorkflowAdminService {
     await apiClient.delete(`${this.baseUrl}/${id}`);
   }
 
+  async getActiveInstanceCount(id: number): Promise<{ activeCount: number }> {
+    return apiClient.get<{ activeCount: number }>(`${this.baseUrl}/${id}/active-count`);
+  }
+
   async getAdminedWorkflows(
     page: number = 0,
     size: number = 20

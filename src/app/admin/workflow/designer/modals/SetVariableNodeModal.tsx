@@ -1,12 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Variable } from 'lucide-react';
+import { X, Variable, ChevronDown, Search, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { filingCategoryService } from '@/api/services/filingCategoryService';
+import { FilingCategoryResponseDto, CategoryMetadataDefinitionDto, MetadataType } from '@/types/api';
 import { WorkflowNodeData } from '../nodes/types';
 
 interface SetVariableNodeModalProps {
@@ -36,14 +39,100 @@ export default function SetVariableNodeModal({ isOpen, onClose, nodeData, onSave
     const [variableType, setVariableType] = useState<string>(nodeData.variableType || 'STRING');
     const [variableScope, setVariableScope] = useState<string>(nodeData.variableScope || 'WORKFLOW');
 
+    // Document metadata state
+    const [categories, setCategories] = useState<FilingCategoryResponseDto[]>([]);
+    const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(nodeData.metadataCategoryId || null);
+    const [selectedMetadataField, setSelectedMetadataField] = useState<CategoryMetadataDefinitionDto | null>(null);
+    const [selectedMetadataFieldId, setSelectedMetadataFieldId] = useState<number | null>(nodeData.metadataFieldId || null);
+    const [loading, setLoading] = useState(false);
+    const [listOptions, setListOptions] = useState<string[]>([]);
+    const [allowCustomValue, setAllowCustomValue] = useState(false);
+
+    // Load categories when modal opens
+    useEffect(() => {
+        const loadCategories = async () => {
+            if (!isOpen) return;
+            setLoading(true);
+            try {
+                const response = await filingCategoryService.getAllFilingCategories({ page: 0, size: 100 });
+                setCategories(response.content);
+            } catch (error) {
+                console.error('Failed to load categories:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        loadCategories();
+    }, [isOpen]);
+
+    // Initialize form from nodeData
     useEffect(() => {
         if (isOpen) {
             setVariableName(nodeData.variableName || '');
             setVariableValue(nodeData.variableValue || '');
             setVariableType(nodeData.variableType || 'STRING');
             setVariableScope(nodeData.variableScope || 'WORKFLOW');
+            setSelectedCategoryId(nodeData.metadataCategoryId || null);
+            setSelectedMetadataFieldId(nodeData.metadataFieldId || null);
         }
     }, [isOpen, nodeData]);
+
+    // Find selected category and metadata field
+    useEffect(() => {
+        if (selectedCategoryId && categories.length > 0) {
+            const cat = categories.find(c => c.id === selectedCategoryId);
+            if (cat && selectedMetadataFieldId && cat.metadataDefinitions) {
+                const field = cat.metadataDefinitions.find(f => f.id === selectedMetadataFieldId);
+                if (field) {
+                    setSelectedMetadataField(field);
+                    setVariableType(field.dataType);
+
+                    // If LIST type, set options
+                    if (field.dataType === 'LIST' && field.list?.option) {
+                        setListOptions(field.list.option);
+                        setAllowCustomValue(!field.mandatory);
+                    }
+                }
+            }
+        }
+    }, [selectedCategoryId, selectedMetadataFieldId, categories]);
+
+    const handleCategoryChange = (categoryId: string) => {
+        const numId = parseInt(categoryId);
+        setSelectedCategoryId(numId);
+        setSelectedMetadataFieldId(null);
+        setSelectedMetadataField(null);
+        setVariableName('');
+        setListOptions([]);
+    };
+
+    const handleMetadataFieldChange = (fieldId: string) => {
+        const numId = parseInt(fieldId);
+        setSelectedMetadataFieldId(numId);
+
+        const cat = categories.find(c => c.id === selectedCategoryId);
+        if (cat?.metadataDefinitions) {
+            const field = cat.metadataDefinitions.find(f => f.id === numId);
+            if (field) {
+                setSelectedMetadataField(field);
+                setVariableName(field.key);
+                setVariableType(field.dataType);
+                setVariableValue('');
+
+                // If LIST type, set options
+                if (field.dataType === 'LIST' && field.list?.option) {
+                    setListOptions(field.list.option);
+                    setAllowCustomValue(!field.mandatory);
+                } else {
+                    setListOptions([]);
+                    setAllowCustomValue(false);
+                }
+            }
+        }
+    };
+
+    const selectedCategory = categories.find(c => c.id === selectedCategoryId);
+    const metadataFields = selectedCategory?.metadataDefinitions || [];
 
     const handleSave = () => {
         onSave({
@@ -51,8 +140,117 @@ export default function SetVariableNodeModal({ isOpen, onClose, nodeData, onSave
             variableValue,
             variableType,
             variableScope,
+            metadataCategoryId: variableScope === 'DOCUMENT' ? selectedCategoryId : undefined,
+            metadataFieldId: variableScope === 'DOCUMENT' ? selectedMetadataFieldId : undefined,
         });
         onClose();
+    };
+
+    // Render value input based on type
+    const renderValueInput = () => {
+        // For LIST type with options
+        if (variableType === 'LIST' && listOptions.length > 0) {
+            if (allowCustomValue) {
+                // Editable combo - user can select from list or type custom
+                return (
+                    <div className="space-y-2">
+                        <Select value={variableValue} onValueChange={setVariableValue}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select or type custom value..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {listOptions.map((opt) => (
+                                    <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <Input
+                            value={variableValue}
+                            onChange={(e) => setVariableValue(e.target.value)}
+                            placeholder="Or enter custom value..."
+                            className="text-sm"
+                        />
+                        <p className="text-xs text-gray-400">Custom values allowed (field not mandatory)</p>
+                    </div>
+                );
+            } else {
+                // Strict dropdown
+                return (
+                    <Select value={variableValue} onValueChange={setVariableValue}>
+                        <SelectTrigger>
+                            <SelectValue placeholder="Select value..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {listOptions.map((opt) => (
+                                <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                );
+            }
+        }
+
+        // Other types
+        switch (variableType) {
+            case 'EXPRESSION':
+                return (
+                    <Textarea
+                        value={variableValue}
+                        onChange={(e) => setVariableValue(e.target.value)}
+                        placeholder="${document.title} + '_processed'"
+                        rows={3}
+                        className="font-mono text-sm"
+                    />
+                );
+            case 'BOOLEAN':
+                return (
+                    <Select value={variableValue || 'true'} onValueChange={setVariableValue}>
+                        <SelectTrigger>
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="true">True</SelectItem>
+                            <SelectItem value="false">False</SelectItem>
+                        </SelectContent>
+                    </Select>
+                );
+            case 'NUMBER':
+            case 'FLOAT':
+                return (
+                    <Input
+                        type="number"
+                        step={variableType === 'FLOAT' ? '0.01' : '1'}
+                        value={variableValue}
+                        onChange={(e) => setVariableValue(e.target.value)}
+                        placeholder="Enter number..."
+                    />
+                );
+            case 'DATE':
+                return (
+                    <Input
+                        type="date"
+                        value={variableValue}
+                        onChange={(e) => setVariableValue(e.target.value)}
+                    />
+                );
+            case 'DATETIME':
+                return (
+                    <Input
+                        type="datetime-local"
+                        value={variableValue}
+                        onChange={(e) => setVariableValue(e.target.value)}
+                    />
+                );
+            default: // STRING
+                return (
+                    <Input
+                        type="text"
+                        value={variableValue}
+                        onChange={(e) => setVariableValue(e.target.value)}
+                        placeholder="Enter value..."
+                    />
+                );
+        }
     };
 
     if (!isOpen) return null;
@@ -65,7 +263,7 @@ export default function SetVariableNodeModal({ isOpen, onClose, nodeData, onSave
             onMouseDown={(e) => e.stopPropagation()}
         >
             <div
-                className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden"
+                className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden max-h-[90vh] flex flex-col"
                 onPointerDown={(e) => e.stopPropagation()}
                 onMouseDown={(e) => e.stopPropagation()}
             >
@@ -89,21 +287,110 @@ export default function SetVariableNodeModal({ isOpen, onClose, nodeData, onSave
                 </div>
 
                 {/* Content */}
-                <div className="p-6 space-y-5">
-                    {/* Variable Name */}
+                <div className="p-6 space-y-5 overflow-y-auto flex-1">
+                    {/* Scope */}
                     <div>
-                        <Label className="text-sm font-medium text-gray-700 mb-2 block">Variable Name</Label>
-                        <Input
-                            value={variableName}
-                            onChange={(e) => setVariableName(e.target.value.replace(/\s/g, '_'))}
-                            placeholder="my_variable"
-                            className="font-mono"
-                        />
+                        <Label className="text-sm font-medium text-gray-700 mb-2 block">Scope</Label>
+                        <Select value={variableScope} onValueChange={(v) => {
+                            setVariableScope(v);
+                            if (v !== 'DOCUMENT') {
+                                setSelectedCategoryId(null);
+                                setSelectedMetadataFieldId(null);
+                                setSelectedMetadataField(null);
+                                setListOptions([]);
+                            }
+                        }}>
+                            <SelectTrigger>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {SCOPE_OPTIONS.map((scope) => (
+                                    <SelectItem key={scope.value} value={scope.value}>{scope.label}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                     </div>
 
-                    {/* Type and Scope */}
-                    <div className="flex gap-4">
-                        <div className="flex-1">
+                    {/* Document Metadata Selection */}
+                    {variableScope === 'DOCUMENT' && (
+                        <>
+                            {loading ? (
+                                <div className="flex items-center justify-center py-4">
+                                    <Loader2 className="w-5 h-5 animate-spin text-teal-500" />
+                                    <span className="ml-2 text-sm text-gray-500">Loading models...</span>
+                                </div>
+                            ) : (
+                                <>
+                                    {/* Category Selection */}
+                                    <div>
+                                        <Label className="text-sm font-medium text-gray-700 mb-2 block">Model (Filing Category)</Label>
+                                        <Select
+                                            value={selectedCategoryId?.toString() || ''}
+                                            onValueChange={handleCategoryChange}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select a model..." />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {categories.map((cat) => (
+                                                    <SelectItem key={cat.id} value={cat.id.toString()}>
+                                                        {cat.name}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    {/* Metadata Field Selection */}
+                                    {selectedCategoryId && (
+                                        <div>
+                                            <Label className="text-sm font-medium text-gray-700 mb-2 block">Metadata Field</Label>
+                                            <Select
+                                                value={selectedMetadataFieldId?.toString() || ''}
+                                                onValueChange={handleMetadataFieldChange}
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Select a field..." />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {metadataFields.map((field) => (
+                                                        <SelectItem key={field.id} value={field.id!.toString()}>
+                                                            <div className="flex items-center gap-2">
+                                                                <span>{field.key}</span>
+                                                                <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+                                                                    {field.dataType}
+                                                                </span>
+                                                                {field.mandatory && (
+                                                                    <span className="text-xs text-red-500">*</span>
+                                                                )}
+                                                            </div>
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </>
+                    )}
+
+                    {/* Variable Name (for non-document scope) */}
+                    {variableScope !== 'DOCUMENT' && (
+                        <div>
+                            <Label className="text-sm font-medium text-gray-700 mb-2 block">Variable Name</Label>
+                            <Input
+                                value={variableName}
+                                onChange={(e) => setVariableName(e.target.value.replace(/\s/g, '_'))}
+                                placeholder="my_variable"
+                                className="font-mono"
+                            />
+                        </div>
+                    )}
+
+                    {/* Type (for non-document scope) */}
+                    {variableScope !== 'DOCUMENT' && (
+                        <div>
                             <Label className="text-sm font-medium text-gray-700 mb-2 block">Type</Label>
                             <Select value={variableType} onValueChange={setVariableType}>
                                 <SelectTrigger>
@@ -116,53 +403,17 @@ export default function SetVariableNodeModal({ isOpen, onClose, nodeData, onSave
                                 </SelectContent>
                             </Select>
                         </div>
-                        <div className="flex-1">
-                            <Label className="text-sm font-medium text-gray-700 mb-2 block">Scope</Label>
-                            <Select value={variableScope} onValueChange={setVariableScope}>
-                                <SelectTrigger>
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {SCOPE_OPTIONS.map((scope) => (
-                                        <SelectItem key={scope.value} value={scope.value}>{scope.label}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </div>
+                    )}
 
                     {/* Value */}
-                    <div>
-                        <Label className="text-sm font-medium text-gray-700 mb-2 block">
-                            {variableType === 'EXPRESSION' ? 'Expression' : 'Value'}
-                        </Label>
-                        {variableType === 'EXPRESSION' ? (
-                            <Textarea
-                                value={variableValue}
-                                onChange={(e) => setVariableValue(e.target.value)}
-                                placeholder="${document.title} + '_processed'"
-                                rows={3}
-                                className="font-mono text-sm"
-                            />
-                        ) : variableType === 'BOOLEAN' ? (
-                            <Select value={variableValue || 'true'} onValueChange={setVariableValue}>
-                                <SelectTrigger>
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="true">True</SelectItem>
-                                    <SelectItem value="false">False</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        ) : (
-                            <Input
-                                type={variableType === 'NUMBER' ? 'number' : variableType === 'DATE' ? 'date' : 'text'}
-                                value={variableValue}
-                                onChange={(e) => setVariableValue(e.target.value)}
-                                placeholder="Enter value..."
-                            />
-                        )}
-                    </div>
+                    {(variableScope !== 'DOCUMENT' || selectedMetadataField) && (
+                        <div>
+                            <Label className="text-sm font-medium text-gray-700 mb-2 block">
+                                {variableType === 'EXPRESSION' ? 'Expression' : 'Value'}
+                            </Label>
+                            {renderValueInput()}
+                        </div>
+                    )}
 
                     {/* Preview */}
                     {variableName && (

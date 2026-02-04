@@ -21,8 +21,10 @@ import {
 import WorkflowStepAction from '../../../components/document/WorkflowStepAction';
 import ConfirmationModal from '../../../components/modals/ConfirmationModal';
 import RenameModal from '@/components/modals/RenameModal';
-import { workflowService, documentService, stampService } from '../../../api/services';
-import { WorkflowNodeInstanceResponse, StampResponse } from '../../../types/api';
+import { documentService, stampService } from '../../../api/services';
+import { workflowAdminService } from '@/api/services/workflowAdminService';
+import { WorkflowNodeInstanceResponse } from '@/types/workflow';
+import { StampResponse } from '../../../types/api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useNotifications } from '@/hooks/useNotifications';
@@ -82,9 +84,9 @@ export default function DocumentViewPage() {
   useEffect(() => {
     const fetchPendingSteps = async () => {
       try {
-        const steps = await workflowService.getDocumentSteps(parseInt(documentId));
-        // Get the first actionable step
-        const actionableStep = steps.find(step => step.status === 'ACTIVE');
+        const steps = await workflowAdminService.getDocumentNodes(parseInt(documentId));
+        // Get the first actionable step (ACTIVE status)
+        const actionableStep = steps.find((step: WorkflowNodeInstanceResponse) => step.status === 'ACTIVE');
         setPendingStep(actionableStep || null);
       } catch (error) {
         // Silently fail - workflow steps are optional
@@ -496,7 +498,7 @@ export default function DocumentViewPage() {
   }
 
   return (
-    <div className={`flex h-full bg-neutral-background ${pendingStep ? 'pb-24' : ''}`}>
+    <div className="flex h-full bg-neutral-background">
       {/* Main Document Viewer */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
@@ -518,6 +520,24 @@ export default function DocumentViewPage() {
           onRename={handleRenameDocument}
           onUploadVersion={handleUploadVersion}
         />
+
+        {/* Workflow Step Action - Banner under title */}
+        {pendingStep && (
+          <div className="px-4 py-2">
+            <WorkflowStepAction
+              stepInstance={pendingStep}
+              onComplete={() => {
+                // Refresh pending steps after completion
+                workflowAdminService.getDocumentNodes(parseInt(documentId))
+                  .then((steps: WorkflowNodeInstanceResponse[]) => {
+                    const actionableStep = steps.find((step: WorkflowNodeInstanceResponse) => step.status === 'ACTIVE');
+                    setPendingStep(actionableStep || null);
+                  })
+                  .catch(() => setPendingStep(null));
+              }}
+            />
+          </div>
+        )}
 
         {/* Document Content Area */}
         <div className="flex-1 overflow-hidden">
@@ -753,21 +773,6 @@ export default function DocumentViewPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Workflow Step Action - Fixed at bottom */}
-      {pendingStep && (
-        <WorkflowStepAction
-          stepInstance={pendingStep}
-          onComplete={() => {
-            // Refresh pending steps after completion
-            workflowService.getDocumentSteps(parseInt(documentId))
-              .then(steps => {
-                const actionableStep = steps.find(step => step.status === 'ACTIVE');
-                setPendingStep(actionableStep || null);
-              })
-              .catch(() => setPendingStep(null));
-          }}
-        />
-      )}
     </div>
   );
 }

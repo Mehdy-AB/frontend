@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Eye, Clock, AlertTriangle } from 'lucide-react';
+import { X, UserCheck, Clock, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -22,24 +22,45 @@ import AssigneeSelector, {
     toAssignmentEntities
 } from '@/components/workflow/AssigneeSelector';
 
-interface ReviewNodeModalProps {
+interface ApprovalNodeModalProps {
     isOpen: boolean;
     onClose: () => void;
     nodeData: WorkflowNodeData;
     onSave: (updatedData: Partial<WorkflowNodeData>) => void;
 }
 
-const TIMEOUT_ACTIONS = [
-    { value: 'REMIND', label: 'Send Reminder', description: 'Notify reviewers and continue waiting' },
-    { value: 'CONTINUE', label: 'Continue Without Review', description: 'Proceed without waiting for review' },
-    { value: 'ESCALATE', label: 'Escalate', description: 'Reassign to another reviewer' },
+const APPROVAL_POLICIES = [
+    { value: 'ANY', label: 'Any (one approval sufficient)' },
+    { value: 'ALL', label: 'All (everyone must approve)' },
+    { value: 'MAJORITY', label: 'Majority (>50% must approve)' },
+    { value: 'MIN_N', label: 'Minimum N (set threshold)' },
 ];
 
-export default function ReviewNodeModal({ isOpen, onClose, nodeData, onSave }: ReviewNodeModalProps) {
-    const [label, setLabel] = useState(nodeData.label || 'Review');
+const REJECT_POLICIES = [
+    { value: 'ANY_REJECTS', label: 'Any rejection rejects' },
+    { value: 'MAJORITY_REJECTS', label: 'Majority must reject' },
+];
+
+const TIMEOUT_ACTIONS = [
+    { value: 'REMIND', label: 'Send Reminder', description: 'Notify assignees and continue waiting' },
+    { value: 'AUTO_APPROVE', label: 'Auto Approve', description: 'Automatically approve the task' },
+    { value: 'AUTO_REJECT', label: 'Auto Reject', description: 'Automatically reject the task' },
+    { value: 'ESCALATE', label: 'Escalate', description: 'Reassign to manager or escalation path' },
+    { value: 'CANCEL_WORKFLOW', label: 'Cancel Workflow', description: 'Cancel the entire workflow' },
+    { value: 'FAIL', label: 'Fail Workflow', description: 'Mark workflow as failed' },
+];
+
+export default function ApprovalNodeModal({ isOpen, onClose, nodeData, onSave }: ApprovalNodeModalProps) {
+    // Basic settings
+    const [label, setLabel] = useState(nodeData.label || 'Approval');
     const [description, setDescription] = useState(nodeData.description || '');
-    const [allowComments, setAllowComments] = useState(nodeData.allowComments ?? true);
-    const [notificationSubject, setNotificationSubject] = useState(nodeData.notificationSubject || 'Review Required: ${doc.name}');
+    const [notificationSubject, setNotificationSubject] = useState(nodeData.notificationSubject || 'Approval Required: ${doc.name}');
+    const [notificationBody, setNotificationBody] = useState(nodeData.notificationBody || 'Please review and approve the document.');
+
+    // Policy settings
+    const [approvalPolicy, setApprovalPolicy] = useState(nodeData.approvalPolicy || 'ANY');
+    const [rejectPolicy, setRejectPolicy] = useState(nodeData.rejectPolicy || 'ANY_REJECTS');
+    const [minApprovalsNeeded, setMinApprovalsNeeded] = useState(nodeData.minApprovalsNeeded || 1);
 
     // Timeout settings
     const [timeoutEnabled, setTimeoutEnabled] = useState(nodeData.timeoutEnabled || false);
@@ -51,14 +72,18 @@ export default function ReviewNodeModal({ isOpen, onClose, nodeData, onSave }: R
     // Escalation target (when ESCALATE action is selected)
     const [escalationTarget, setEscalationTarget] = useState<StepAssignment[]>([]);
 
+    // Assignments
     const [assignments, setAssignments] = useState<StepAssignment[]>([]);
 
     useEffect(() => {
         if (isOpen) {
-            setLabel(nodeData.label || 'Review');
+            setLabel(nodeData.label || 'Approval');
             setDescription(nodeData.description || '');
-            setAllowComments(nodeData.allowComments ?? true);
-            setNotificationSubject(nodeData.notificationSubject || 'Review Required: ${doc.name}');
+            setNotificationSubject(nodeData.notificationSubject || 'Approval Required: ${doc.name}');
+            setNotificationBody(nodeData.notificationBody || 'Please review and approve the document.');
+            setApprovalPolicy(nodeData.approvalPolicy || 'ANY');
+            setRejectPolicy(nodeData.rejectPolicy || 'ANY_REJECTS');
+            setMinApprovalsNeeded(nodeData.minApprovalsNeeded || 1);
             setTimeoutEnabled(nodeData.timeoutEnabled || false);
             setTimeoutValue(nodeData.timeoutValue || 48);
             setTimeoutUnit(nodeData.timeoutUnit || 'HOURS');
@@ -69,15 +94,19 @@ export default function ReviewNodeModal({ isOpen, onClose, nodeData, onSave }: R
         }
     }, [isOpen, nodeData]);
 
-    const canUseTimeoutExit = timeoutAction === 'ESCALATE';
+    // Determine if timeout exit makes sense for the action
+    const canUseTimeoutExit = ['ESCALATE', 'FAIL'].includes(timeoutAction);
     const showEscalationTarget = timeoutEnabled && timeoutAction === 'ESCALATE';
 
     const handleSave = () => {
         onSave({
             label,
             description,
-            allowComments,
             notificationSubject,
+            notificationBody,
+            approvalPolicy,
+            rejectPolicy,
+            minApprovalsNeeded: approvalPolicy === 'MIN_N' ? minApprovalsNeeded : undefined,
             timeoutEnabled,
             timeoutValue: timeoutEnabled ? timeoutValue : undefined,
             timeoutUnit: timeoutEnabled ? timeoutUnit : undefined,
@@ -85,10 +114,14 @@ export default function ReviewNodeModal({ isOpen, onClose, nodeData, onSave }: R
             useTimeoutExit: timeoutEnabled && canUseTimeoutExit ? useTimeoutExit : false,
             assignments: toAssignmentRequests(assignments),
             assignmentEntities: toAssignmentEntities(assignments),
+            // Also store in config format for backend
+            'policy.type': approvalPolicy,
+            'policy.min': minApprovalsNeeded,
             'timeout.value': timeoutValue,
             'timeout.unit': timeoutUnit,
             'timeout.action': timeoutAction,
             'timeout.useTimeoutExit': useTimeoutExit,
+            // Escalation target configuration
             escalationTarget: showEscalationTarget ? toAssignmentRequests(escalationTarget) : undefined,
             escalationTargetEntities: showEscalationTarget ? toAssignmentEntities(escalationTarget) : undefined,
         });
@@ -99,16 +132,16 @@ export default function ReviewNodeModal({ isOpen, onClose, nodeData, onSave }: R
 
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full h-[80vh] flex flex-col overflow-hidden">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full h-[85vh] flex flex-col overflow-hidden">
                 {/* Header */}
-                <div className="flex items-center justify-between p-6 border-b bg-indigo-50">
+                <div className="flex items-center justify-between p-6 border-b bg-blue-50">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-indigo-500 rounded-lg flex items-center justify-center">
-                            <Eye className="w-5 h-5 text-white" />
+                        <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
+                            <UserCheck className="w-5 h-5 text-white" />
                         </div>
                         <div>
-                            <h3 className="text-lg font-semibold text-gray-900">Configure Review</h3>
-                            <p className="text-sm text-gray-500">Review task settings</p>
+                            <h3 className="text-lg font-semibold text-gray-900">Configure Approval</h3>
+                            <p className="text-sm text-gray-500">Multi-user approval settings</p>
                         </div>
                     </div>
                     <button onClick={onClose} className="w-10 h-10 rounded-xl hover:bg-gray-200 flex items-center justify-center">
@@ -118,22 +151,77 @@ export default function ReviewNodeModal({ isOpen, onClose, nodeData, onSave }: R
 
                 {/* Content */}
                 <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                    <div className="grid gap-4">
-                        <div>
-                            <Label>Step Name</Label>
-                            <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Review Step" />
+                    {/* Basic Settings */}
+                    <div className="space-y-4">
+                        <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Basic Settings</h4>
+                        <div className="grid gap-4">
+                            <div>
+                                <Label>Step Name</Label>
+                                <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Approval Step" />
+                            </div>
+                            <div>
+                                <Label>Description</Label>
+                                <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Instructions for approvers..." rows={2} />
+                            </div>
                         </div>
-                        <div>
-                            <Label>Description</Label>
-                            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Instructions..." rows={2} />
+                    </div>
+
+                    {/* Approval Policy */}
+                    <div className="space-y-4">
+                        <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Approval Policy</h4>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <div>
+                                <Label>Approval Threshold</Label>
+                                <Select value={approvalPolicy} onValueChange={setApprovalPolicy}>
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {APPROVAL_POLICIES.map(p => (
+                                            <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div>
+                                <Label>Rejection Policy</Label>
+                                <Select value={rejectPolicy} onValueChange={setRejectPolicy}>
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {REJECT_POLICIES.map(p => (
+                                            <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
                         </div>
-                        <div>
-                            <Label>Notification Subject</Label>
-                            <Input value={notificationSubject} onChange={(e) => setNotificationSubject(e.target.value)} />
-                        </div>
-                        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                            <Label>Allow Comments</Label>
-                            <Switch checked={allowComments} onCheckedChange={setAllowComments} />
+                        {approvalPolicy === 'MIN_N' && (
+                            <div className="w-32">
+                                <Label>Minimum Approvals</Label>
+                                <Input
+                                    type="number"
+                                    min={1}
+                                    value={minApprovalsNeeded}
+                                    onChange={(e) => setMinApprovalsNeeded(parseInt(e.target.value) || 1)}
+                                />
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Notification Settings */}
+                    <div className="space-y-4">
+                        <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Notification</h4>
+                        <div className="grid gap-4">
+                            <div>
+                                <Label>Email Subject</Label>
+                                <Input value={notificationSubject} onChange={(e) => setNotificationSubject(e.target.value)} />
+                            </div>
+                            <div>
+                                <Label>Email Body</Label>
+                                <Textarea value={notificationBody} onChange={(e) => setNotificationBody(e.target.value)} rows={2} />
+                            </div>
                         </div>
                     </div>
 
@@ -179,31 +267,37 @@ export default function ReviewNodeModal({ isOpen, onClose, nodeData, onSave }: R
                                             </SelectTrigger>
                                             <SelectContent>
                                                 {TIMEOUT_ACTIONS.map(a => (
-                                                    <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>
+                                                    <SelectItem key={a.value} value={a.value}>
+                                                        <div className="flex flex-col">
+                                                            <span>{a.label}</span>
+                                                        </div>
+                                                    </SelectItem>
                                                 ))}
                                             </SelectContent>
                                         </Select>
                                     </div>
                                 </div>
 
+                                {/* Timeout action description */}
                                 <div className="text-xs text-orange-700 bg-orange-100 px-3 py-2 rounded">
                                     {TIMEOUT_ACTIONS.find(a => a.value === timeoutAction)?.description}
                                 </div>
 
+                                {/* Use TIMEOUT exit option */}
                                 {canUseTimeoutExit && (
                                     <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-orange-200">
                                         <div className="flex items-center gap-2">
                                             <AlertTriangle className="w-4 h-4 text-orange-500" />
                                             <div>
                                                 <Label className="text-sm">Use TIMEOUT Exit Path</Label>
-                                                <p className="text-xs text-gray-500">Creates separate exit for timeout</p>
+                                                <p className="text-xs text-gray-500">Creates a separate exit for timeout flow</p>
                                             </div>
                                         </div>
                                         <Switch checked={useTimeoutExit} onCheckedChange={setUseTimeoutExit} />
                                     </div>
                                 )}
 
-                                {/* Escalation Target Selector */}
+                                {/* Escalation Target Selector - shown when ESCALATE action is selected */}
                                 {showEscalationTarget && (
                                     <div className="bg-white rounded-lg border border-orange-200 p-4 space-y-3">
                                         <div className="flex items-center gap-2">
@@ -211,7 +305,7 @@ export default function ReviewNodeModal({ isOpen, onClose, nodeData, onSave }: R
                                             <Label className="text-sm font-medium">Escalate To (Required)</Label>
                                         </div>
                                         <p className="text-xs text-gray-500">
-                                            Select who should receive the task when escalated.
+                                            Select who should receive the task when escalated due to timeout.
                                         </p>
                                         <AssigneeSelector
                                             assignments={escalationTarget}
@@ -229,18 +323,19 @@ export default function ReviewNodeModal({ isOpen, onClose, nodeData, onSave }: R
                     <AssigneeSelector
                         assignments={assignments}
                         onChange={setAssignments}
-                        label="Reviewers"
-                        accentColor="indigo"
+                        label="Approvers"
+                        accentColor="blue"
                     />
                 </div>
 
                 {/* Footer */}
                 <div className="flex justify-end gap-3 p-6 border-t bg-gray-50">
                     <Button variant="outline" onClick={onClose}>Cancel</Button>
-                    <Button onClick={handleSave} className="bg-indigo-500 hover:bg-indigo-600">Save Configuration</Button>
+                    <Button onClick={handleSave} className="bg-blue-500 hover:bg-blue-600">
+                        Save Configuration
+                    </Button>
                 </div>
             </div>
         </div>
     );
 }
-

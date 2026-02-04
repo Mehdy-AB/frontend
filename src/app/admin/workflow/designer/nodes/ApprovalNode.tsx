@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { CheckCircle, Edit, Trash2, XCircle, Clock, Users } from 'lucide-react';
+import { CheckCircle, Edit, Trash2, Clock, Users, User, Shield, UserCheck } from 'lucide-react';
 import { WorkflowNodeData } from './types';
 
 interface ApprovalNodeProps {
@@ -15,9 +15,15 @@ interface ApprovalNodeProps {
  * Alias: workflowStep (WorkflowStepNode)
  */
 const ApprovalNode = ({ data, selected, id }: ApprovalNodeProps) => {
+    // Count assigned entities
+    const assigneeCount = data.assignmentEntities?.length || data.assignments?.length || 0;
+    const userCount = data.assignmentEntities?.filter((a: any) => a.assigneeType === 'USER').length || 0;
+    const groupCount = data.assignmentEntities?.filter((a: any) => a.assigneeType === 'GROUP').length || 0;
+    const roleCount = data.assignmentEntities?.filter((a: any) => a.assigneeType === 'ROLE').length || 0;
+
     return (
         <div
-            className={`px-4 py-3 rounded-xl border-2 min-w-[260px] bg-white relative shadow-sm transition-all duration-200 group ${selected ? 'border-blue-500 ring-4 ring-blue-100 shadow-lg' : 'border-gray-200 hover:border-blue-400 hover:shadow-md'
+            className={`px-4 py-3 rounded-xl border-2 min-w-[240px] bg-white relative shadow-sm transition-all duration-200 group ${selected ? 'border-blue-500 ring-4 ring-blue-100 shadow-lg' : 'border-gray-200 hover:border-blue-400 hover:shadow-md'
                 }`}
         >
             <Handle
@@ -31,7 +37,7 @@ const ApprovalNode = ({ data, selected, id }: ApprovalNodeProps) => {
             {data.priority && (
                 <div
                     className={`absolute top-0 left-0 w-1.5 h-full rounded-l-xl opacity-80 ${data.priority === 'HIGH' ? 'bg-red-500' :
-                            data.priority === 'MEDIUM' ? 'bg-amber-500' : 'bg-blue-500'
+                        data.priority === 'MEDIUM' ? 'bg-amber-500' : 'bg-blue-500'
                         }`}
                 />
             )}
@@ -54,16 +60,45 @@ const ApprovalNode = ({ data, selected, id }: ApprovalNodeProps) => {
                 </button>
             </div>
 
-            {/* Header */}
-            <div className="mb-2 pr-10">
-                <div className="font-bold text-sm text-gray-900 leading-tight">{data.label || 'Approval'}</div>
-                <div className="text-[10px] text-gray-400 uppercase tracking-wider font-medium mt-0.5">Approval</div>
+            {/* Header with Icon */}
+            <div className="flex items-center gap-2 mb-2 pr-10">
+                <div className="p-2 bg-blue-100 rounded-lg shrink-0">
+                    <UserCheck className="w-4 h-4 text-blue-600" />
+                </div>
+                <div className="min-w-0">
+                    <div className="font-bold text-sm text-gray-900 leading-tight truncate">{data.label || 'Approval'}</div>
+                    <div className="text-[10px] text-gray-400 uppercase tracking-wider font-medium">Approval</div>
+                </div>
             </div>
 
             {/* Description */}
             {data.description && (
-                <div className="text-xs text-gray-500 line-clamp-2 mb-3 bg-gray-50 p-2 rounded-md border border-gray-100 italic">
+                <div className="text-xs text-gray-500 line-clamp-2 mb-2 bg-gray-50 p-2 rounded-md border border-gray-100 italic">
                     "{data.description}"
+                </div>
+            )}
+
+            {/* Assignees Summary */}
+            {assigneeCount > 0 && (
+                <div className="flex flex-wrap gap-1 mb-2">
+                    {userCount > 0 && (
+                        <div className="text-[10px] font-medium text-blue-700 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded-full flex items-center gap-1">
+                            <User className="w-2.5 h-2.5" />
+                            {userCount}
+                        </div>
+                    )}
+                    {groupCount > 0 && (
+                        <div className="text-[10px] font-medium text-green-700 bg-green-50 border border-green-100 px-1.5 py-0.5 rounded-full flex items-center gap-1">
+                            <Users className="w-2.5 h-2.5" />
+                            {groupCount}
+                        </div>
+                    )}
+                    {roleCount > 0 && (
+                        <div className="text-[10px] font-medium text-purple-700 bg-purple-50 border border-purple-100 px-1.5 py-0.5 rounded-full flex items-center gap-1">
+                            <Shield className="w-2.5 h-2.5" />
+                            {roleCount}
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -77,38 +112,52 @@ const ApprovalNode = ({ data, selected, id }: ApprovalNodeProps) => {
                 )}
                 {data.minApprovalsNeeded && data.minApprovalsNeeded > 1 && (
                     <div className="text-[10px] font-medium text-purple-700 bg-purple-50 border border-purple-100 px-2 py-1 rounded-full flex items-center gap-1">
-                        <Users className="w-3 h-3" />
+                        <CheckCircle className="w-3 h-3" />
                         {data.minApprovalsNeeded} needed
                     </div>
                 )}
             </div>
 
-            {/* Output Handles - Approved (Top) and Rejected (Bottom) */}
-            <div className="absolute right-0 top-0 bottom-0 flex flex-col justify-center items-end pr-0" style={{ right: -12 }}>
-                {/* Approved Handle */}
-                <div className="flex items-center gap-1 mb-4">
-                    <span className="text-[9px] font-bold text-green-600 bg-green-50 px-1 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity">
-                        Approved
+            {/* Output Labels & Handles */}
+            <div className="flex flex-col gap-2 absolute right-0 top-1/2 -translate-y-1/2" style={{ right: -8 }}>
+                {/* Approved */}
+                <div className="flex items-center gap-1">
+                    <span className="text-[9px] font-bold text-green-600 bg-green-50 px-1.5 py-0.5 rounded">
+                        ✓
                     </span>
                     <Handle
                         type="source"
                         position={Position.Right}
-                        className="w-4 h-4 bg-green-500 border-2 border-white"
                         id="approved"
+                        className="!relative !transform-none w-4 h-4 bg-green-500 border-2 border-white"
                     />
                 </div>
-                {/* Rejected Handle */}
-                <div className="flex items-center gap-1 mt-4">
-                    <span className="text-[9px] font-bold text-red-600 bg-red-50 px-1 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity">
-                        Rejected
+                {/* Rejected */}
+                <div className="flex items-center gap-1">
+                    <span className="text-[9px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded">
+                        ✗
                     </span>
                     <Handle
                         type="source"
                         position={Position.Right}
-                        className="w-4 h-4 bg-red-500 border-2 border-white"
                         id="rejected"
+                        className="!relative !transform-none w-4 h-4 bg-red-500 border-2 border-white"
                     />
                 </div>
+                {/* Timeout - Only when enabled */}
+                {data.timeoutEnabled && data.useTimeoutExit && (
+                    <div className="flex items-center gap-1">
+                        <span className="text-[9px] font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">
+                            ⏱
+                        </span>
+                        <Handle
+                            type="source"
+                            position={Position.Right}
+                            id="timeout"
+                            className="!relative !transform-none w-4 h-4 bg-orange-500 border-2 border-white"
+                        />
+                    </div>
+                )}
             </div>
         </div>
     );

@@ -17,8 +17,7 @@ export type BackendNodeType =
     | 'SPLIT'
     | 'JOIN'
     | 'DELAY'
-    | 'SLA_TIMEOUT'
-    | 'SLA'
+
     | 'MOVE_DOCUMENT'
     | 'UPDATE_METADATA'
     | 'CHANGE_STATUS'
@@ -54,7 +53,7 @@ const FRONTEND_TO_BACKEND_NODE_TYPE: Record<string, BackendNodeType> = {
     stampNode: 'STAMP_DOCUMENT',
     notificationNode: 'NOTIFICATION',
     emailNode: 'EMAIL',
-    slaNode: 'SLA',
+
     apiCallNode: 'API_CALL',
     subWorkflowNode: 'SUB_WORKFLOW',
     setVariableNode: 'SET_VARIABLE',
@@ -154,12 +153,7 @@ function serializeNodeConfig(node: Node<WorkflowNodeData>): string | undefined {
             config.ccRecipients = data.ccRecipients;
             break;
 
-        case 'slaNode':
-            config.slaDueHours = data.slaDueHours;
-            config.slaOnTimeout = data.slaOnTimeout;
-            config.escalationAction = data.escalationAction;
-            config.warningThreshold = data.warningThreshold;
-            break;
+
 
         case 'apiCallNode':
             config.apiMethod = data.apiMethod;

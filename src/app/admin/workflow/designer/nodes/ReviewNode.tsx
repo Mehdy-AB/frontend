@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { Eye, Edit, Trash2 } from 'lucide-react';
+import { Eye, Edit, Trash2, User, Users, Shield } from 'lucide-react';
 import { WorkflowNodeData } from './types';
 
 interface ReviewNodeProps {
@@ -14,6 +14,12 @@ interface ReviewNodeProps {
  * Backend: REVIEW type, ReviewNodeHandler
  */
 const ReviewNode = ({ data, selected, id }: ReviewNodeProps) => {
+    // Count assigned entities
+    const assigneeCount = data.assignmentEntities?.length || data.assignments?.length || 0;
+    const userCount = data.assignmentEntities?.filter((a: any) => a.assigneeType === 'USER').length || 0;
+    const groupCount = data.assignmentEntities?.filter((a: any) => a.assigneeType === 'GROUP').length || 0;
+    const roleCount = data.assignmentEntities?.filter((a: any) => a.assigneeType === 'ROLE').length || 0;
+
     return (
         <div
             className={`px-4 py-3 rounded-xl border-2 min-w-[220px] bg-white relative shadow-sm transition-all duration-200 group ${selected ? 'border-indigo-500 ring-4 ring-indigo-100 shadow-lg' : 'border-gray-200 hover:border-indigo-400 hover:shadow-md'
@@ -45,28 +51,73 @@ const ReviewNode = ({ data, selected, id }: ReviewNodeProps) => {
             </div>
 
             {/* Header */}
-            <div className="flex items-center gap-2 mb-2">
-                <div className="p-2 bg-indigo-100 rounded-lg">
+            <div className="flex items-center gap-2 mb-2 pr-10">
+                <div className="p-2 bg-indigo-100 rounded-lg shrink-0">
                     <Eye className="w-4 h-4 text-indigo-600" />
                 </div>
-                <div>
-                    <div className="font-bold text-sm text-gray-900">{data.label || 'Review'}</div>
+                <div className="min-w-0">
+                    <div className="font-bold text-sm text-gray-900 truncate">{data.label || 'Review'}</div>
                     <div className="text-[10px] text-gray-400 uppercase tracking-wider">Review Task</div>
                 </div>
             </div>
 
             {data.description && (
-                <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded-md mb-2">{data.description}</div>
+                <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded-md mb-2 line-clamp-2">{data.description}</div>
             )}
 
-            {/* Output Handle */}
-            <Handle
-                type="source"
-                position={Position.Right}
-                className="w-4 h-4 bg-indigo-500 border-2 border-white"
-                style={{ right: -10 }}
-                id="completed"
-            />
+            {/* Assignees Summary */}
+            {assigneeCount > 0 && (
+                <div className="flex flex-wrap gap-1 mb-2">
+                    {userCount > 0 && (
+                        <div className="text-[10px] font-medium text-blue-700 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded-full flex items-center gap-1">
+                            <User className="w-2.5 h-2.5" />
+                            {userCount}
+                        </div>
+                    )}
+                    {groupCount > 0 && (
+                        <div className="text-[10px] font-medium text-green-700 bg-green-50 border border-green-100 px-1.5 py-0.5 rounded-full flex items-center gap-1">
+                            <Users className="w-2.5 h-2.5" />
+                            {groupCount}
+                        </div>
+                    )}
+                    {roleCount > 0 && (
+                        <div className="text-[10px] font-medium text-purple-700 bg-purple-50 border border-purple-100 px-1.5 py-0.5 rounded-full flex items-center gap-1">
+                            <Shield className="w-2.5 h-2.5" />
+                            {roleCount}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Output Labels & Handles */}
+            <div className="flex flex-col gap-2 absolute right-0 top-1/2 -translate-y-1/2" style={{ right: -8 }}>
+                {/* Completed */}
+                <div className="flex items-center gap-1">
+                    <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
+                        ✓
+                    </span>
+                    <Handle
+                        type="source"
+                        position={Position.Right}
+                        id="completed"
+                        className="!relative !transform-none w-4 h-4 bg-indigo-500 border-2 border-white"
+                    />
+                </div>
+                {/* Timeout - Only when enabled */}
+                {data.timeoutEnabled && data.useTimeoutExit && (
+                    <div className="flex items-center gap-1">
+                        <span className="text-[9px] font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">
+                            ⏱
+                        </span>
+                        <Handle
+                            type="source"
+                            position={Position.Right}
+                            id="timeout"
+                            className="!relative !transform-none w-4 h-4 bg-orange-500 border-2 border-white"
+                        />
+                    </div>
+                )}
+            </div>
         </div>
     );
 };

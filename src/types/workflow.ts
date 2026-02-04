@@ -207,15 +207,38 @@ export interface WorkflowNodeInstanceResponse {
   startedAt: string;
   completedAt?: string;
   dueDate?: string;
+  isOverdue?: boolean; // Derivable or from backend
   assignees: string[]; // Names or descriptions
   assignments: WorkflowInstanceAssignmentResponse[];
+  workflowName?: string; // Name of the parent workflow
+  description?: string; // Node description/instructions
 }
 
 export interface WorkflowInstanceAssignmentResponse {
   id: number;
   assigneeType: 'USER' | 'ROLE' | 'GROUP';
-  assigneeId?: string; // UUID
+  userId?: string; // UUID (matches backend field name)
   assigneeName?: string; // Display name
+  user?: {
+    id: string;
+    username?: string;
+    email?: string;
+    firstName?: string;
+    lastName?: string;
+    displayName?: string;
+    imgUrl?: string;
+    imageUrl?: string;
+  };
+  role?: {
+    id: string;
+    name: string;
+    description?: string;
+  };
+  group?: {
+    id: string;
+    name: string;
+    description?: string;
+  };
   canEdit: boolean;
   status: string; // 'PENDING', 'COMPLETED', etc.
   action?: AssignmentAction;
@@ -241,8 +264,8 @@ export interface WorkflowTimelineResponse {
   status: InstanceStatus;
   startedAt: string;
   completedAt?: string;
-  totalSteps: number;
-  completedSteps: number;
+  totalNodes: number;
+  completedNodes: number;
   progressPercentage: number;
   nodes: WorkflowNodeInstanceResponse[];
   recentHistory: WorkflowHistoryResponse[];
@@ -368,7 +391,7 @@ export interface CompleteStepRequest {
 }
 
 export interface RejectStepRequest {
-  reason: string;
+  rejectionReason: string;
 }
 
 export interface ReassignStepRequest {

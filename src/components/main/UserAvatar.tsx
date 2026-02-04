@@ -14,9 +14,12 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { User } from 'lucide-react';
 import { UserDto } from '@/types/api';
 
+// Partial user type for avatar - only needs basic display fields
+type AvatarUser = Partial<Pick<UserDto, 'id' | 'username' | 'email' | 'firstName' | 'lastName' | 'displayName' | 'imgUrl' | 'imageUrl'>>;
+
 interface UserAvatarProps {
-  user: UserDto | null | undefined;
-  size?:'xs'| 'sm' | 'md' | 'lg' | 'xl';
+  user: AvatarUser | null | undefined;
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
   showOnlineStatus?: boolean;
 }
@@ -85,8 +88,8 @@ export default function UserAvatar({
     <div className="relative inline-block">
       <Avatar className={`${sizeClasses[size]} ${className}`}>
         {imageUrl && (
-          <AvatarImage 
-            src={imageUrl} 
+          <AvatarImage
+            src={imageUrl}
             alt={displayName}
             onError={(e) => {
               // Hide broken image on error
@@ -98,7 +101,7 @@ export default function UserAvatar({
           {initials}
         </AvatarFallback>
       </Avatar>
-      
+
       {showOnlineStatus && (
         <span className="absolute bottom-0 right-0 block h-3 w-3 rounded-full bg-green-400 ring-2 ring-white" />
       )}

@@ -1,16 +1,26 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { X, ClipboardCheck, Users, User as UserIcon, Shield, Search } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, ClipboardCheck, Clock, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { WorkflowNodeData } from '../nodes/types';
-import { notificationApiClient } from '@/api/notificationClient';
-import { UserDto, RoleDto, GroupDto, CreateStepAssignmentRequest } from '@/types/api';
-import UserAvatar from '@/components/main/UserAvatar';
+import AssigneeSelector, {
+    StepAssignment,
+    fromAssignmentEntities,
+    toAssignmentRequests,
+    toAssignmentEntities
+} from '@/components/workflow/AssigneeSelector';
 
 interface ManualTaskNodeModalProps {
     isOpen: boolean;
@@ -19,180 +29,65 @@ interface ManualTaskNodeModalProps {
     onSave: (updatedData: Partial<WorkflowNodeData>) => void;
 }
 
-type GranteeType = 'user' | 'group' | 'role';
-
-interface StepAssignment {
-    id: string;
-    type: GranteeType;
-    entity: UserDto | GroupDto | RoleDto;
-    canEdit: boolean;
-}
+const TIMEOUT_ACTIONS = [
+    { value: 'REMIND', label: 'Send Reminder', description: 'Notify assignees and continue waiting' },
+    { value: 'ESCALATE', label: 'Escalate', description: 'Reassign task to another user' },
+    { value: 'FAIL', label: 'Fail Workflow', description: 'Stop workflow with failure status' },
+];
 
 export default function ManualTaskNodeModal({ isOpen, onClose, nodeData, onSave }: ManualTaskNodeModalProps) {
     const [label, setLabel] = useState(nodeData.label || 'Manual Task');
     const [instructions, setInstructions] = useState(nodeData.instructions || '');
     const [description, setDescription] = useState(nodeData.description || '');
 
-    const [assignments, setAssignments] = useState<StepAssignment[]>([]);
+    // Timeout settings
+    const [timeoutEnabled, setTimeoutEnabled] = useState(nodeData.timeoutEnabled || false);
+    const [timeoutValue, setTimeoutValue] = useState(nodeData.timeoutValue || 48);
+    const [timeoutUnit, setTimeoutUnit] = useState<'HOURS' | 'DAYS'>(nodeData.timeoutUnit || 'HOURS');
+    const [timeoutAction, setTimeoutAction] = useState(nodeData.timeoutAction || 'REMIND');
+    const [useTimeoutExit, setUseTimeoutExit] = useState(nodeData.useTimeoutExit || false);
 
-    // Assignment Logic State
-    const [users, setUsers] = useState<UserDto[]>([]);
-    const [groups, setGroups] = useState<GroupDto[]>([]);
-    const [roles, setRoles] = useState<RoleDto[]>([]);
-    const [availableEntities, setAvailableEntities] = useState<(UserDto | GroupDto | RoleDto)[]>([]);
-    const [showSearchDropdown, setShowSearchDropdown] = useState(false);
-    const [searching, setSearching] = useState(false);
-    const [selectedEntityType, setSelectedEntityType] = useState<'user' | 'group' | 'role' | null>(null);
-    const [searchQuery, setSearchQuery] = useState('');
-    const searchInputRef = useRef<HTMLInputElement>(null);
+    // Escalation target (when ESCALATE action is selected)
+    const [escalationTarget, setEscalationTarget] = useState<StepAssignment[]>([]);
+
+    const [assignments, setAssignments] = useState<StepAssignment[]>([]);
 
     useEffect(() => {
         if (isOpen) {
             setLabel(nodeData.label || 'Manual Task');
             setInstructions(nodeData.instructions || '');
             setDescription(nodeData.description || '');
-            loadAssignmentsFromData();
+            setTimeoutEnabled(nodeData.timeoutEnabled || false);
+            setTimeoutValue(nodeData.timeoutValue || 48);
+            setTimeoutUnit(nodeData.timeoutUnit || 'HOURS');
+            setTimeoutAction(nodeData.timeoutAction || 'REMIND');
+            setUseTimeoutExit(nodeData.useTimeoutExit || false);
+            setEscalationTarget(fromAssignmentEntities(nodeData.escalationTargetEntities));
+            setAssignments(fromAssignmentEntities(nodeData.assignmentEntities));
         }
     }, [isOpen, nodeData]);
 
-    const loadAssignmentsFromData = async () => {
-        if (!nodeData.assignments && !nodeData.assignmentEntities) {
-            setAssignments([]);
-            return;
-        }
-
-        const loadedAssignments: StepAssignment[] = [];
-
-        // Prefer using full entities object if available
-        if (nodeData.assignmentEntities) {
-            nodeData.assignmentEntities.forEach((a: any) => {
-                loadedAssignments.push({
-                    id: `${a.assigneeType.toLowerCase()}-${a.assigneeId}`,
-                    type: a.assigneeType.toLowerCase() as GranteeType,
-                    entity: a.entity,
-                    canEdit: true
-                });
-            });
-        }
-        // Fallback to fetching if only IDs are present (legacy support)
-        else if (nodeData.assignments) {
-            for (const assignment of nodeData.assignments) {
-                try {
-                    let entity: UserDto | RoleDto | GroupDto | null = null;
-                    if (assignment.assigneeType === 'USER') {
-                        entity = await notificationApiClient.getUserById(assignment.assigneeId, { silent: true });
-                    } else if (assignment.assigneeType === 'ROLE') {
-                        entity = await notificationApiClient.getRoleById(assignment.assigneeId, { silent: true });
-                    } else if (assignment.assigneeType === 'GROUP') {
-                        entity = await notificationApiClient.getGroupById(assignment.assigneeId, { silent: true });
-                    }
-
-                    if (entity) {
-                        loadedAssignments.push({
-                            id: `${assignment.assigneeType.toLowerCase()}-${assignment.assigneeId}`,
-                            type: assignment.assigneeType.toLowerCase() as GranteeType,
-                            entity: entity,
-                            canEdit: true,
-                        });
-                    }
-                } catch (e) {
-                    console.error("Failed to load entity", e);
-                }
-            }
-        }
-        setAssignments(loadedAssignments);
-    };
-
-    // Loaders
-    const loadAvailableUsers = async (search?: string) => {
-        try {
-            const res = await notificationApiClient.getAllUsers({ page: 0, size: 50, search: search, desc: false }, { silent: true });
-            setUsers(res?.content || []);
-        } catch (e) { console.error(e); }
-    };
-    const loadAvailableGroups = async (search?: string) => {
-        try {
-            const res = await notificationApiClient.getAllGroups({ page: 0, size: 50, name: search, desc: false }, { silent: true });
-            setGroups(res?.content || []);
-        } catch (e) { console.error(e); }
-    };
-    const loadAvailableRoles = async (search?: string) => {
-        try {
-            const res = await notificationApiClient.getAllRoles({ page: 0, size: 50, name: search, desc: false }, { silent: true });
-            setRoles(res?.content || []);
-        } catch (e) { console.error(e); }
-    };
-
-    // Search Effect
-    useEffect(() => {
-        if (!selectedEntityType) return;
-        const performSearch = async () => {
-            setSearching(true);
-            const term = searchQuery.trim() || undefined;
-            if (selectedEntityType === 'user') await loadAvailableUsers(term);
-            if (selectedEntityType === 'group') await loadAvailableGroups(term);
-            if (selectedEntityType === 'role') await loadAvailableRoles(term);
-            setSearching(false);
-        };
-        const timer = setTimeout(performSearch, 300);
-        return () => clearTimeout(timer);
-    }, [searchQuery, selectedEntityType]);
-
-    // Update Available Entities List
-    useEffect(() => {
-        let entities: (UserDto | GroupDto | RoleDto)[] = [];
-        if (selectedEntityType === 'user') entities = users;
-        else if (selectedEntityType === 'group') entities = groups;
-        else if (selectedEntityType === 'role') entities = roles;
-
-        // Filter out already assigned
-        const assignedIds = new Set(assignments.map(a => a.entity.id));
-        setAvailableEntities(entities.filter(e => !assignedIds.has(e.id)));
-    }, [users, groups, roles, selectedEntityType, assignments]);
-
-    const handleAddClick = (type: 'user' | 'group' | 'role') => {
-        setSelectedEntityType(type);
-        setSearchQuery('');
-        setShowSearchDropdown(true);
-        setTimeout(() => searchInputRef.current?.focus(), 10);
-    };
-
-    const addAssignment = (entity: UserDto | GroupDto | RoleDto) => {
-        let type: GranteeType = 'role';
-        if ('username' in entity) type = 'user';
-        else if ('userCount' in entity) type = 'group';
-
-        const id = `${type}-${entity.id}`;
-        if (assignments.some(a => a.id === id)) return;
-
-        setAssignments([...assignments, { id, type, entity, canEdit: true }]);
-        setShowSearchDropdown(false);
-        setSelectedEntityType(null);
-    };
-
-    const removeAssignment = (id: string) => {
-        setAssignments(assignments.filter(a => a.id !== id));
-    };
+    const canUseTimeoutExit = ['ESCALATE', 'FAIL'].includes(timeoutAction);
+    const showEscalationTarget = timeoutEnabled && timeoutAction === 'ESCALATE';
 
     const handleSave = () => {
-        const assignmentRequests: CreateStepAssignmentRequest[] = assignments.map(a => ({
-            assigneeType: a.type.toUpperCase() as 'USER' | 'ROLE' | 'GROUP',
-            assigneeId: a.entity.id,
-            canEdit: a.canEdit
-        }));
-
-        const assignmentEntities = assignments.map(a => ({
-            assigneeType: a.type.toUpperCase() as 'USER' | 'ROLE' | 'GROUP',
-            assigneeId: a.entity.id,
-            entity: a.entity
-        }));
-
         onSave({
             label,
             instructions,
             description,
-            assignments: assignmentRequests,
-            assignmentEntities // Save full entities to persist state without refetching
+            timeoutEnabled,
+            timeoutValue: timeoutEnabled ? timeoutValue : undefined,
+            timeoutUnit: timeoutEnabled ? timeoutUnit : undefined,
+            timeoutAction: timeoutEnabled ? timeoutAction : undefined,
+            useTimeoutExit: timeoutEnabled && canUseTimeoutExit ? useTimeoutExit : false,
+            assignments: toAssignmentRequests(assignments),
+            assignmentEntities: toAssignmentEntities(assignments),
+            'timeout.value': timeoutValue,
+            'timeout.unit': timeoutUnit,
+            'timeout.action': timeoutAction,
+            'timeout.useTimeoutExit': useTimeoutExit,
+            escalationTarget: showEscalationTarget ? toAssignmentRequests(escalationTarget) : undefined,
+            escalationTargetEntities: showEscalationTarget ? toAssignmentEntities(escalationTarget) : undefined,
         });
         onClose();
     };
@@ -235,71 +130,101 @@ export default function ManualTaskNodeModal({ isOpen, onClose, nodeData, onSave 
                         </div>
                     </div>
 
-                    {/* Assignments Section */}
-                    <div className="space-y-3">
+                    {/* Timeout Settings */}
+                    <div className="space-y-4">
                         <div className="flex items-center justify-between">
-                            <Label className="text-base font-semibold">Assignees</Label>
-                            <div className="flex gap-2">
-                                <Button size="sm" variant="outline" onClick={() => handleAddClick('user')}><UserIcon className="w-4 h-4 mr-1" /> User</Button>
-                                <Button size="sm" variant="outline" onClick={() => handleAddClick('group')}><Users className="w-4 h-4 mr-1" /> Group</Button>
-                                <Button size="sm" variant="outline" onClick={() => handleAddClick('role')}><Shield className="w-4 h-4 mr-1" /> Role</Button>
-                            </div>
+                            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-2">
+                                <Clock className="w-4 h-4" />
+                                Timeout / Expiration
+                            </h4>
+                            <Switch checked={timeoutEnabled} onCheckedChange={setTimeoutEnabled} />
                         </div>
 
-                        {/* Search Dropdown */}
-                        {showSearchDropdown && (
-                            <div className="relative border rounded-lg p-2 bg-gray-50">
-                                <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                    <input
-                                        ref={searchInputRef}
-                                        className="w-full pl-9 pr-8 py-2 text-sm border rounded bg-white focus:outline-none focus:ring-2 focus:ring-violet-500"
-                                        placeholder={`Search ${selectedEntityType}s...`}
-                                        value={searchQuery}
-                                        onChange={e => setSearchQuery(e.target.value)}
-                                    />
-                                    <button onClick={() => setShowSearchDropdown(false)} className="absolute right-2 top-1/2 -translate-y-1/2"><X className="w-4 h-4 text-gray-400" /></button>
-                                </div>
-                                <div className="mt-2 max-h-48 overflow-y-auto bg-white rounded border shadow-sm">
-                                    {searching ? (
-                                        <div className="p-4 text-center text-gray-400 text-sm">Searching...</div>
-                                    ) : availableEntities.length === 0 ? (
-                                        <div className="p-4 text-center text-gray-400 text-sm">No results found</div>
-                                    ) : (
-                                        availableEntities.map(entity => (
-                                            <div key={entity.id} onClick={() => addAssignment(entity)} className="p-2 hover:bg-violet-50 cursor-pointer flex items-center gap-2">
-                                                {'username' in entity && <UserAvatar user={entity as UserDto} size="sm" />}
-                                                <span className="text-sm">{'name' in entity ? (entity as any).name : (entity as any).username}</span>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* List */}
-                        <div className="space-y-2">
-                            {assignments.length === 0 && !showSearchDropdown && (
-                                <p className="text-sm text-gray-400 italic">No users assigned yet.</p>
-                            )}
-                            {assignments.map(a => (
-                                <div key={a.id} className="flex items-center justify-between p-3 bg-white border rounded-lg shadow-sm">
-                                    <div className="flex items-center gap-3">
-                                        <Badge variant={a.type === 'user' ? 'default' : a.type === 'group' ? 'secondary' : 'outline'}>
-                                            {a.type.toUpperCase()}
-                                        </Badge>
-                                        <div className="flex items-center gap-2">
-                                            {a.type === 'user' && <UserAvatar user={a.entity as UserDto} size="sm" />}
-                                            <span className="font-medium text-sm">
-                                                {'name' in a.entity ? (a.entity as any).name : (a.entity as any).username}
-                                            </span>
+                        {timeoutEnabled && (
+                            <div className="bg-orange-50 border border-orange-100 rounded-lg p-4 space-y-4">
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                    <div>
+                                        <Label>Timeout After</Label>
+                                        <div className="flex gap-2">
+                                            <Input
+                                                type="number"
+                                                min={1}
+                                                value={timeoutValue}
+                                                onChange={(e) => setTimeoutValue(parseInt(e.target.value) || 1)}
+                                                className="w-24"
+                                            />
+                                            <Select value={timeoutUnit} onValueChange={(v) => setTimeoutUnit(v as 'HOURS' | 'DAYS')}>
+                                                <SelectTrigger className="w-28">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="HOURS">Hours</SelectItem>
+                                                    <SelectItem value="DAYS">Days</SelectItem>
+                                                </SelectContent>
+                                            </Select>
                                         </div>
                                     </div>
-                                    <button onClick={() => removeAssignment(a.id)} className="text-gray-400 hover:text-red-500"><X className="w-4 h-4" /></button>
+                                    <div>
+                                        <Label>On Timeout</Label>
+                                        <Select value={timeoutAction} onValueChange={setTimeoutAction}>
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {TIMEOUT_ACTIONS.map(a => (
+                                                    <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
                                 </div>
-                            ))}
-                        </div>
+
+                                <div className="text-xs text-orange-700 bg-orange-100 px-3 py-2 rounded">
+                                    {TIMEOUT_ACTIONS.find(a => a.value === timeoutAction)?.description}
+                                </div>
+
+                                {canUseTimeoutExit && (
+                                    <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-orange-200">
+                                        <div className="flex items-center gap-2">
+                                            <AlertTriangle className="w-4 h-4 text-orange-500" />
+                                            <div>
+                                                <Label className="text-sm">Use TIMEOUT Exit Path</Label>
+                                                <p className="text-xs text-gray-500">Creates separate exit for timeout</p>
+                                            </div>
+                                        </div>
+                                        <Switch checked={useTimeoutExit} onCheckedChange={setUseTimeoutExit} />
+                                    </div>
+                                )}
+
+                                {/* Escalation Target Selector */}
+                                {showEscalationTarget && (
+                                    <div className="bg-white rounded-lg border border-orange-200 p-4 space-y-3">
+                                        <div className="flex items-center gap-2">
+                                            <AlertTriangle className="w-4 h-4 text-orange-500" />
+                                            <Label className="text-sm font-medium">Escalate To (Required)</Label>
+                                        </div>
+                                        <p className="text-xs text-gray-500">
+                                            Select who should receive the task when escalated.
+                                        </p>
+                                        <AssigneeSelector
+                                            assignments={escalationTarget}
+                                            onChange={setEscalationTarget}
+                                            label=""
+                                            accentColor="orange"
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
+
+                    {/* Assignments Section using reusable component */}
+                    <AssigneeSelector
+                        assignments={assignments}
+                        onChange={setAssignments}
+                        label="Task Assignees"
+                        accentColor="violet"
+                    />
                 </div>
 
                 {/* Footer */}
@@ -313,3 +238,4 @@ export default function ManualTaskNodeModal({ isOpen, onClose, nodeData, onSave 
         </div>
     );
 }
+

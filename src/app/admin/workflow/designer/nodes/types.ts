@@ -118,12 +118,16 @@ export interface WorkflowNodeData {
   endType?: 'SUCCESS' | 'FAILURE';
   endMessage?: string;
 
-  // For SlaNode
-  slaDueHours?: number;
-  slaOnTimeout?: 'ESCALATE' | 'NOTIFY' | 'AUTO_APPROVE';
-  escalationAction?: string;
-  warningThreshold?: number;
+  // Timeout configuration (shared by human task nodes: APPROVAL, REVIEW, MANUAL_TASK)
+  timeoutEnabled?: boolean;
+  timeoutValue?: number;
+  timeoutUnit?: 'HOURS' | 'DAYS';
+  timeoutAction?: string;
+  useTimeoutExit?: boolean;
 
+  // Escalation target (when timeout action is ESCALATE)
+  escalationTarget?: any[];
+  escalationTargetEntities?: any[];
   // For ApiCallNode
   apiMethod?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   apiUrl?: string;
@@ -205,7 +209,7 @@ export const NodeTypes = {
 
   // Time / Scheduling
   DELAY: 'delayNode',
-  SLA: 'slaNode',
+
 
   // Document Actions
   MOVE_DOCUMENT: 'moveDocumentNode',
