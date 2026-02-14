@@ -53,6 +53,12 @@ export class UserManagementService {
     return apiClient.get<PageResponse<UserDto>>(`${this.baseUrl}/search?${params}`);
   }
 
+  // Quick search users (returns simple list, no pagination - for recipient picker)
+  async quickSearchUsers(query: string): Promise<UserDto[]> {
+    if (!query || query.length < 2) return [];
+    return apiClient.get<UserDto[]>(`${this.baseUrl}/search?query=${encodeURIComponent(query)}`);
+  }
+
   // Get user by ID
   async getUserById(userId: string): Promise<UserDto> {
     return apiClient.get<UserDto>(`${this.baseUrl}/${userId}`);

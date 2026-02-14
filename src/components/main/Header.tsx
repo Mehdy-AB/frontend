@@ -1,7 +1,8 @@
 // components/Header.tsx
 'use client';
 
-import { Search, Bell, User, Settings, LogOut, Sun, Moon, ChevronDown, Filter, Clock, X } from 'lucide-react';
+import { Search, User, Settings, LogOut, Sun, Moon, ChevronDown, Filter, Clock, X } from 'lucide-react';
+import NotificationBell from './NotificationBell';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
@@ -34,15 +35,15 @@ export default function Header() {
   const [filteredHistory, setFilteredHistory] = useState<SearchHistoryItem[]>([]);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const { t } = useLanguage();
-  
+
   // Check if user is admin
   const userIsAdmin = isAdmin();
-  
+
   // Get user information from session
-  const userName = session?.user?.name 
-    || session?.user?.displayName 
-    || (session?.user?.firstName && session?.user?.lastName 
-      ? `${session.user.firstName} ${session.user.lastName}` 
+  const userName = session?.user?.name
+    || session?.user?.displayName
+    || (session?.user?.firstName && session?.user?.lastName
+      ? `${session.user.firstName} ${session.user.lastName}`
       : session?.user?.email?.split('@')[0] || 'User');
   const userEmail = session?.user?.email || '';
   const userImage = session?.user?.image || session?.user?.imageUrl || '';
@@ -52,9 +53,9 @@ export default function Header() {
 
   // Initialize dark mode from system preference or localStorage
   useEffect(() => {
-    const isDark = localStorage.getItem('darkMode') === 'true' || 
-                  (!localStorage.getItem('darkMode') && window.matchMedia('(prefers-color-scheme: dark)').matches);
-    
+    const isDark = localStorage.getItem('darkMode') === 'true' ||
+      (!localStorage.getItem('darkMode') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+
     setDarkMode(isDark);
     updateDarkMode(isDark);
   }, []);
@@ -67,7 +68,7 @@ export default function Header() {
   // Filter search history based on current query
   useEffect(() => {
     if (searchQuery.trim()) {
-      const filtered = searchHistory.filter(item => 
+      const filtered = searchHistory.filter(item =>
         item.query.toLowerCase().includes(searchQuery.toLowerCase())
       );
       setFilteredHistory(filtered.slice(0, 5)); // Show only top 5 results
@@ -156,7 +157,7 @@ export default function Header() {
               }
             }}
           />
-          
+
           {/* Search History Dropdown */}
           {showSearchHistory && filteredHistory.length > 0 && (
             <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 max-h-64 overflow-y-auto">
@@ -228,10 +229,7 @@ export default function Header() {
         </Button>
 
         {/* Notifications */}
-        <Button variant="ghost" size="icon" className="relative">
-          <Bell className="h-4 w-4" />
-          <span className="absolute -top-1 -right-1 h-3 w-3 bg-destructive rounded-full border-2 border-card"></span>
-        </Button>
+        <NotificationBell />
 
         {/* Admin Dropdown */}
         <AdminDropdown />
@@ -299,7 +297,7 @@ export default function Header() {
           if (searchRequest.includeDocuments !== undefined) {
             searchParams.set('includeDocuments', searchRequest.includeDocuments.toString());
           }
-          
+
           window.location.href = `/search?${searchParams.toString()}`;
         }}
         initialQuery={searchQuery}

@@ -1,4 +1,4 @@
-import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
+import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios';
 import { tokenManager } from './auth/tokenManager';
 
 // Base API client configuration
@@ -14,6 +14,45 @@ const getApiUrl = (): string => {
 };
 
 const API_BASE_URL = getApiUrl();
+
+/**
+ * Enhanced error type with full response details
+ */
+export interface ApiError extends Error {
+  status?: number;
+  statusText?: string;
+  data?: any;
+  url?: string;
+  method?: string;
+  isNetworkError: boolean;
+}
+
+/**
+ * Create an enriched API error from an Axios error
+ */
+function createApiError(error: AxiosError): ApiError {
+  const apiError: ApiError = new Error(error.message) as ApiError;
+  apiError.name = 'ApiError';
+  apiError.isNetworkError = !error.response;
+
+  if (error.response) {
+    // Server responded with an error status
+    apiError.status = error.response.status;
+    apiError.statusText = error.response.statusText;
+    apiError.data = error.response.data;
+    apiError.message =
+      (error.response.data as any)?.message ||
+      (error.response.data as any)?.error_description ||
+      `Request failed with status ${error.response.status}`;
+  }
+
+  if (error.config) {
+    apiError.url = error.config.url;
+    apiError.method = error.config.method?.toUpperCase();
+  }
+
+  return apiError;
+}
 
 class ApiClient {
   private client: AxiosInstance;
@@ -34,21 +73,38 @@ class ApiClient {
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
         }
+        // Log outgoing request for debugging
+        console.debug(`[API] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
         return config;
       },
       (error) => {
+        console.error('[API] Request interceptor error:', error);
         return Promise.reject(error);
       }
     );
 
     // Response interceptor for error handling
     this.client.interceptors.response.use(
-      (response) => response,
-      async (error) => {
-        const originalRequest = error.config;
+      (response) => {
+        console.debug(`[API] Response: ${response.status} ${response.config.url}`);
+        return response;
+      },
+      async (error: AxiosError) => {
+        const originalRequest = error.config as AxiosRequestConfig & { _retry?: boolean };
+
+        // Log full error details for debugging
+        console.error('[API] Request failed:', {
+          url: error.config?.url,
+          method: error.config?.method?.toUpperCase(),
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          data: error.response?.data,
+          message: error.message,
+          code: error.code,
+        });
 
         // Only attempt refresh once per request to prevent infinite loops
-        if (error.response?.status === 401 && !originalRequest._retry) {
+        if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
           originalRequest._retry = true;
 
           // Token expired, try to refresh
@@ -56,7 +112,7 @@ class ApiClient {
           if (refreshed) {
             // Retry the original request with new token
             const token = await tokenManager.getValidAccessToken();
-            if (token) {
+            if (token && originalRequest.headers) {
               originalRequest.headers.Authorization = `Bearer ${token}`;
               return this.client.request(originalRequest);
             }
@@ -64,7 +120,10 @@ class ApiClient {
           // If refresh failed, redirect to login
           await tokenManager.handleAuthFailure();
         }
-        return Promise.reject(error);
+
+        // Create enriched error with full details
+        const apiError = createApiError(error);
+        return Promise.reject(apiError);
       }
     );
   }

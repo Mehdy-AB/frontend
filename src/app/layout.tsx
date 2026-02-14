@@ -6,9 +6,11 @@ import { LanguageProvider } from "@/contexts/LanguageContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import { NotificationContainer } from "@/components/notifications";
 import NotificationApiProvider from "@/components/providers/NotificationApiProvider";
+import { GlobalNotificationProvider } from "@/contexts/GlobalNotificationContext";
 import TokenManagerInitializer from "@/components/providers/TokenManagerInitializer";
 import { LicenseProvider } from "@/contexts/LicenseContext";
 import { LicenseActivationModal } from "@/components/license/LicenseActivationModal";
+import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
   title: 'Gi doc - Document Management System',
@@ -42,11 +44,14 @@ export default function RootLayout({
             <LanguageProvider>
               <NotificationProvider>
                 <NotificationApiProvider>
-                  <ConditionalLayout>
-                    {children}
-                  </ConditionalLayout>
-                  <NotificationContainer />
-                  <LicenseActivationModal />
+                  <GlobalNotificationProvider>
+                    <ConditionalLayout>
+                      {children}
+                    </ConditionalLayout>
+                    <NotificationContainer />
+                    <LicenseActivationModal />
+                    <Toaster richColors position="top-right" />
+                  </GlobalNotificationProvider>
                 </NotificationApiProvider>
               </NotificationProvider>
             </LanguageProvider>

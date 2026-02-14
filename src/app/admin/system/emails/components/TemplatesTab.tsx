@@ -17,6 +17,7 @@ interface TemplatesTabProps {
   onSearch: (query: string) => void;
   onStatusFilter: (status: string) => void;
   onDeleteTemplate: (templateId: string) => void;
+  onCreateTemplate?: () => void;
 }
 
 export default function TemplatesTab({
@@ -25,7 +26,8 @@ export default function TemplatesTab({
   statusFilter,
   onSearch,
   onStatusFilter,
-  onDeleteTemplate
+  onDeleteTemplate,
+  onCreateTemplate
 }: TemplatesTabProps) {
   return (
     <div className="space-y-6">
@@ -47,10 +49,10 @@ export default function TemplatesTab({
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="draft">Draft</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
               </SelectContent>
             </Select>
-            <Button className="gap-2">
+            <Button className="gap-2" onClick={onCreateTemplate}>
               <Plus className="h-4 w-4" />
               Create Template
             </Button>

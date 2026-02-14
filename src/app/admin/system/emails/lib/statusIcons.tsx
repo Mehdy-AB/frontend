@@ -27,14 +27,12 @@ export function getStatusIcon(status: string) {
  */
 export function getDeliveryStatusIcon(status: string) {
   switch (status) {
-    case 'delivered':
+    case 'sent':
       return <MailCheck className="h-4 w-4 text-green-500" />;
-    case 'bounced':
-      return <MailX className="h-4 w-4 text-yellow-500" />;
+    case 'queued':
+      return <Clock className="h-4 w-4 text-blue-500" />;
     case 'failed':
       return <XCircle className="h-4 w-4 text-red-500" />;
-    case 'pending':
-      return <Clock className="h-4 w-4 text-blue-500" />;
     default:
       return <Mail className="h-4 w-4 text-gray-500" />;
   }
