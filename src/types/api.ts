@@ -1699,6 +1699,7 @@ export interface StampResponse {
   description?: string;
   stampType: 'TEXT' | 'IMAGE' | 'DYNAMIC' | 'QR_CODE';
   content?: string;
+  editorElements?: string;
   color?: string;
   backgroundColor?: string;
   borderColor?: string;
@@ -1768,6 +1769,7 @@ export interface CreateStampRequest {
   fontSize?: number;
   fontFamily?: string;
   fontWeight?: string;
+  editorElements?: string;
   imagePath?: string;
   imageUrl?: string;
   position?: string;
@@ -1789,6 +1791,7 @@ export interface UpdateStampRequest {
   fontSize?: number;
   fontFamily?: string;
   fontWeight?: string;
+  editorElements?: string;
   imagePath?: string;
   imageUrl?: string;
   position?: string;

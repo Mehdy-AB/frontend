@@ -13,40 +13,39 @@ interface IconPickerProps {
   onSelectIcon: (iconName: string, IconComponent: React.ComponentType<any>) => void;
 }
 
-// Curated list of popular lucide-react icons
-const POPULAR_ICONS = [
-  'Check', 'X', 'CheckCircle', 'XCircle', 'AlertCircle', 'Info', 'Warning',
+// Curated list of popular lucide-react icons (deduplicated)
+const POPULAR_ICONS = Array.from(new Set([
+  'Check', 'X', 'CheckCircle', 'XCircle', 'AlertCircle', 'Info', 'AlertTriangle',
   'Star', 'Heart', 'Shield', 'Lock', 'Unlock', 'Key', 'Mail', 'Phone',
-  'MapPin', 'Calendar', 'Clock', 'User', 'Users', 'Settings', 'Cog',
+  'MapPin', 'Calendar', 'Clock', 'User', 'Users', 'Settings',
   'FileText', 'Folder', 'Image', 'Video', 'Music', 'Download', 'Upload',
-  'Edit', 'Trash2', 'Plus', 'Minus', 'Search', 'Filter', 'ArrowRight',
+  'Pencil', 'Trash2', 'Plus', 'Minus', 'Search', 'Filter', 'ArrowRight',
   'ArrowLeft', 'ArrowUp', 'ArrowDown', 'ChevronRight', 'ChevronLeft',
   'ChevronUp', 'ChevronDown', 'Home', 'Menu', 'MoreVertical', 'MoreHorizontal',
   'Bell', 'Bookmark', 'Tag', 'Link', 'ExternalLink', 'Copy', 'Share',
   'Save', 'Printer', 'Eye', 'EyeOff', 'RefreshCw', 'RotateCw', 'Zap',
   'Target', 'Award', 'Trophy', 'Gift', 'CreditCard', 'ShoppingCart',
   'Building', 'Globe', 'Wifi', 'WifiOff', 'Battery', 'BatteryCharging',
-  'Camera', 'Mic', 'Volume2', 'VolumeX', 'Play', 'Pause', 'Stop',
+  'Camera', 'Mic', 'Volume2', 'VolumeX', 'Play', 'Pause', 'Square',
   'SkipForward', 'SkipBack', 'Repeat', 'Shuffle', 'ThumbsUp', 'ThumbsDown',
   'MessageSquare', 'Send', 'Inbox', 'Archive', 'Flag', 'BookOpen',
   'GraduationCap', 'Briefcase', 'Coffee', 'Smile', 'Frown', 'Meh',
   'Sun', 'Moon', 'Cloud', 'CloudRain', 'CloudSnow', 'Wind', 'Droplet',
   'Flame', 'Sparkles', 'Rocket', 'Plane', 'Car', 'Bike', 'Ship',
   'Activity', 'TrendingUp', 'TrendingDown', 'BarChart', 'PieChart',
-  'LineChart', 'DollarSign', 'Euro', 'PoundSterling', 'Yen', 'Bitcoin',
-  'Database', 'Server', 'HardDrive', 'Cpu', 'MemoryStick', 'Monitor',
-  'Smartphone', 'Tablet', 'Mouse', 'Keyboard', 'Headphones', 'Speaker',
+  'DollarSign', 'Database', 'Server', 'HardDrive', 'Cpu', 'Monitor',
+  'Smartphone', 'Tablet', 'Keyboard', 'Headphones',
   'Scissors', 'PenTool', 'Paintbrush', 'Palette', 'Eraser', 'Ruler',
-  'Grid', 'Layout', 'Columns', 'Rows', 'Maximize', 'Minimize', 'Square',
+  'Grid', 'Layout', 'Columns', 'Rows', 'Maximize', 'Minimize',
   'Circle', 'Triangle', 'Hexagon', 'Octagon', 'Diamond', 'Crosshair',
-  'Focus', 'Cross', 'CheckSquare', 'Square', 'CircleDot', 'Dot',
-  'Radio', 'ToggleLeft', 'ToggleRight', 'Switch', 'Slider', 'Gauge',
-  'Thermometer', 'Droplets', 'Beaker', 'FlaskConical', 'TestTube',
-  'Microscope', 'Stethoscope', 'HeartPulse', 'Activity', 'Pulse',
-  'Crosshair', 'Target', 'Aim', 'Scan', 'ScanLine', 'QrCode', 'Barcode',
-  'Fingerprint', 'Shield', 'ShieldCheck', 'ShieldAlert', 'ShieldOff',
-  'Lock', 'Unlock', 'Key', 'KeyRound', 'LockKeyhole', 'LockKeyholeOpen',
-];
+  'Focus', 'CheckSquare', 'CircleDot',
+  'Radio', 'ToggleLeft', 'ToggleRight',
+  'Thermometer', 'Droplets', 'FlaskConical',
+  'Microscope', 'Stethoscope', 'HeartPulse',
+  'Scan', 'ScanLine', 'QrCode',
+  'Fingerprint', 'ShieldCheck', 'ShieldAlert', 'ShieldOff',
+  'KeyRound', 'LockKeyhole',
+]));
 
 export function IconPicker({ open, onOpenChange, onSelectIcon }: IconPickerProps) {
   const [searchQuery, setSearchQuery] = useState('');

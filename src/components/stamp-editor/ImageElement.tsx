@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { X, Move, Maximize2 } from 'lucide-react';
+import React, { useRef, useCallback, useEffect, useState } from 'react';
+import { X, Maximize2, ImageOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { CanvasElement } from '@/types/stamp-editor';
 
@@ -22,8 +22,23 @@ export function ImageElement({
   onUpdate,
   onResize,
 }: ImageElementProps) {
-  const [isResizing, setIsResizing] = useState(false);
-  const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0 });
+  const [imgError, setImgError] = useState(false);
+
+  const resizeRef = useRef({
+    active: false,
+    startX: 0,
+    startY: 0,
+    startW: 0,
+    startH: 0,
+  });
+  // Keep onResize in a ref so the stable handler always calls the latest version
+  const onResizeRef = useRef(onResize);
+  onResizeRef.current = onResize;
+
+  // Reset error state when content changes (e.g. image replaced)
+  useEffect(() => {
+    setImgError(false);
+  }, [element.content]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -34,54 +49,50 @@ export function ImageElement({
     onSelect();
   };
 
+  // Stable handler — never changes identity
+  const handleResizeMove = useCallback((e: MouseEvent) => {
+    const r = resizeRef.current;
+    if (!r.active) return;
+    const newWidth = Math.max(20, r.startW + (e.clientX - r.startX));
+    const newHeight = Math.max(20, r.startH + (e.clientY - r.startY));
+    onResizeRef.current(newWidth, newHeight);
+  }, []);
+
+  const handleResizeEnd = useCallback((e: MouseEvent) => {
+    resizeRef.current.active = false;
+    document.removeEventListener('mousemove', handleResizeMove);
+    document.removeEventListener('mouseup', handleResizeEnd);
+  }, [handleResizeMove]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      document.removeEventListener('mousemove', handleResizeMove);
+      document.removeEventListener('mouseup', handleResizeEnd);
+    };
+  }, [handleResizeMove, handleResizeEnd]);
+
   const handleResizeStart = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setIsResizing(true);
-    setResizeStart({
-      x: e.clientX,
-      y: e.clientY,
-      width: element.width || 100,
-      height: element.height || 100,
-    });
+    e.preventDefault();
+    resizeRef.current = {
+      active: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      startW: element.width || 100,
+      startH: element.height || 100,
+    };
+    document.addEventListener('mousemove', handleResizeMove);
+    document.addEventListener('mouseup', handleResizeEnd);
   };
-
-  const handleResizeMove = (e: MouseEvent) => {
-    if (!isResizing) return;
-
-    const deltaX = e.clientX - resizeStart.x;
-    const deltaY = e.clientY - resizeStart.y;
-
-    const newWidth = Math.max(50, resizeStart.width + deltaX);
-    const newHeight = Math.max(50, resizeStart.height + deltaY);
-
-    onResize(newWidth, newHeight);
-  };
-
-  const handleResizeEnd = () => {
-    setIsResizing(false);
-  };
-
-  React.useEffect(() => {
-    if (isResizing) {
-      document.addEventListener('mousemove', handleResizeMove);
-      document.addEventListener('mouseup', handleResizeEnd);
-      return () => {
-        document.removeEventListener('mousemove', handleResizeMove);
-        document.removeEventListener('mouseup', handleResizeEnd);
-      };
-    }
-  }, [isResizing, resizeStart]);
 
   const style: React.CSSProperties = {
-    position: 'absolute',
-    left: `${element.x}px`,
-    top: `${element.y}px`,
+    position: 'relative',
     width: `${element.width || 100}px`,
     height: `${element.height || 100}px`,
     border: isSelected ? '2px solid #3b82f6' : '2px solid transparent',
     borderRadius: '4px',
     cursor: 'move',
-    zIndex: element.zIndex,
   };
 
   return (
@@ -90,13 +101,22 @@ export function ImageElement({
       onClick={handleMouseDown}
       className="image-element"
     >
-      <img
-        src={element.content}
-        alt="Stamp image"
-        className="w-full h-full object-contain rounded"
-        draggable={false}
-      />
-      
+      {imgError ? (
+        /* Broken image fallback */
+        <div className="w-full h-full flex flex-col items-center justify-center bg-gray-100 rounded text-gray-400 gap-1">
+          <ImageOff className="w-8 h-8" />
+          <span className="text-xs">Image failed</span>
+        </div>
+      ) : (
+        <img
+          src={element.content}
+          alt="Stamp image"
+          className="w-full h-full object-contain rounded"
+          draggable={false}
+          onError={() => setImgError(true)}
+        />
+      )}
+
       {isSelected && (
         <>
           {/* Delete Button */}
@@ -128,4 +148,3 @@ export function ImageElement({
     </div>
   );
 }
-

@@ -3,7 +3,7 @@ import { tokenManager } from './auth/tokenManager';
 
 // Base API client configuration
 // Use runtime config (window.ENV) if available, otherwise fall back to env var or default
-const getApiUrl = (): string => {
+export const getApiUrl = (): string => {
   if (typeof window !== 'undefined') {
     // Client-side: use injected window.ENV from layout.tsx
     return (window as any).ENV?.API_URL || 'http://localhost:8080';
@@ -13,7 +13,7 @@ const getApiUrl = (): string => {
   return process.env.INTERNAL_API_URL || process.env.CLIENT_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 };
 
-const API_BASE_URL = getApiUrl();
+export const API_BASE_URL = getApiUrl();
 
 /**
  * Enhanced error type with full response details

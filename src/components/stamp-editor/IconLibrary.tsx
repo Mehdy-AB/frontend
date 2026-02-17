@@ -20,11 +20,11 @@ const BUILT_IN_ICONS = [
   'alert-circle', 'info', 'warning', 'check-circle', 'x-circle'
 ];
 
-export function IconLibrary({ 
-  uploadedIcons, 
-  onSelectIcon, 
+export function IconLibrary({
+  uploadedIcons,
+  onSelectIcon,
   onIconUploaded,
-  selectedIcon 
+  selectedIcon
 }: IconLibraryProps) {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -44,7 +44,7 @@ export function IconLibrary({
     setUploading(true);
     try {
       const response = await stampService.uploadImage(file);
-      onIconUploaded(response.imageUrl);
+      onIconUploaded(response.displayUrl);
       showSuccess('Success', 'Icon uploaded successfully');
     } catch (error: any) {
       showError('Upload Failed', error.response?.data?.message || 'Failed to upload icon');
