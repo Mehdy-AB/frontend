@@ -14,15 +14,17 @@ interface MediaLibraryProps {
   onMediaRemoved?: (url: string) => void;
   selectedMedia?: string;
   insertMode?: 'inline' | 'separate';
+  onUploadFile?: (file: File) => Promise<string>;
 }
 
-export function MediaLibrary({ 
-  uploadedMedia, 
-  onSelectMedia, 
+export function MediaLibrary({
+  uploadedMedia,
+  onSelectMedia,
   onMediaUploaded,
   onMediaRemoved,
   selectedMedia,
-  insertMode = 'separate'
+  insertMode = 'separate',
+  onUploadFile
 }: MediaLibraryProps) {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -41,9 +43,20 @@ export function MediaLibrary({
 
     setUploading(true);
     try {
-      const response = await stampService.uploadImage(file);
-      onMediaUploaded(response.imageUrl);
-      showSuccess('Success', 'Image uploaded successfully');
+      let imageUrl: string;
+      if (onUploadFile) {
+        // Delegate upload to parent (e.g. for deferred upload)
+        imageUrl = await onUploadFile(file);
+      } else {
+        // Default behavior: upload immediately
+        const response = await stampService.uploadImage(file);
+        imageUrl = response.displayUrl;
+      }
+
+      onMediaUploaded(imageUrl);
+      if (!onUploadFile) {
+        showSuccess('Success', 'Image uploaded successfully');
+      }
     } catch (error: any) {
       showError('Upload Failed', error.response?.data?.message || 'Failed to upload image');
     } finally {
@@ -101,8 +114,8 @@ export function MediaLibrary({
                 onClick={() => onSelectMedia(url)}
                 className={`
                   relative aspect-square border-2 rounded-lg overflow-hidden transition-all cursor-pointer group
-                  ${selectedMedia === url 
-                    ? 'border-primary ring-2 ring-primary ring-offset-2' 
+                  ${selectedMedia === url
+                    ? 'border-primary ring-2 ring-primary ring-offset-2'
                     : 'border-gray-200 hover:border-primary'
                   }
                 `}

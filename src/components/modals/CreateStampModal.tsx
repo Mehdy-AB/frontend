@@ -138,14 +138,14 @@ export default function CreateStampModal({
 
       // Upload to server
       const response = await stampService.uploadImage(file);
-      
-      // Update form data with the server URL (this is the actual URL we'll save)
+
+      // Update form data with the raw server URL (this is the actual URL we'll save)
       const serverImageUrl = response.imageUrl;
       setFormData(prev => ({ ...prev, imageUrl: serverImageUrl }));
-      
-      // Update preview to show the server URL
-      setImagePreview(serverImageUrl);
-      
+
+      // Update preview to show the resolved display URL
+      setImagePreview(response.displayUrl);
+
       showSuccess('Image Uploaded', 'Image has been uploaded successfully');
     } catch (error: any) {
       console.error('Failed to upload image:', error);
@@ -189,7 +189,7 @@ export default function CreateStampModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.name.trim()) {
       showError('Validation Error', 'Stamp name is required');
       return;
@@ -239,7 +239,7 @@ export default function CreateStampModal({
         await stampService.createStamp(createData);
         showSuccess('Stamp Created', 'The stamp has been created successfully');
       }
-      
+
       onSuccess();
       onClose();
     } catch (error: any) {
@@ -412,7 +412,7 @@ export default function CreateStampModal({
               {formData.stampType === 'TEXT' && (
                 <div className="space-y-4 border-t pt-4">
                   <h3 className="font-medium">Text Settings</h3>
-                  
+
                   <div>
                     <Label htmlFor="content">Content *</Label>
                     <Input
@@ -539,12 +539,11 @@ export default function CreateStampModal({
               {formData.stampType === 'IMAGE' && (
                 <div className="space-y-4 border-t pt-4">
                   <h3 className="font-medium">Image Settings</h3>
-                  
+
                   {/* Image Upload Area */}
                   <div
-                    className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
-                      dragging ? 'border-primary bg-primary/5' : 'border-muted-foreground/25'
-                    }`}
+                    className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${dragging ? 'border-primary bg-primary/5' : 'border-muted-foreground/25'
+                      }`}
                     onDragOver={handleDragOver}
                     onDragLeave={handleDragLeave}
                     onDrop={handleDrop}
@@ -630,7 +629,7 @@ export default function CreateStampModal({
               {/* Position and Appearance */}
               <div className="space-y-4 border-t pt-4">
                 <h3 className="font-medium">Position & Appearance</h3>
-                
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="position">Position</Label>

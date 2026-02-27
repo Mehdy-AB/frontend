@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useRef, useCallback, useEffect } from 'react';
 import { CanvasElement } from '@/types/stamp-editor';
 import * as LucideIcons from 'lucide-react';
 
@@ -25,6 +25,53 @@ export function IconElement({
   const IconComponent = (LucideIcons as any)[iconName];
   const iconSize = element.style?.iconSize || 24;
   const iconColor = element.style?.color || '#000000';
+
+  // --- Stable resize handler (same pattern as ImageElement) ---
+  const resizeRef = useRef({
+    active: false,
+    startX: 0,
+    startY: 0,
+    startW: 0,
+    startH: 0,
+  });
+  const onResizeRef = useRef(onResize);
+  onResizeRef.current = onResize;
+
+  const handleResizeMove = useCallback((e: MouseEvent) => {
+    const r = resizeRef.current;
+    if (!r.active) return;
+    const newWidth = Math.max(24, r.startW + (e.clientX - r.startX));
+    const newHeight = Math.max(24, r.startH + (e.clientY - r.startY));
+    onResizeRef.current(newWidth, newHeight);
+  }, []);
+
+  const handleResizeEnd = useCallback(() => {
+    resizeRef.current.active = false;
+    document.removeEventListener('mousemove', handleResizeMove);
+    document.removeEventListener('mouseup', handleResizeEnd);
+  }, [handleResizeMove]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      document.removeEventListener('mousemove', handleResizeMove);
+      document.removeEventListener('mouseup', handleResizeEnd);
+    };
+  }, [handleResizeMove, handleResizeEnd]);
+
+  const handleResizeStart = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    resizeRef.current = {
+      active: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      startW: element.width || 48,
+      startH: element.height || 48,
+    };
+    document.addEventListener('mousemove', handleResizeMove);
+    document.addEventListener('mouseup', handleResizeEnd);
+  };
 
   if (!IconComponent) {
     return (
@@ -71,37 +118,13 @@ export function IconElement({
       {isSelected && (
         <>
           <div className="absolute -top-2 -right-2 w-4 h-4 bg-blue-500 rounded-full border-2 border-white" />
-          {/* Resize handles */}
+          {/* Resize handle — stable ref-based handler, no closure leak */}
           <div
-            className="absolute -bottom-1 -right-1 w-3 h-3 bg-blue-500 rounded-full border-2 border-white cursor-se-resize"
-            onMouseDown={(e) => {
-              e.stopPropagation();
-              const startX = e.clientX;
-              const startY = e.clientY;
-              const startWidth = element.width || 48;
-              const startHeight = element.height || 48;
-
-              const handleMouseMove = (moveEvent: MouseEvent) => {
-                const deltaX = moveEvent.clientX - startX;
-                const deltaY = moveEvent.clientY - startY;
-                const newWidth = Math.max(24, startWidth + deltaX);
-                const newHeight = Math.max(24, startHeight + deltaY);
-                onResize(newWidth, newHeight);
-              };
-
-              const handleMouseUp = () => {
-                document.removeEventListener('mousemove', handleMouseMove);
-                document.removeEventListener('mouseup', handleMouseUp);
-              };
-
-              document.addEventListener('mousemove', handleMouseMove);
-              document.addEventListener('mouseup', handleMouseUp);
-            }}
+            className="resize-handle absolute -bottom-1 -right-1 w-3 h-3 bg-blue-500 rounded-full border-2 border-white cursor-se-resize"
+            onMouseDown={handleResizeStart}
           />
         </>
       )}
     </div>
   );
 }
-
-

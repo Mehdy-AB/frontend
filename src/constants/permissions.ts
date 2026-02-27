@@ -123,6 +123,13 @@ export const Permissions = {
   FORM_DELETE: 'form:delete',
   FORM_PUBLISH: 'form:publish',
   FORM_VIEW_SUBMISSIONS: 'form:view-submissions',
+
+  // Stamp Management
+  STAMP_READ: 'stamp:read',
+  STAMP_CREATE: 'stamp:create',
+  STAMP_UPDATE: 'stamp:update',
+  STAMP_DELETE: 'stamp:delete',
+  STAMP_APPLY: 'stamp:apply',
 } as const;
 
 /**
@@ -235,10 +242,10 @@ export const AdminPagePermissions: Record<string, {
     assign: Permissions.TAG_ASSIGN,
   },
   '/admin/documents/stamps': {
-    view: Permissions.DOCUMENT_READ,
-    create: Permissions.DOCUMENT_WRITE,
-    update: Permissions.DOCUMENT_UPDATE,
-    delete: Permissions.DOCUMENT_DELETE,
+    view: Permissions.STAMP_READ,
+    create: Permissions.STAMP_CREATE,
+    update: Permissions.STAMP_UPDATE,
+    delete: Permissions.STAMP_DELETE,
   },
   '/admin/documents/digital-signature': {
     view: Permissions.DOCUMENT_SIGN,

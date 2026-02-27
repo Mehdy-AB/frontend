@@ -1,25 +1,12 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-  DragStartEvent,
-  DragOverlay,
-  DragMoveEvent,
-} from '@dnd-kit/core';
-import {
-  sortableKeyboardCoordinates,
-} from '@dnd-kit/sortable';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { Editor } from '@tiptap/react';
 import { CanvasElement } from '@/types/stamp-editor';
 import { RichTextElement } from './RichTextElement';
 import { ImageElement } from './ImageElement';
 import { IconElement } from './IconElement';
+import { InlineToolbar } from './InlineToolbar';
 
 interface CanvasEditorProps {
   elements: CanvasElement[];
@@ -35,6 +22,14 @@ interface CanvasEditorProps {
   onInsertImage: (url: string) => void;
 }
 
+/**
+ * Manual drag implementation.
+ * We stopped using @dnd-kit because the PointerSensor could not receive events
+ * from child components that call stopPropagation() on mouseDown (which is
+ * necessary for text-editing, resize handles, etc.).  A manual approach gives
+ * us full control: mouseDown on the wrapper starts a drag, mousemove on the
+ * document updates position, mouseup ends it.
+ */
 export function CanvasEditor({
   elements,
   selectedElementId,
@@ -49,59 +44,127 @@ export function CanvasEditor({
   onInsertImage,
 }: CanvasEditorProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [dragPosition, setDragPosition] = useState<{ x: number; y: number } | null>(null);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
+  // --- Active text editor instance (for toolbar rendered outside canvas) ---
+  const [activeEditor, setActiveEditor] = useState<Editor | null>(null);
+  const editorMapRef = useRef<Map<string, Editor | null>>(new Map());
 
-  const handleDragStart = (event: DragStartEvent) => {
-    const { active } = event;
-    setActiveId(active.id as string);
-    
-    const element = elements.find((e) => e.id === active.id);
-    if (element) {
-      setDragPosition({ x: element.x, y: element.y });
+  const handleEditorReady = useCallback((elementId: string, editor: Editor | null) => {
+    if (editor) {
+      editorMapRef.current.set(elementId, editor);
+    } else {
+      editorMapRef.current.delete(elementId);
     }
-  };
-
-  const handleDragMove = (event: DragMoveEvent) => {
-    if (!activeId || !canvasRef.current) return;
-    
-    const { delta } = event;
-    const element = elements.find((e) => e.id === activeId);
-    if (element && dragPosition) {
-      const canvasRect = canvasRef.current.getBoundingClientRect();
-      const newX = Math.max(0, Math.min(
-        canvasWidth - (element.width || 100),
-        dragPosition.x + delta.x
-      ));
-      const newY = Math.max(0, Math.min(
-        canvasHeight - (element.height || 100),
-        dragPosition.y + delta.y
-      ));
-      
-      setDragPosition({ x: newX, y: newY });
+    // Update active editor if this element is being edited
+    if (elementId === editingElementId) {
+      setActiveEditor(editor);
     }
-  };
+  }, [editingElementId]);
 
-  const handleDragEnd = (event: DragEndEvent) => {
-    if (activeId && dragPosition) {
-      const element = elements.find((e) => e.id === activeId);
-      if (element) {
-        onElementUpdate(activeId, { x: dragPosition.x, y: dragPosition.y });
-      }
+  // Sync active editor when editingElementId changes
+  useEffect(() => {
+    if (editingElementId) {
+      const ed = editorMapRef.current.get(editingElementId) || null;
+      setActiveEditor(ed);
+    } else {
+      setActiveEditor(null);
     }
-    setActiveId(null);
-    setDragPosition(null);
+  }, [editingElementId]);
+
+  // Drag state stored in a ref so the mousemove handler never goes stale.
+  const dragRef = useRef<{
+    active: boolean;
+    id: string;
+    startMouseX: number;
+    startMouseY: number;
+    startElX: number;
+    startElY: number;
+  } | null>(null);
+  // Mutable position used during drag to avoid per-pixel re-renders of ALL elements
+  const [dragOffset, setDragOffset] = useState<{ id: string; dx: number; dy: number } | null>(null);
+
+  // --- Stable refs so handlers never go stale ---
+  const elementsRef = useRef(elements);
+  elementsRef.current = elements;
+  const onElementUpdateRef = useRef(onElementUpdate);
+  onElementUpdateRef.current = onElementUpdate;
+  const canvasDimsRef = useRef({ w: canvasWidth, h: canvasHeight });
+  canvasDimsRef.current = { w: canvasWidth, h: canvasHeight };
+  const dragOffsetRef = useRef(dragOffset);
+  dragOffsetRef.current = dragOffset;
+
+  // ---- handlers (stable via useCallback with NO external deps) ----
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    const d = dragRef.current;
+    if (!d || !d.active) return;
+    setDragOffset({
+      id: d.id,
+      dx: e.clientX - d.startMouseX,
+      dy: e.clientY - d.startMouseY,
+    });
+  }, []);
+
+  const handleMouseUp = useCallback(() => {
+    const d = dragRef.current;
+    if (d && d.active) {
+      const off = dragOffsetRef.current;
+      const finalX = d.startElX + (off?.dx ?? 0);
+      const finalY = d.startElY + (off?.dy ?? 0);
+      const { w: cw, h: ch } = canvasDimsRef.current;
+      const el = elementsRef.current.find(e => e.id === d.id);
+      const elW = el?.width || 100;
+      const elH = el?.height || 50;
+      onElementUpdateRef.current(d.id, {
+        x: Math.max(0, Math.min(cw - elW, finalX)),
+        y: Math.max(0, Math.min(ch - elH, finalY)),
+      });
+    }
+    dragRef.current = null;
+    setDragOffset(null);
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleMouseUp);
+  }, [handleMouseMove]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [handleMouseMove, handleMouseUp]);
+
+  const startDrag = (elementId: string, e: React.MouseEvent) => {
+    // Don't start drag if user clicked a resize handle, button, toolbar, or is editing text
+    const target = e.target as HTMLElement;
+    if (
+      target.closest('.resize-handle') ||
+      target.closest('button') ||
+      target.closest('.inline-toolbar') ||
+      target.closest('select') ||
+      editingElementId === elementId
+    ) {
+      return;
+    }
+
+    e.preventDefault();
+    const element = elements.find((el) => el.id === elementId);
+    if (!element) return;
+
+    onElementSelect(elementId);
+
+    dragRef.current = {
+      active: true,
+      id: elementId,
+      startMouseX: e.clientX,
+      startMouseY: e.clientY,
+      startElX: element.x,
+      startElY: element.y,
+    };
+    setDragOffset(null);
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
   };
 
   const handleCanvasClick = (e: React.MouseEvent) => {
@@ -111,40 +174,56 @@ export function CanvasEditor({
     }
   };
 
-  const activeElement = activeId ? elements.find((e) => e.id === activeId) : null;
+  // Find the editing text element for the toolbar
+  const editingTextElement = editingElementId
+    ? elements.find(el => el.id === editingElementId && el.type === 'text')
+    : null;
+
+  // Helper: clamp drag position so elements can't visually leave the canvas
+  const clampPos = (rawX: number, rawY: number, elW: number, elH: number) => ({
+    x: Math.max(0, Math.min(canvasWidth - elW, rawX)),
+    y: Math.max(0, Math.min(canvasHeight - elH, rawY)),
+  });
 
   return (
-    <div
-      ref={canvasRef}
-      className="relative bg-white border-2 border-gray-300 rounded-lg overflow-hidden cursor-default"
-      style={{
-        width: `${canvasWidth}px`,
-        height: `${canvasHeight}px`,
-      }}
-      onClick={handleCanvasClick}
-    >
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragStart={handleDragStart}
-        onDragMove={handleDragMove}
-        onDragEnd={handleDragEnd}
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      {/* Toolbar rendered OUTSIDE and ABOVE the canvas — never overflows */}
+      {editingTextElement && activeEditor && (
+        <div className="mb-2" style={{ maxWidth: '100%' }}>
+          <InlineToolbar editor={activeEditor} onInsertImage={onInsertImage} />
+        </div>
+      )}
+
+      {/* Canvas */}
+      <div
+        ref={canvasRef}
+        className="relative bg-white border-2 border-gray-300 rounded-lg overflow-hidden cursor-default"
+        style={{
+          width: `${canvasWidth}px`,
+          height: `${canvasHeight}px`,
+        }}
+        onClick={handleCanvasClick}
       >
         {elements.map((element) => {
-          const isDragging = activeId === element.id;
-          const displayX = isDragging && dragPosition ? dragPosition.x : element.x;
-          const displayY = isDragging && dragPosition ? dragPosition.y : element.y;
+          const isDragging = dragOffset?.id === element.id;
+          const rawX = isDragging ? element.x + dragOffset.dx : element.x;
+          const rawY = isDragging ? element.y + dragOffset.dy : element.y;
+          const elW = element.width || 100;
+          const elH = element.height || 50;
+          const { x: displayX, y: displayY } = clampPos(rawX, rawY, elW, elH);
 
           if (element.type === 'text') {
             return (
               <div
                 key={element.id}
+                onMouseDown={(e) => startDrag(element.id, e)}
                 style={{
                   position: 'absolute',
                   left: `${displayX}px`,
                   top: `${displayY}px`,
                   zIndex: element.zIndex,
-                  opacity: isDragging ? 0.5 : 1,
+                  opacity: isDragging ? 0.7 : 1,
+                  cursor: editingElementId === element.id ? 'text' : 'move',
                 }}
               >
                 <RichTextElement
@@ -155,7 +234,10 @@ export function CanvasEditor({
                   onStartEdit={() => onElementStartEdit(element.id)}
                   onStopEdit={onElementStopEdit}
                   onUpdate={(content) => onElementUpdate(element.id, { content })}
+                  onDelete={() => onElementDelete(element.id)}
+                  onResize={(width, height) => onElementUpdate(element.id, { width, height })}
                   onInsertImage={onInsertImage}
+                  onEditorReady={(editor) => handleEditorReady(element.id, editor)}
                 />
               </div>
             );
@@ -163,12 +245,13 @@ export function CanvasEditor({
             return (
               <div
                 key={element.id}
+                onMouseDown={(e) => startDrag(element.id, e)}
                 style={{
                   position: 'absolute',
                   left: `${displayX}px`,
                   top: `${displayY}px`,
                   zIndex: element.zIndex,
-                  opacity: isDragging ? 0.5 : 1,
+                  opacity: isDragging ? 0.7 : 1,
                   cursor: isDragging ? 'grabbing' : 'move',
                 }}
               >
@@ -186,12 +269,13 @@ export function CanvasEditor({
             return (
               <div
                 key={element.id}
+                onMouseDown={(e) => startDrag(element.id, e)}
                 style={{
                   position: 'absolute',
                   left: `${displayX}px`,
                   top: `${displayY}px`,
                   zIndex: element.zIndex,
-                  opacity: isDragging ? 0.5 : 1,
+                  opacity: isDragging ? 0.7 : 1,
                   cursor: isDragging ? 'grabbing' : 'move',
                 }}
               >
@@ -207,30 +291,7 @@ export function CanvasEditor({
             );
           }
         })}
-        <DragOverlay>
-          {activeElement && (
-            <div
-              style={{
-                width: `${activeElement.width || 100}px`,
-                height: `${activeElement.height || 100}px`,
-                opacity: 0.5,
-                border: '2px dashed #3b82f6',
-                backgroundColor: 'white',
-              }}
-            >
-              {activeElement.type === 'text' ? (
-                <div 
-                  dangerouslySetInnerHTML={{ __html: activeElement.content || '' }}
-                  className="p-2"
-                />
-              ) : (
-                <img src={activeElement.content} alt="Preview" className="w-full h-full object-contain" />
-              )}
-            </div>
-          )}
-        </DragOverlay>
-      </DndContext>
+      </div>
     </div>
   );
 }
-

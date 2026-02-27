@@ -23,10 +23,24 @@
   vertical-align: middle;
 }
 
-/* Inline Toolbar Styles */
+/* Inline Toolbar Styles — always above the element */
 .stamp-text-element .inline-toolbar {
   position: absolute;
   z-index: 1000;
 }
 
+/* Settings panel: scrollable on small viewports */
+@media (max-height: 900px) {
+  .stamp-settings-scroll {
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+}
 
+/* Canvas wrapper centering */
+.stamp-canvas-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+}
