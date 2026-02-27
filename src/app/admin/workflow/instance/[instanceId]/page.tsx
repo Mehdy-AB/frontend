@@ -17,7 +17,12 @@ import {
   Download,
   Eye,
   Activity,
-  Timer
+  Timer,
+  RefreshCw,
+  RotateCcw,
+  CalendarClock,
+  UserPlus,
+  Variable
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,6 +30,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Label } from '@/components/ui/label';
 import { workflowService } from '@/api/services/workflowService';
+import { workflowAdminService } from '@/api/services/workflowAdminService';
 import { WorkflowInstanceResponse } from '@/types/api';
 import { formatDate } from '@/lib/dateFormatter';
 import { WorkflowTimeline } from '@/components/workflow/WorkflowTimeline';
@@ -42,6 +48,7 @@ import {
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import WorkflowInstanceStepsTab from '@/components/workflow/WorkflowInstanceStepsTab';
+import InstanceVariablesTab from '@/components/workflow/InstanceVariablesTab';
 
 export default function WorkflowInstanceDetailPage() {
   const params = useParams();
@@ -57,9 +64,14 @@ export default function WorkflowInstanceDetailPage() {
   const [showReassignDialog, setShowReassignDialog] = useState(false);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
+  const [showRestartDialog, setShowRestartDialog] = useState(false);
+  const [showDueDateDialog, setShowDueDateDialog] = useState(false);
+  const [showRollbackDialog, setShowRollbackDialog] = useState(false);
   const [selectedStepInstanceId, setSelectedStepInstanceId] = useState<number | null>(null);
   const [cancellationReason, setCancellationReason] = useState('');
   const [completionComment, setCompletionComment] = useState('');
+  const [newDueDate, setNewDueDate] = useState('');
+  const [rollbackReason, setRollbackReason] = useState('');
 
   useEffect(() => {
     if (instanceId) {
@@ -149,6 +161,44 @@ export default function WorkflowInstanceDetailPage() {
     } catch (error: any) {
       console.error('Error completing instance:', error);
       showError('Failed to complete workflow instance', error?.message || 'Unknown error');
+    }
+  };
+
+  const handleRestartWorkflow = async () => {
+    if (!instance) return;
+
+    try {
+      const newInstance = await workflowAdminService.restartWorkflowInstance(instance.id);
+      showSuccess(`Workflow restarted! New instance ID: ${newInstance.id}`);
+      setShowRestartDialog(false);
+      router.push(`/admin/workflow/instance/${newInstance.id}`);
+    } catch (error: any) {
+      console.error('Error restarting workflow:', error);
+      showError('Failed to restart workflow', error?.message || 'Unknown error');
+    }
+  };
+
+  const handleUpdateDueDate = async () => {
+    if (!instance || !instance.currentNodeInstanceId || !newDueDate) return;
+
+    try {
+      await workflowAdminService.updateDueDate(instance.id, instance.currentNodeInstanceId, {
+        dueDate: newDueDate
+      });
+      showSuccess('Due date updated');
+      setShowDueDateDialog(false);
+      setNewDueDate('');
+      await loadInstance();
+    } catch (error: any) {
+      console.error('Error updating due date:', error);
+      showError('Failed to update due date', error?.message || 'Unknown error');
+    }
+  };
+
+  const handleReassignCurrentStep = () => {
+    if (instance?.currentNodeInstanceId) {
+      setSelectedStepInstanceId(instance.currentNodeInstanceId);
+      setShowReassignDialog(true);
     }
   };
 
@@ -298,11 +348,85 @@ export default function WorkflowInstanceDetailPage() {
         </Card>
       </div>
 
+      {/* Admin Actions Card */}
+      <Card className="border-amber-200 bg-amber-50/50">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg font-semibold text-amber-800 flex items-center gap-2">
+            <RotateCcw className="h-5 w-5" />
+            Admin Actions
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-2">
+            {/* Active workflow actions */}
+            {instance.status === 'ACTIVE' && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleReassignCurrentStep}
+                  disabled={!instance.currentNodeInstanceId}
+                  className="border-purple-300 text-purple-700 hover:bg-purple-50"
+                >
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Reassign Current Step
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowDueDateDialog(true)}
+                  disabled={!instance.currentNodeInstanceId}
+                  className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                >
+                  <CalendarClock className="h-4 w-4 mr-2" />
+                  Change Due Date
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCompleteInstance}
+                  className="border-green-300 text-green-700 hover:bg-green-50"
+                >
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  Force Complete
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCancelInstance}
+                  className="border-red-300 text-red-700 hover:bg-red-50"
+                >
+                  <XCircle className="h-4 w-4 mr-2" />
+                  Cancel Workflow
+                </Button>
+              </>
+            )}
+
+            {/* Completed/Cancelled/Failed workflow actions */}
+            {(instance.status === 'COMPLETED' || instance.status === 'CANCELLED' || instance.status === 'FAILED') && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowRestartDialog(true)}
+                className="border-green-300 text-green-700 hover:bg-green-50"
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Restart Workflow
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Main Content Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4 lg:w-[600px] bg-muted/50 p-1">
+        <TabsList className="grid w-full grid-cols-5 lg:w-[750px] bg-muted/50 p-1">
           <TabsTrigger value="progress" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
             Progress
+          </TabsTrigger>
+          <TabsTrigger value="variables" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
+            <Variable className="h-4 w-4 mr-1.5" />
+            Variables
           </TabsTrigger>
           <TabsTrigger value="document" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
             Document
@@ -341,6 +465,20 @@ export default function WorkflowInstanceDetailPage() {
             onReassign={handleReassignStep}
             onActionComplete={loadInstance}
           />
+        </TabsContent>
+
+        <TabsContent value="variables" className="animate-in fade-in-50 duration-300">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-xl">
+                <Variable className="h-5 w-5 text-primary" />
+                Instance Variables
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <InstanceVariablesTab instanceId={instance.id} />
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="document" className="animate-in fade-in-50 duration-300">
@@ -544,6 +682,69 @@ export default function WorkflowInstanceDetailPage() {
             <Button onClick={handleConfirmComplete}>
               <CheckCircle className="h-4 w-4 mr-2" />
               Force Complete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Restart Dialog */}
+      <Dialog open={showRestartDialog} onOpenChange={setShowRestartDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Restart Workflow</DialogTitle>
+            <DialogDescription>
+              This will create a new workflow instance for document "{instance.document.name}"
+              using the same workflow definition. The current instance will remain unchanged.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowRestartDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleRestartWorkflow} className="bg-green-600 hover:bg-green-700">
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Restart Workflow
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Due Date Dialog */}
+      <Dialog open={showDueDateDialog} onOpenChange={setShowDueDateDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Change Due Date</DialogTitle>
+            <DialogDescription>
+              Set a new due date for the current step of this workflow.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>New Due Date</Label>
+              <input
+                type="datetime-local"
+                value={newDueDate}
+                onChange={(e) => setNewDueDate(e.target.value)}
+                className="w-full p-2 border rounded-md"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowDueDateDialog(false);
+                setNewDueDate('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleUpdateDueDate} disabled={!newDueDate}>
+              <CalendarClock className="h-4 w-4 mr-2" />
+              Update Due Date
             </Button>
           </DialogFooter>
         </DialogContent>

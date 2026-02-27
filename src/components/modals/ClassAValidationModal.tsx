@@ -67,12 +67,12 @@ export default function ClassAValidationModal({
       const timer = setTimeout(() => {
         fetchDownloadUrl();
       }, 100);
-      
+
       setTitle(document.title || document.name || '');
       setName(document.name || '');
       setDescription((document as any).description || '');
       loadAvailableTags();
-      
+
       return () => clearTimeout(timer);
     } else if (!isOpen) {
       // Clear download URL when modal closes to prevent unwanted downloads
@@ -197,7 +197,7 @@ export default function ClassAValidationModal({
       if (def && (def.mandatory || false)) {
         const fieldKey = def.key || def.metadataName;
         const value = metadata[fieldKey];
-        
+
         // If value is empty, null, or "__custom__" (which means custom input is selected but not filled), it's invalid
         if (!value || value.trim() === '' || value === '__custom__') {
           return false;
@@ -221,29 +221,29 @@ export default function ClassAValidationModal({
 
       // Get metadata definitions from details
       const metadataDefs = (documentDetails as any)?.metadataDefinitions || [];
-      
+
       // Try to get categoryId from document, or fallback to documentDetails
       let categoryId: number | undefined = document.categoryId;
       if (!categoryId || categoryId === 0) {
         // Fallback to categoryId from documentDetails if available
-        categoryId = (documentDetails as any)?.filingCategory?.id || 
-                     (documentDetails as any)?.categoryId || 
-                     undefined;
+        categoryId = (documentDetails as any)?.filingCategory?.id ||
+          (documentDetails as any)?.categoryId ||
+          undefined;
       }
-      
+
       // Check if we have a valid categoryId (not null, undefined, or 0)
       const hasCategoryId = categoryId != null && categoryId !== 0;
-      
+
       if (hasCategoryId) {
         const metaDataDto: MetaDataDto[] = [];
-        
+
         // Only include metadata if definitions exist and values are provided
         if (documentDetails && Array.isArray(metadataDefs) && metadataDefs.length > 0) {
           metadataDefs.forEach((def: any) => {
             if (!def) return;
             const fieldKey = def.key || def.metadataName;
             const metadataId = def.id || def.metadataId;
-            
+
             // Only include if we have a value and a valid ID
             if (metadata[fieldKey] && metadata[fieldKey].trim() !== '' && metadataId) {
               metaDataDto.push({
@@ -260,15 +260,15 @@ export default function ClassAValidationModal({
           id: categoryId!, // Non-null assertion since we checked hasCategoryId
           metaDataDto: metaDataDto // Always include, even if empty array
         };
-        
+
         console.log('Created filingCategoryDto:', {
           id: filingCategoryDto.id,
           metaDataDtoCount: filingCategoryDto.metaDataDto.length,
           metaDataDto: filingCategoryDto.metaDataDto
         });
       } else {
-        console.warn('No valid categoryId found. Document categoryId:', document.categoryId, 
-                     'DocumentDetails categoryId:', (documentDetails as any)?.filingCategory?.id);
+        console.warn('No valid categoryId found. Document categoryId:', document.categoryId,
+          'DocumentDetails categoryId:', (documentDetails as any)?.filingCategory?.id);
       }
 
       // Allow user to change extension; if empty, fallback to original name
@@ -300,13 +300,13 @@ export default function ClassAValidationModal({
       onSuccess();
     } catch (error: any) {
       console.error('Error validating document:', error);
-      
+
       // Extract error message from ErrorDto response (backend returns {status, message})
-      const errorMessage = error?.response?.data?.message || 
-                          error?.message || 
-                          'Failed to validate document. Please try again.';
+      const errorMessage = error?.response?.data?.message ||
+        error?.message ||
+        'Failed to validate document. Please try again.';
       const status = error?.response?.status;
-      
+
       // Handle duplicate name error (409 Conflict)
       if (status === 409 || errorMessage.includes('already exists')) {
         showError('Duplicate Name', errorMessage);
@@ -707,72 +707,72 @@ export default function ClassAValidationModal({
                       </h4>
                     </div>
 
-                  {/* Search and Add Tag Interface */}
-                  <div className="space-y-2 mb-4">
-                    <SearchSelect
-                      items={availableTags}
-                      fetchFunction={async (query: string) => {
-                        const response = await tagService.searchTags(query, 0, 20);
-                        return response.content || [];
-                      }}
-                      onSelect={handleTagSelect}
-                      placeholder="Search and select tags..."
-                      displayField="name"
-                      descriptionField="description"
-                      debounceMs={300}
-                    />
+                    {/* Search and Add Tag Interface */}
+                    <div className="space-y-2 mb-4">
+                      <SearchSelect
+                        items={availableTags}
+                        fetchFunction={async (query: string) => {
+                          const response = await tagService.searchTags(query, 0, 20);
+                          return response.content || [];
+                        }}
+                        onSelect={handleTagSelect}
+                        placeholder="Search and select tags..."
+                        displayField="name"
+                        descriptionField="description"
+                        debounceMs={300}
+                      />
 
-                    {/* Create New Tag Option */}
-                    <div className="text-xs text-neutral-text-light">
-                      Can't find the tag you're looking for?{' '}
-                      <button
-                        onClick={() => setIsCreateTagModalOpen(true)}
-                        className="text-primary hover:text-primary-dark underline hover:no-underline transition-colors"
-                      >
-                        Create a new tag
-                      </button>
+                      {/* Create New Tag Option */}
+                      <div className="text-xs text-neutral-text-light">
+                        Can't find the tag you're looking for?{' '}
+                        <button
+                          onClick={() => setIsCreateTagModalOpen(true)}
+                          className="text-primary hover:text-primary-dark underline hover:no-underline transition-colors"
+                        >
+                          Create a new tag
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Tags Display */}
+                    <div className="flex flex-wrap gap-2 min-h-[32px]">
+                      {selectedTags.length ? (
+                        selectedTags.map((tag) => (
+                          <div
+                            key={tag.id}
+                            className="group flex items-center gap-1 px-3 py-1.5 rounded-lg border transition-all hover:opacity-80"
+                            style={{
+                              backgroundColor: tag.color ? `${tag.color}20` : '#EFF6FF',
+                              borderColor: tag.color ? `${tag.color}40` : '#DBEAFE',
+                              color: tag.color || '#1D4ED8'
+                            }}
+                          >
+                            <span className="text-sm font-medium">{tag.name}</span>
+                            {tag.color && (
+                              <div
+                                className="w-3 h-3 rounded-full border"
+                                style={{
+                                  backgroundColor: tag.color,
+                                  borderColor: tag.color
+                                }}
+                              />
+                            )}
+                            <button
+                              onClick={() => handleTagRemove(tag.id)}
+                              className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-black hover:bg-opacity-10"
+                              style={{ color: tag.color || '#1D4ED8' }}
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-sm text-neutral-text-light italic">
+                          No tags added yet
+                        </div>
+                      )}
                     </div>
                   </div>
-
-                  {/* Tags Display */}
-                  <div className="flex flex-wrap gap-2 min-h-[32px]">
-                    {selectedTags.length ? (
-                      selectedTags.map((tag) => (
-                        <div
-                          key={tag.id}
-                          className="group flex items-center gap-1 px-3 py-1.5 rounded-lg border transition-all hover:opacity-80"
-                          style={{
-                            backgroundColor: tag.color ? `${tag.color}20` : '#EFF6FF',
-                            borderColor: tag.color ? `${tag.color}40` : '#DBEAFE',
-                            color: tag.color || '#1D4ED8'
-                          }}
-                        >
-                          <span className="text-sm font-medium">{tag.name}</span>
-                          {tag.color && (
-                            <div
-                              className="w-3 h-3 rounded-full border"
-                              style={{
-                                backgroundColor: tag.color,
-                                borderColor: tag.color
-                              }}
-                            />
-                          )}
-                          <button
-                            onClick={() => handleTagRemove(tag.id)}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-black hover:bg-opacity-10"
-                            style={{ color: tag.color || '#1D4ED8' }}
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-sm text-neutral-text-light italic">
-                        No tags added yet
-                      </div>
-                    )}
-                  </div>
-                </div>
 
                   {/* Language */}
                   <div className="space-y-2 bg-white p-4 rounded-lg border border-gray-200">
@@ -821,17 +821,17 @@ export default function ClassAValidationModal({
 
                 {/* Actions */}
                 <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 mt-6 pb-2 bg-white sticky bottom-0">
-                  <Button 
-                    variant="outline" 
-                    onClick={onClose} 
+                  <Button
+                    variant="outline"
+                    onClick={onClose}
                     disabled={validating || !isFormValid()}
                     className="h-11 px-6 border-gray-300 text-gray-700 hover:bg-gray-50"
                   >
                     Cancel
                   </Button>
-                  <Button 
-                    onClick={handleValidate} 
-                    disabled={validating || !isFormValid()} 
+                  <Button
+                    onClick={handleValidate}
+                    disabled={validating || !isFormValid()}
                     className="min-w-[160px] h-11 px-6 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-md"
                   >
                     {validating ? (

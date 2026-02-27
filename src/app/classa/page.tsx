@@ -31,7 +31,9 @@ import {
   Trash2,
   Calendar,
   RefreshCw,
-  ChevronDown
+  ChevronDown,
+  Folder,
+  Info
 } from 'lucide-react';
 import React from 'react';
 import { unclassifiedDocumentService } from '@/api/services/unclassifiedDocumentService';
@@ -89,9 +91,9 @@ export default function ClassAPage() {
 
   const pageSize = 20;
 
-  const fetchDocuments = async () => {
+  const fetchDocuments = async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
 
       // Prepare search request
       const searchRequest: UnclassifiedDocumentSearchRequestDto = {
@@ -132,12 +134,14 @@ export default function ClassAPage() {
 
   const handleRefresh = () => {
     setIsRefreshing(true);
-    fetchDocuments();
+    fetchDocuments(false);
   };
 
   const handleValidateDocument = (document: UnclassifiedDocumentResponseDto) => {
-    setSelectedDocument(document);
-    setShowValidationModal(true);
+    // Navigate to full-page validation view
+    // Pass current page documents as queue for next/previous navigation
+    const queue = documents.map(d => d.id);
+    router.push(`/classa/${document.id}?queue=${encodeURIComponent(JSON.stringify(queue))}`);
   };
 
 
@@ -152,7 +156,7 @@ export default function ClassAPage() {
     try {
       setDeleting(true);
       await unclassifiedDocumentService.deleteUnclassifiedDocument(documentToDelete.id);
-      fetchDocuments(); // Refresh the list
+      fetchDocuments(false); // Refresh without showing skeleton
       setShowDeleteConfirmation(false);
       setDocumentToDelete(null);
     } catch (error) {
@@ -174,17 +178,12 @@ export default function ClassAPage() {
         return;
       }
 
-      // Fetch the first document to start validation
+      // Navigate to first document with full queue
       const firstDocumentId = documentIds[0];
-      const firstDocument = await unclassifiedDocumentService.getUnclassifiedDocumentById(firstDocumentId);
-      
-      // Store IDs in queue for sequential processing
-      // We'll fetch full document details as needed for each validation
-      setValidationQueue(documentIds);
-      setSelectedDocument(firstDocument as any);
-      setShowValidationModal(true);
+      router.push(`/classa/${firstDocumentId}?queue=${encodeURIComponent(JSON.stringify(documentIds))}`);
     } catch (error) {
       console.error('Error fetching document IDs for bulk validation:', error);
+    } finally {
       setBulkValidating(false);
     }
   };
@@ -198,31 +197,31 @@ export default function ClassAPage() {
     setShowValidationModal(false);
     setSelectedDocument(null);
 
-      // Small delay before opening next modal to prevent download issues
-      if (remainingQueue.length > 0) {
-        setTimeout(async () => {
-          try {
-            // Fetch the next document by ID
-            const nextDocumentId = remainingQueue[0];
-            const nextDocument = await unclassifiedDocumentService.getUnclassifiedDocumentById(nextDocumentId);
-            setSelectedDocument(nextDocument as any);
+    // Small delay before opening next modal to prevent download issues
+    if (remainingQueue.length > 0) {
+      setTimeout(async () => {
+        try {
+          // Fetch the next document by ID
+          const nextDocumentId = remainingQueue[0];
+          const nextDocument = await unclassifiedDocumentService.getUnclassifiedDocumentById(nextDocumentId);
+          setSelectedDocument(nextDocument as any);
+          setShowValidationModal(true);
+        } catch (error) {
+          console.error('Error fetching next document for validation:', error);
+          // Skip this document and continue with the next one
+          if (remainingQueue.length > 1) {
+            const nextQueue = remainingQueue.slice(1);
+            setValidationQueue(nextQueue);
+            const nextId = nextQueue[0];
+            const nextDoc = await unclassifiedDocumentService.getUnclassifiedDocumentById(nextId);
+            setSelectedDocument(nextDoc as any);
             setShowValidationModal(true);
-          } catch (error) {
-            console.error('Error fetching next document for validation:', error);
-            // Skip this document and continue with the next one
-            if (remainingQueue.length > 1) {
-              const nextQueue = remainingQueue.slice(1);
-              setValidationQueue(nextQueue);
-              const nextId = nextQueue[0];
-              const nextDoc = await unclassifiedDocumentService.getUnclassifiedDocumentById(nextId);
-              setSelectedDocument(nextDoc as any);
-              setShowValidationModal(true);
-            } else {
-              setBulkValidating(false);
-              fetchDocuments(); // Refresh the list
-            }
+          } else {
+            setBulkValidating(false);
+            fetchDocuments(); // Refresh the list
           }
-        }, 300);
+        }
+      }, 300);
     } else {
       // All documents validated
       setBulkValidating(false);
@@ -281,13 +280,13 @@ export default function ClassAPage() {
   const formatFolderPath = (path: string | undefined): string[] => {
     if (!path) return [];
     const segments = path.split('.').filter(s => s.trim() !== '');
-    
+
     // Check if first segment is UUID
     const uuidPatternDash = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const uuidPatternUnderscore = /^[0-9a-f]{8}_[0-9a-f]{4}_[0-9a-f]{4}_[0-9a-f]{4}_[0-9a-f]{12}$/i;
-    const firstSegmentIsUuid = segments.length > 0 && 
+    const firstSegmentIsUuid = segments.length > 0 &&
       (uuidPatternDash.test(segments[0]) || uuidPatternUnderscore.test(segments[0]));
-    
+
     // Remove UUID segment if present
     return firstSegmentIsUuid ? segments.slice(1) : segments;
   };
@@ -304,20 +303,15 @@ export default function ClassAPage() {
     return mimeType.split('/')[1]?.toUpperCase() || 'Document';
   };
 
-  // Toggle model details dropdown
-  const toggleModelDetails = async (docId: number, categoryId: number) => {
-    if (expandedModelId === docId) {
-      setExpandedModelId(null);
-    } else {
-      setExpandedModelId(docId);
-      if (!modelDetails[docId]) {
-        try {
-          const detail = await unclassifiedDocumentService.getUnclassifiedDocumentById(docId);
-          setModelDetails(prev => ({ ...prev, [docId]: detail }));
-        } catch (e) {
-          console.error('Failed to load model details', e);
-        }
-      }
+  // Load model details for hover display
+  const loadModelDetails = async (docId: number) => {
+    if (modelDetails[docId]) return; // Already loaded
+
+    try {
+      const detail = await unclassifiedDocumentService.getUnclassifiedDocumentById(docId);
+      setModelDetails(prev => ({ ...prev, [docId]: detail }));
+    } catch (e) {
+      console.error('Failed to load model details', e);
     }
   };
 
@@ -470,145 +464,155 @@ export default function ClassAPage() {
             </div>
           ) : (
             <>
-              <div className="overflow-hidden rounded-xl border border-gray-100 bg-white">
+              <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
                 <Table>
                   <TableHeader>
-                    <TableRow className="bg-gray-50/50 hover:bg-gray-50/50 border-b border-gray-100">
-                      <TableHead className="font-semibold text-gray-600 pl-6">Document</TableHead>
-                      <TableHead className="font-semibold text-gray-600">Model</TableHead>
-                      <TableHead className="font-semibold text-gray-600">Type</TableHead>
-                      <TableHead className="font-semibold text-gray-600">Size</TableHead>
-                      <TableHead className="font-semibold text-gray-600">Created</TableHead>
-                      <TableHead className="font-semibold text-gray-600 text-right pr-6">Actions</TableHead>
+                    <TableRow className="bg-gradient-to-r from-gray-50 to-gray-100 hover:from-gray-50 hover:to-gray-100 border-b border-gray-200">
+                      <TableHead className="font-semibold text-gray-700 pl-6 py-4">Document</TableHead>
+                      <TableHead className="font-semibold text-gray-700">Model</TableHead>
+                      <TableHead className="font-semibold text-gray-700">Type</TableHead>
+                      <TableHead className="font-semibold text-gray-700">Size</TableHead>
+                      <TableHead className="font-semibold text-gray-700">Created</TableHead>
+                      <TableHead className="font-semibold text-gray-700 text-right pr-6">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {documents.map((doc) => {
+                    {documents.map((doc, index) => {
                       const pathSegments = formatFolderPath(doc.folderPath);
                       const isModelExpanded = expandedModelId === doc.id;
                       const modelDetail = modelDetails[doc.id];
-                      
+
                       return (
                         <React.Fragment key={doc.id}>
-                          <TableRow className="group hover:bg-blue-50/30 transition-colors border-b border-gray-50 last:border-0">
-                        <TableCell className="pl-6 py-3">
-                          <div className="flex items-start gap-3">
-                            <div className="h-10 w-10 bg-blue-50 rounded-lg flex items-center justify-center text-blue-600 flex-shrink-0">
-                              {getFileIcon(doc.mimeType)}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="font-medium text-gray-900 group-hover:text-blue-700 transition-colors">{doc.name}</div>                              
-                              {/* Folder Path */}
-                              {pathSegments.length > 0 && (
-                                <button onClick={() => navigateToPath(doc.folderPath || '')} className="flex cursor-pointer hover:text-blue-600 hover:underline transition-colors items-center gap-1 text-xs text-gray-400 mt-1 flex-wrap">
-                                  /{pathSegments.join(' / ')}
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="relative">
-                          <div ref={dropdownRef} className="relative">
-                            <button
-                              className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors"
-                              onClick={() => toggleModelDetails(doc.id, doc.categoryId)}
-                              title="View model details"
-                            >
-                              {doc.categoryName}
-                              <ChevronDown className={`h-3 w-3 ml-1 transition-transform ${isModelExpanded ? 'rotate-180' : ''}`} />
-                            </button>
-                            
-                            {/* Model Details Dropdown */}
-                            {isModelExpanded && modelDetail && (
-                              <div className="absolute left-0 top-full mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg p-4 z-50">
-                              <div className="space-y-3">
-                                <div>
-                                  <h4 className="font-semibold text-gray-900 mb-1">{modelDetail.categoryName}</h4>
-                                  {modelDetail.categoryDescription && (
-                                    <p className="text-sm text-gray-600">{modelDetail.categoryDescription}</p>
+                          <TableRow
+                            className={`group transition-all duration-200 border-b border-gray-100 last:border-0 cursor-pointer
+                              ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}
+                              hover:bg-blue-50/50 hover:shadow-sm`}
+                            onClick={() => handleValidateDocument(doc)}
+                          >
+                            <TableCell className="pl-6 py-4">
+                              <div className="flex items-center gap-4">
+                                <div className="h-12 w-12 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-xl flex items-center justify-center text-blue-600 flex-shrink-0 shadow-sm group-hover:shadow-md transition-shadow">
+                                  {getFileIcon(doc.mimeType)}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-semibold text-gray-900 group-hover:text-blue-700 transition-colors truncate max-w-[280px]" title={doc.name}>
+                                    {doc.name}
+                                  </div>
+                                  {pathSegments.length > 0 && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); navigateToPath(doc.folderPath || ''); }}
+                                      className="flex cursor-pointer hover:text-blue-600 hover:underline transition-colors items-center gap-1 text-xs text-gray-400 mt-1"
+                                    >
+                                      <Folder className="h-3 w-3" />
+                                      {pathSegments.join(' / ')}
+                                    </button>
                                   )}
                                 </div>
-                                
-                                {modelDetail.metadataDefinitions && modelDetail.metadataDefinitions.length > 0 && (
-                                  <div>
-                                    <div className="text-xs font-medium text-gray-700 mb-2">Metadata Fields ({modelDetail.metadataDefinitions.length})</div>
-                                    <div className="space-y-2 max-h-60 overflow-y-auto">
-                                      {modelDetail.metadataDefinitions.map((def: any, idx: number) => {
-                                        const isList = String(def.dataType || '').toUpperCase() === 'LIST';
-                                        const listData = def.list || {};
-                                        const options = Array.isArray(listData.option) ? listData.option : (Array.isArray(listData.options) ? listData.options : []);
-                                        
-                                        return (
-                                          <div key={def.id || idx} className="text-xs border border-gray-200 rounded p-2 bg-gray-50">
-                                            <div className="flex items-center justify-between mb-1">
-                                              <span className="font-medium text-gray-900">{def.key || def.metadataName}</span>
-                                              <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
-                                                {(def.dataType || '').toLowerCase()}
-                                              </Badge>
-                                            </div>
-                                            {def.mandatory && (
-                                              <span className="text-[10px] text-red-600 bg-red-50 px-1.5 py-0.5 rounded">Required</span>
-                                            )}
-                                            {isList && options.length > 0 && (
-                                              <div className="mt-1.5 pt-1.5 border-t border-gray-200">
-                                                <div className="text-[10px] text-gray-500 mb-1">Options:</div>
-                                                <div className="flex flex-wrap gap-1">
-                                                  {options.map((opt: any, optIdx: number) => (
-                                                    <span key={optIdx} className="text-[10px] px-1.5 py-0.5 bg-white border border-gray-200 rounded text-gray-600">
-                                                      {String(opt.name || opt)}
-                                                    </span>
-                                                  ))}
-                                                </div>
-                                              </div>
-                                            )}
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                )}
                               </div>
-                            </div>
-                          )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="text-xs">
-                            {getDocumentType(doc.mimeType)}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-gray-600 text-sm">{formatFileSize(doc.sizeBytes)}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2 text-gray-600 text-sm">
-                            <Calendar className="h-3.5 w-3.5 text-gray-400" />
-                            {formatDate(doc.createdAt)}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right pr-6">
-                          <div className="flex items-center justify-end gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleValidateDocument(doc)}
-                              className="h-8 text-blue-600 border-blue-200 hover:bg-blue-50"
-                            >
-                              <CheckCircle className="h-4 w-4 mr-1.5" />
-                              Validate
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleDeleteDocument(doc)}
-                              className="h-8 text-red-600 border-red-200 hover:bg-red-50"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    </React.Fragment>
-                    );
-                  })}
+                            </TableCell>
+                            <TableCell onClick={(e) => e.stopPropagation()}>
+                              <div className="relative group/model">
+                                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-gradient-to-r from-indigo-50 to-purple-50 text-indigo-700 border border-indigo-100 shadow-sm cursor-help">
+                                  {doc.categoryName || 'Unclassified'}
+                                  <Info className="h-3 w-3 opacity-50" />
+                                </div>
+
+                                {/* Hover Popup with Category Details */}
+                                <div className="absolute left-0 top-full mt-2 w-80 bg-white border border-gray-200 rounded-xl shadow-xl p-4 z-50 opacity-0 invisible group-hover/model:opacity-100 group-hover/model:visible transition-all duration-200">
+                                  <div className="space-y-3">
+                                    <div>
+                                      <h4 className="font-semibold text-gray-900 mb-1">{doc.categoryName || 'Unclassified'}</h4>
+                                      {doc.categoryDescription && (
+                                        <p className="text-sm text-gray-600">{doc.categoryDescription}</p>
+                                      )}
+                                    </div>
+
+                                    {doc.metadataDefinitions && doc.metadataDefinitions.length > 0 ? (
+                                      <div>
+                                        <div className="text-xs font-medium text-gray-700 mb-2">Metadata Fields ({doc.metadataDefinitions.length})</div>
+                                        <div className="space-y-2 max-h-48 overflow-y-auto">
+                                          {doc.metadataDefinitions.map((def: any, idx: number) => {
+                                            const isList = String(def.dataType || '').toUpperCase() === 'LIST';
+                                            const options = def.list?.option || [];
+
+                                            return (
+                                              <div key={def.id || idx} className="text-xs border border-gray-200 rounded-lg p-2 bg-gray-50">
+                                                <div className="flex items-center justify-between mb-1">
+                                                  <span className="font-medium text-gray-900">{def.key}</span>
+                                                  <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
+                                                    {(def.dataType || '').toLowerCase()}
+                                                  </Badge>
+                                                </div>
+                                                {def.mandatory && (
+                                                  <span className="text-[10px] text-red-600 bg-red-50 px-1.5 py-0.5 rounded">Required</span>
+                                                )}
+                                                {isList && options.length > 0 && (
+                                                  <div className="mt-1.5 pt-1.5 border-t border-gray-200">
+                                                    <div className="text-[10px] text-gray-500 mb-1">Options:</div>
+                                                    <div className="flex flex-wrap gap-1">
+                                                      {options.slice(0, 5).map((opt: string, optIdx: number) => (
+                                                        <span key={optIdx} className="text-[10px] px-1.5 py-0.5 bg-white border border-gray-200 rounded text-gray-600">
+                                                          {opt}
+                                                        </span>
+                                                      ))}
+                                                      {options.length > 5 && (
+                                                        <span className="text-[10px] px-1.5 py-0.5 text-gray-400">+{options.length - 5} more</span>
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <p className="text-xs text-gray-500">No metadata fields defined for this category.</p>
+                                    )}
+                                  </div>
+                                  {/* Arrow */}
+                                  <div className="absolute -top-1.5 left-4 w-3 h-3 bg-white border-l border-t border-gray-200 rotate-45"></div>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell onClick={(e) => e.stopPropagation()}>
+                              <Badge variant="outline" className="text-xs font-medium bg-gray-50 border-gray-200">
+                                {getDocumentType(doc.mimeType)}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-gray-600 text-sm font-medium">{formatFileSize(doc.sizeBytes)}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2 text-gray-500 text-sm">
+                                <Calendar className="h-3.5 w-3.5 text-gray-400" />
+                                {formatDate(doc.createdAt)}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right pr-6" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex items-center justify-end gap-2">
+                                <Button
+                                  variant="default"
+                                  size="sm"
+                                  onClick={() => handleValidateDocument(doc)}
+                                  className="h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white shadow-sm hover:shadow-md transition-all"
+                                >
+                                  <CheckCircle className="h-4 w-4 mr-1.5" />
+                                  Validate
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleDeleteDocument(doc)}
+                                  className="h-9 px-3 text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        </React.Fragment>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>

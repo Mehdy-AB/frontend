@@ -131,12 +131,12 @@ const SECTIONS: Section[] = [
     ],
   },
   {
-    id: 'workflow',
-    label: 'Workflow',
+    id: 'others',
+    label: 'Others',
     Icon: Workflow,
     items: [
-      { label: 'Designer', href: '/admin/workflow/designer', description: 'Design and edit workflows.', Icon: Workflow },
-      { label: 'Task List', href: '/admin/workflow/tasks', description: 'View and manage workflow tasks.', Icon: CheckSquare },
+      { label: 'Workflow Designer', href: '/admin/workflow/designer', description: 'Design and edit workflow processes.', Icon: Workflow },
+      { label: 'Form Designer', href: '/admin/forms', description: 'Create and manage custom forms.', Icon: FileText },
       { label: 'Working Hours', href: '/admin/workflow/working-hours', description: 'Business hours used for SLA calculations.', Icon: Clock },
     ],
   },
@@ -241,7 +241,7 @@ export default function AdminDropdown() {
               {selectedSection.items.map((item) => {
                 const pagePermissions = AdminPagePermissions[item.href];
                 const canView = !pagePermissions?.view || hasPermission(pagePermissions.view);
-                
+
                 return (
                   <Tooltip key={item.href}>
                     <TooltipTrigger asChild>
@@ -249,9 +249,8 @@ export default function AdminDropdown() {
                         <button
                           onClick={() => handleNavigate(item.href)}
                           disabled={!canView}
-                          className={`flex items-start gap-3 w-full text-left ${
-                            canView ? 'cursor-pointer' : 'cursor-not-allowed'
-                          }`}
+                          className={`flex items-start gap-3 w-full text-left ${canView ? 'cursor-pointer' : 'cursor-not-allowed'
+                            }`}
                         >
                           {item.Icon && <item.Icon className="h-5 w-5 mt-1 text-slate-600" />}
                           <div className="flex-1">

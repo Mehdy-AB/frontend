@@ -1,6 +1,6 @@
-import React, { memo } from 'react';
-import { Handle, Position } from '@xyflow/react';
-import { CheckCircle, Edit, Trash2, Clock, Users, User, Shield, UserCheck } from 'lucide-react';
+import React, { memo, useEffect } from 'react';
+import { Handle, Position, useUpdateNodeInternals } from '@xyflow/react';
+import { CheckCircle, Edit, Trash2, Clock, Users, User, Shield, UserCheck, AlertTriangle } from 'lucide-react';
 import { WorkflowNodeData } from './types';
 
 interface ApprovalNodeProps {
@@ -15,21 +15,34 @@ interface ApprovalNodeProps {
  * Alias: workflowStep (WorkflowStepNode)
  */
 const ApprovalNode = ({ data, selected, id }: ApprovalNodeProps) => {
+    const updateNodeInternals = useUpdateNodeInternals();
+
     // Count assigned entities
     const assigneeCount = data.assignmentEntities?.length || data.assignments?.length || 0;
     const userCount = data.assignmentEntities?.filter((a: any) => a.assigneeType === 'USER').length || 0;
     const groupCount = data.assignmentEntities?.filter((a: any) => a.assigneeType === 'GROUP').length || 0;
     const roleCount = data.assignmentEntities?.filter((a: any) => a.assigneeType === 'ROLE').length || 0;
 
+    // Check for validation issues
+    const hasWarning = assigneeCount === 0 || (data.validationErrors && data.validationErrors.length > 0);
+    const warningMessage = assigneeCount === 0
+        ? 'No assignees configured'
+        : data.validationErrors?.[0]?.message || 'Configuration issue';
+
+    // Update React Flow handle positions when node content changes height
+    useEffect(() => {
+        updateNodeInternals(id);
+    }, [id, updateNodeInternals, assigneeCount, data.timeoutEnabled, data.useTimeoutExit, data.description, data.expirationDays, data.minApprovalsNeeded]);
+
     return (
         <div
             className={`px-4 py-3 rounded-xl border-2 min-w-[240px] bg-white relative shadow-sm transition-all duration-200 group ${selected ? 'border-blue-500 ring-4 ring-blue-100 shadow-lg' : 'border-gray-200 hover:border-blue-400 hover:shadow-md'
-                }`}
+                } ${hasWarning ? 'border-amber-400' : ''}`}
         >
             <Handle
                 type="target"
                 position={Position.Left}
-                className="w-4 h-4 bg-blue-500 border-2 border-white transition-transform hover:scale-125"
+                className="w-6 h-6 bg-blue-500 border-[3px] border-blue-300 ring-3 ring-blue-300 hover:scale-125 transition-transform"
                 style={{ left: -10 }}
             />
 
@@ -40,6 +53,18 @@ const ApprovalNode = ({ data, selected, id }: ApprovalNodeProps) => {
                         data.priority === 'MEDIUM' ? 'bg-amber-500' : 'bg-blue-500'
                         }`}
                 />
+            )}
+
+            {/* Warning Icon */}
+            {hasWarning && (
+                <div
+                    className="absolute top-2 left-8 z-10"
+                    title={warningMessage}
+                >
+                    <div className="p-1 bg-amber-100 rounded-full animate-pulse">
+                        <AlertTriangle className="w-4 h-4 text-amber-600" />
+                    </div>
+                </div>
             )}
 
             {/* Action Icons */}
@@ -129,7 +154,7 @@ const ApprovalNode = ({ data, selected, id }: ApprovalNodeProps) => {
                         type="source"
                         position={Position.Right}
                         id="approved"
-                        className="!relative !transform-none w-4 h-4 bg-green-500 border-2 border-white"
+                        className="!relative !transform-none w-6 h-6 bg-green-500 border-[3px] border-blue-300 ring-3 ring-blue-300 hover:scale-125 transition-transform"
                     />
                 </div>
                 {/* Rejected */}
@@ -141,7 +166,7 @@ const ApprovalNode = ({ data, selected, id }: ApprovalNodeProps) => {
                         type="source"
                         position={Position.Right}
                         id="rejected"
-                        className="!relative !transform-none w-4 h-4 bg-red-500 border-2 border-white"
+                        className="!relative !transform-none w-6 h-6 bg-red-500 border-[3px] border-blue-300 ring-3 ring-blue-300 hover:scale-125 transition-transform"
                     />
                 </div>
                 {/* Timeout - Only when enabled */}
@@ -154,7 +179,7 @@ const ApprovalNode = ({ data, selected, id }: ApprovalNodeProps) => {
                             type="source"
                             position={Position.Right}
                             id="timeout"
-                            className="!relative !transform-none w-4 h-4 bg-orange-500 border-2 border-white"
+                            className="!relative !transform-none w-6 h-6 bg-orange-500 border-[3px] border-blue-300 ring-3 ring-blue-300 hover:scale-125 transition-transform"
                         />
                     </div>
                 )}

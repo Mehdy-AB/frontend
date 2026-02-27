@@ -214,6 +214,17 @@ class WorkflowAdminService {
     );
   }
 
+  async cancelInstance(
+    instanceId: number,
+    data: { cancellationReason: string }
+  ): Promise<void> {
+    return apiClient.post<void>(
+      `${this.baseUrl}/instances/${instanceId}/cancel`,
+      data
+    );
+  }
+
+
   async updateNodeDueDate(
     instanceId: number,
     nodeInstanceId: number,
@@ -253,6 +264,10 @@ class WorkflowAdminService {
     await apiClient.post(`${this.baseUrl}/instances/${instanceId}/force-complete`, data);
   }
 
+  async restartWorkflowInstance(instanceId: number): Promise<WorkflowInstanceResponse> {
+    return apiClient.post<WorkflowInstanceResponse>(`${this.baseUrl}/instances/${instanceId}/restart`);
+  }
+
   async applyWorkflowChanges(
     id: number,
     data: ApplyWorkflowChangesRequest
@@ -269,8 +284,13 @@ class WorkflowAdminService {
 
   // ==================== NODE INSTANCE MANAGEMENT ====================
 
-  async getInstancesAtNode(workflowId: number, nodeId: string): Promise<WorkflowNodeInstanceResponse[]> {
-    return apiClient.get<WorkflowNodeInstanceResponse[]>(`${this.baseUrl}/${workflowId}/nodes/${nodeId}/instances`);
+  async getInstancesAtNode(workflowId: number, nodeId: string, status?: string, documentId?: number): Promise<WorkflowNodeInstanceResponse[]> {
+    const params: Record<string, any> = {};
+    if (status) params.status = status;
+    if (documentId) params.documentId = documentId;
+    return apiClient.get<WorkflowNodeInstanceResponse[]>(`${this.baseUrl}/${workflowId}/nodes/${nodeId}/instances`, {
+      params: Object.keys(params).length > 0 ? params : undefined
+    });
   }
 
   async cancelAllInstancesAtNode(

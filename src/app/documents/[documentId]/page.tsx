@@ -60,6 +60,8 @@ export default function DocumentViewPage() {
   const [fileViewerKey, setFileViewerKey] = useState<number>(0);
   const fileViewerRefreshRef = useRef<(() => void) | null>(null);
   const [pendingStep, setPendingStep] = useState<WorkflowNodeInstanceResponse | null>(null);
+  const [refreshingAfterAction, setRefreshingAfterAction] = useState(false);
+  const [showComposedChildren, setShowComposedChildren] = useState(false);
   const { showSuccess, showError } = useNotifications();
 
   // Use custom hook for document operations
@@ -85,8 +87,10 @@ export default function DocumentViewPage() {
     const fetchPendingSteps = async () => {
       try {
         const steps = await workflowAdminService.getDocumentNodes(parseInt(documentId));
-        // Get the first actionable step (ACTIVE status)
-        const actionableStep = steps.find((step: WorkflowNodeInstanceResponse) => step.status === 'ACTIVE');
+        // Get the first actionable step (ACTIVE or SCHEDULED status)
+        const actionableStep = steps.find((step: WorkflowNodeInstanceResponse) =>
+          step.status === 'ACTIVE' || step.status === 'SCHEDULED'
+        );
         setPendingStep(actionableStep || null);
       } catch (error) {
         // Silently fail - workflow steps are optional
@@ -484,13 +488,27 @@ export default function DocumentViewPage() {
   if (error || !document) {
     return (
       <div className="flex items-center justify-center h-screen bg-neutral-background">
-        <div className="text-center">
-          <div className="text-error text-lg mb-4">{error || 'Document not found'}</div>
+        <div className="text-center max-w-md mx-auto px-6">
+          <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-red-50 flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              <line x1="4" y1="4" x2="20" y2="20" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-semibold text-gray-800 mb-2">
+            {t('documentNotFound') || 'Document Not Found'}
+          </h2>
+          <p className="text-sm text-gray-500 mb-6">
+            {error || t('documentNotFoundDesc') || 'This document may have been deleted, moved, or you don\'t have permission to view it.'}
+          </p>
           <button
             onClick={() => router.back()}
-            className="bg-primary text-surface px-4 py-2 rounded-lg hover:bg-primary-dark transition-colors"
+            className="inline-flex items-center gap-2 bg-primary text-white px-5 py-2.5 rounded-lg hover:bg-primary-dark transition-colors text-sm font-medium"
           >
-            Go Back
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            {t('goBack') || 'Go Back'}
           </button>
         </div>
       </div>
@@ -521,19 +539,107 @@ export default function DocumentViewPage() {
           onUploadVersion={handleUploadVersion}
         />
 
+        {/* Composed Documents Dropdown */}
+        {document.composedChildren && document.composedChildren.length > 0 && (
+          <div className="border-b border-ui">
+            <button
+              onClick={() => setShowComposedChildren(!showComposedChildren)}
+              className="w-full flex items-center gap-2 px-4 py-2 text-sm font-medium text-neutral-text-dark hover:bg-neutral-background/60 transition-colors"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className={`h-4 w-4 text-primary transition-transform ${showComposedChildren ? 'rotate-90' : ''}`}
+                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+              </svg>
+              <span>{t('composedDocuments') || 'Composed Documents'}</span>
+              <span className="ml-1 text-xs text-neutral-text-light bg-neutral-background px-1.5 py-0.5 rounded-full">
+                {document.composedChildren.length}
+              </span>
+            </button>
+            {showComposedChildren && (
+              <div className="px-4 pb-3 space-y-1">
+                {document.composedChildren.map((child) => (
+                  <button
+                    key={child.documentId}
+                    onClick={() => router.push(`/documents/${child.documentId}`)}
+                    className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-primary/5 transition-colors text-left group"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0 text-neutral-text-light group-hover:text-primary transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                    </svg>
+                    <span className="flex-1 text-sm text-neutral-text-dark truncate group-hover:text-primary transition-colors">
+                      {child.name}
+                    </span>
+                    {child.relationType && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-background text-neutral-text-light uppercase tracking-wide">
+                        {child.relationType === 'PARENT_DOCUMENT' ? 'Child Document'
+                          : child.relationType === 'CHILD_DOCUMENT' ? 'Parent Document'
+                            : child.relationType.replace(/_/g, ' ')}
+                      </span>
+                    )}
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 shrink-0 text-neutral-text-light opacity-0 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                    </svg>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Workflow Step Action - Banner under title */}
-        {pendingStep && (
+        {refreshingAfterAction && (
+          <div className="flex items-center justify-center py-8">
+            <div className="flex flex-col items-center gap-3">
+              <svg className="animate-spin h-8 w-8 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              <span className="text-sm text-gray-500">{t('processingWorkflow') || 'Processing workflow...'}</span>
+            </div>
+          </div>
+        )}
+
+        {pendingStep && !refreshingAfterAction && (
           <div className="px-4 py-2">
             <WorkflowStepAction
               stepInstance={pendingStep}
-              onComplete={() => {
-                // Refresh pending steps after completion
-                workflowAdminService.getDocumentNodes(parseInt(documentId))
-                  .then((steps: WorkflowNodeInstanceResponse[]) => {
-                    const actionableStep = steps.find((step: WorkflowNodeInstanceResponse) => step.status === 'ACTIVE');
-                    setPendingStep(actionableStep || null);
-                  })
-                  .catch(() => setPendingStep(null));
+              onComplete={async () => {
+                setRefreshingAfterAction(true);
+                setPendingStep(null);
+                try {
+                  // Wait for the workflow engine to process the next node
+                  await new Promise(resolve => setTimeout(resolve, 1500));
+
+                  // Re-check document access — it may have been moved/deleted
+                  try {
+                    await notificationApiClient.getDocument(parseInt(documentId), { silent: true });
+                  } catch {
+                    // Document no longer accessible
+                    setError('This document has been moved or deleted by the workflow.');
+                    setRefreshingAfterAction(false);
+                    return;
+                  }
+
+                  // Fetch next pending steps
+                  const steps = await workflowAdminService.getDocumentNodes(parseInt(documentId));
+                  const actionableStep = steps.find((step: WorkflowNodeInstanceResponse) =>
+                    step.status === 'ACTIVE' || step.status === 'SCHEDULED'
+                  );
+                  setPendingStep(actionableStep || null);
+
+                  // Refresh document data to pick up any changes (metadata, status, etc.)
+                  await fetchDocument();
+                } catch {
+                  setPendingStep(null);
+                } finally {
+                  setRefreshingAfterAction(false);
+                }
               }}
             />
           </div>

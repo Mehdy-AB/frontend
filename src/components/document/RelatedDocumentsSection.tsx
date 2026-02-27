@@ -1,12 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { 
-  FileText, 
-  Plus, 
-  User, 
-  Calendar, 
-  Download, 
+import {
+  FileText,
+  Plus,
+  User,
+  Calendar,
+  Download,
   Eye,
   Unlink,
   AlertCircle,
@@ -15,13 +15,34 @@ import {
   Maximize2,
   ChevronDown,
   Loader2,
-  Trash2
+  Trash2,
+  ShieldAlert,
+  Lock
 } from 'lucide-react';
-import { RelatedDocumentResponseDto } from '../../types/api';
+import { RelatedDocumentResponseDto, RelatedDocumentUserDto } from '../../types/api';
 import { documentService } from '../../api/services/documentService';
 import { formatFileSize, formatDate, getLinkTypeColor } from '../../utils/documentUtils';
 import ViewRelatedDocumentsModal from '../modals/ViewRelatedDocumentsModal';
 import LinkDocumentModal from '../modals/LinkDocumentModal';
+
+/**
+ * Returns a contextual relation label from the viewer's perspective.
+ * When viewing document A and a link has relationType=PARENT_DOCUMENT,
+ * that means A is the parent, so the related doc is the CHILD → show "Child Document".
+ * When relationType=CHILD_DOCUMENT, A is the child → related doc is the PARENT → show "Parent Document".
+ */
+function getContextualRelationLabel(relationType: string): string {
+  switch (relationType) {
+    case 'PARENT_DOCUMENT': return 'Child Document';
+    case 'CHILD_DOCUMENT': return 'Parent Document';
+    case 'ATTACHMENT': return 'Attachment';
+    case 'REFERENCE': return 'Reference';
+    case 'VERSION': return 'Version';
+    case 'ALTERNATIVE_VERSION': return 'Alternative Version';
+    case 'SIMILAR_DOCUMENT': return 'Similar Document';
+    default: return relationType.replace(/_/g, ' ');
+  }
+}
 
 interface RelatedDocumentsSectionProps {
   documentId: number;
@@ -61,18 +82,18 @@ export default function RelatedDocumentsSection({
         setIsLoading(true);
       }
       setError(null);
-      
+
       const response = await documentService.getRelatedDocuments(documentId, {
         page,
         size: pageSize
       });
-      
+
       if (append) {
         setRelatedDocuments(prev => [...prev, ...response.content]);
       } else {
         setRelatedDocuments(response.content);
       }
-      
+
       setCurrentPage(response.number);
       setTotalPages(response.totalPages);
       setTotalElements(response.totalElements);
@@ -96,7 +117,12 @@ export default function RelatedDocumentsSection({
     onLinkCreated?.();
   };
 
-  const handleDeleteLinkClick = (linkId: number, documentName: string, isManual: boolean) => {
+  const handleDeleteLinkClick = (linkId: number, documentName: string, isManual: boolean, removable?: boolean) => {
+    // Block deletion of non-removable links
+    if (removable === false) {
+      setError('This link cannot be removed. It is a non-removable governance link.');
+      return;
+    }
     setLinkToDelete({ linkId, documentName, isManual });
     setShowDeleteConfirmation(true);
   };
@@ -160,7 +186,7 @@ export default function RelatedDocumentsSection({
             {totalElements}
           </span>
         </div>
-        
+
         <div className="flex items-center gap-2">
           <button
             onClick={() => setIsViewModalOpen(true)}
@@ -203,7 +229,7 @@ export default function RelatedDocumentsSection({
                         <FileText className="h-3.5 w-3.5 text-blue-600" />
                       </div>
                     </div>
-                    
+
                     {/* Document Info */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
@@ -211,11 +237,11 @@ export default function RelatedDocumentsSection({
                           <h4 className="font-medium text-gray-900 truncate text-xs">
                             {doc.documentName}
                           </h4>
-                          
-                          {/* Link Type and Manual/Auto indicators */}
+
+                          {/* Relation Type and Manual/Auto indicators */}
                           <div className="flex items-center gap-1 mt-0.5">
-                            <span className={`inline-flex items-center px-1 py-0.5 rounded text-xs font-medium ${getLinkTypeColor(doc.linkType)}`}>
-                              {doc.linkType}
+                            <span className={`inline-flex items-center px-1 py-0.5 rounded text-xs font-medium ${getLinkTypeColor(doc.relationType)}`}>
+                              {getContextualRelationLabel(doc.relationType)}
                             </span>
                             {doc.manual ? (
                               <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
@@ -230,7 +256,7 @@ export default function RelatedDocumentsSection({
                             )}
                           </div>
                         </div>
-                        
+
                         {/* Action Menu */}
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           {doc.userPermissions?.canView && (
@@ -243,13 +269,23 @@ export default function RelatedDocumentsSection({
                             </button>
                           )}
                           {canEdit && (
-                            <button
-                              onClick={() => handleDeleteLinkClick(doc.linkId, doc.documentName, doc.manual)}
-                              className="p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-600"
-                              title={doc.manual ? "Remove Manual Link" : "Remove Auto Link"}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </button>
+                            doc.removable === false ? (
+                              <button
+                                className="p-1 rounded text-gray-300 cursor-not-allowed"
+                                title="This link cannot be removed (non-removable governance link)"
+                                disabled
+                              >
+                                <Lock className="h-3 w-3" />
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleDeleteLinkClick(doc.linkId, doc.documentName, doc.manual, doc.removable)}
+                                className="p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-600"
+                                title={doc.manual ? "Remove Manual Link" : "Remove Auto Link"}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            )
                           )}
                         </div>
                       </div>
@@ -258,7 +294,7 @@ export default function RelatedDocumentsSection({
                 </div>
               </div>
             ))}
-            
+
             {/* Load More Button */}
             {currentPage < totalPages - 1 && (
               <button
@@ -325,12 +361,12 @@ export default function RelatedDocumentsSection({
                   Remove Document Link
                 </h3>
               </div>
-              
+
               <p className="text-gray-600 mb-2">
                 Are you sure you want to remove the link to{' '}
                 <span className="font-medium text-gray-900">"{linkToDelete.documentName}"</span>?
               </p>
-              
+
               {!linkToDelete.isManual && (
                 <div className="flex items-start gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800 mb-4">
                   <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />

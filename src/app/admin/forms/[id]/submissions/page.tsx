@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { use } from 'react';
 import {
   Users,
+  UserX,
   Search,
   Filter,
   Download,
@@ -48,6 +49,7 @@ import { useNotifications } from '@/hooks/useNotifications';
 import { useRouter } from 'next/navigation';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import UserAvatar from '@/components/main/UserAvatar';
 
 export default function SubmissionsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -104,19 +106,9 @@ export default function SubmissionsPage({ params }: { params: Promise<{ id: stri
     setFilteredSubmissions(filtered);
   }, [searchQuery, submissions]);
 
-  const handleViewDetails = async (submission: FormSubmissionResponse) => {
-    try {
-      // Mark as read
-      if (!submission.isRead) {
-        await formService.markSubmissionAsRead(submission.id);
-      }
-      setSelectedSubmission(submission);
-      setReviewNotes(submission.reviewNotes || '');
-      setShowDetailDialog(true);
-      fetchSubmissions();
-    } catch (error) {
-      console.error('Failed to mark as read:', error);
-    }
+  const handleViewDetails = (submission: FormSubmissionResponse) => {
+    // Navigate to detail page
+    router.push(`/admin/forms/${id}/submissions/${submission.id}`);
   };
 
   const handleToggleStar = async (submissionId: number) => {
@@ -141,7 +133,7 @@ export default function SubmissionsPage({ params }: { params: Promise<{ id: stri
 
   const handleSaveReviewNotes = async () => {
     if (!selectedSubmission) return;
-    
+
     try {
       await formService.addReviewNotes(selectedSubmission.id, reviewNotes);
       showSuccess('Notes Saved', 'Review notes updated successfully');
@@ -323,52 +315,84 @@ export default function SubmissionsPage({ params }: { params: Promise<{ id: stri
               {filteredSubmissions.map((submission) => (
                 <div
                   key={submission.id}
-                  className={`p-4 hover:bg-gray-50 transition-colors ${
-                    !submission.isRead ? 'bg-blue-50' : ''
-                  }`}
+                  className={`p-4 hover:bg-gray-50 transition-colors ${!submission.isRead ? 'bg-blue-50' : ''
+                    }`}
                 >
                   <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleToggleStar(submission.id)}
-                        >
-                          <Star
-                            className={`w-4 h-4 ${
-                              submission.isStarred ? 'fill-yellow-400 text-yellow-400' : ''
-                            }`}
-                          />
-                        </Button>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-semibold">
-                              {submission.submitterName || 'Anonymous'}
-                            </h3>
-                            {getStatusBadge(submission.status)}
-                            {!submission.isRead && (
-                              <Badge className="bg-blue-500 text-white">New</Badge>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-4 mt-1 text-sm text-gray-500">
-                            {submission.submitterEmail && (
-                              <span className="flex items-center gap-1">
-                                <Mail className="w-3 h-3" />
-                                {submission.submitterEmail}
-                              </span>
-                            )}
+                    <div className="flex items-center gap-4 flex-1">
+                      {/* Star button */}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="flex-shrink-0"
+                        onClick={() => handleToggleStar(submission.id)}
+                      >
+                        <Star
+                          className={`w-4 h-4 ${submission.isStarred ? 'fill-yellow-400 text-yellow-400' : ''}`}
+                        />
+                      </Button>
+
+                      {/* User Avatar */}
+                      {submission.submitter ? (
+                        <UserAvatar
+                          user={submission.submitter}
+                          size="md"
+                          showTooltip
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
+                          <UserX className="w-5 h-5 text-orange-600" />
+                        </div>
+                      )}
+
+                      {/* Main Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-semibold truncate">
+                            {submission.submitter ? (
+                              submission.submitterName ||
+                              `${submission.submitter.firstName || ''} ${submission.submitter.lastName || ''}`.trim() ||
+                              'User'
+                            ) : submission.submitterName || 'Anonymous'}
+                          </h3>
+                          {!submission.submitter && (
+                            <Badge className="bg-orange-100 text-orange-700 text-xs">Anonymous</Badge>
+                          )}
+                          {submission.submitter && (
+                            <Badge className="bg-green-100 text-green-700 text-xs">Auth</Badge>
+                          )}
+                          {getStatusBadge(submission.status)}
+                          {!submission.isRead && (
+                            <Badge className="bg-blue-500 text-white text-xs">New</Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-4 mt-1 text-sm text-gray-500 flex-wrap">
+                          {(submission.submitterEmail || submission.submitter?.email) && (
                             <span className="flex items-center gap-1">
-                              <Calendar className="w-3 h-3" />
-                              {new Date(submission.submittedAt).toLocaleDateString()}
-                            </span>
-                            {submission.completionTimeSeconds && (
-                              <span className="flex items-center gap-1">
-                                <Clock className="w-3 h-3" />
-                                {Math.floor(submission.completionTimeSeconds / 60)}m {submission.completionTimeSeconds % 60}s
+                              <Mail className="w-3 h-3" />
+                              <span className="truncate max-w-[180px]">
+                                {submission.submitterEmail || submission.submitter?.email}
                               </span>
-                            )}
-                          </div>
+                            </span>
+                          )}
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            {new Date(submission.submittedAt).toLocaleDateString()}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {new Date(submission.submittedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                          {submission.submitterIp && (
+                            <span className="flex items-center gap-1 text-xs font-mono text-gray-400">
+                              IP: {submission.submitterIp}
+                            </span>
+                          )}
+                          {submission.completionTimeSeconds && (
+                            <span className="flex items-center gap-1 text-xs">
+                              ⏱ {Math.floor(submission.completionTimeSeconds / 60)}m {submission.completionTimeSeconds % 60}s
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -450,32 +474,92 @@ export default function SubmissionsPage({ params }: { params: Promise<{ id: stri
           </DialogHeader>
           {selectedSubmission && (
             <div className="space-y-6">
-              {/* Submitter Info */}
-              <div>
-                <h3 className="font-semibold mb-3">Submitter Information</h3>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-gray-500">Name</p>
-                    <p className="font-medium">{selectedSubmission.submitterName || 'Anonymous'}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500">Email</p>
-                    <p className="font-medium">{selectedSubmission.submitterEmail || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500">Submitted At</p>
-                    <p className="font-medium">
-                      {new Date(selectedSubmission.submittedAt).toLocaleString()}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500">Status</p>
-                    <div className="mt-1">
+              {/* Submitter Info Card */}
+              <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-100">
+                <CardContent className="pt-4">
+                  <div className="flex items-start gap-4">
+                    {/* Avatar/Icon */}
+                    <div className={`w-14 h-14 rounded-full flex items-center justify-center ${selectedSubmission.submitter
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-orange-100 text-orange-600'
+                      }`}>
+                      {selectedSubmission.submitter ? (
+                        <span className="text-xl font-bold">
+                          {(selectedSubmission.submitterName || selectedSubmission.submitter?.firstName || 'U').charAt(0).toUpperCase()}
+                        </span>
+                      ) : (
+                        <UserX className="w-6 h-6" />
+                      )}
+                    </div>
+
+                    {/* User Details */}
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h4 className="font-semibold text-lg">
+                          {selectedSubmission.submitter ? (
+                            selectedSubmission.submitterName ||
+                            `${selectedSubmission.submitter?.firstName || ''} ${selectedSubmission.submitter?.lastName || ''}`.trim() ||
+                            'Authenticated User'
+                          ) : selectedSubmission.submitterName ? (
+                            selectedSubmission.submitterName
+                          ) : (
+                            'Anonymous Visitor'
+                          )}
+                        </h4>
+                        {!selectedSubmission.submitter && (
+                          <Badge className="bg-orange-100 text-orange-700">Anonymous</Badge>
+                        )}
+                        {selectedSubmission.submitter && (
+                          <Badge className="bg-green-100 text-green-700">Authenticated</Badge>
+                        )}
+                      </div>
+
+                      {/* Contact Info */}
+                      <div className="grid grid-cols-2 gap-x-6 gap-y-2 mt-3 text-sm">
+                        <div className="flex items-center gap-2 text-gray-600">
+                          <Mail className="w-4 h-4 text-gray-400" />
+                          {selectedSubmission.submitterEmail || selectedSubmission.submitter?.email || 'No email provided'}
+                        </div>
+                        <div className="flex items-center gap-2 text-gray-600">
+                          <Calendar className="w-4 h-4 text-gray-400" />
+                          {new Date(selectedSubmission.submittedAt).toLocaleDateString('en-US', {
+                            weekday: 'short',
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric'
+                          })}
+                        </div>
+                        {selectedSubmission.submitterIp && (
+                          <div className="flex items-center gap-2 text-gray-600">
+                            <span className="w-4 h-4 text-xs text-gray-400 font-mono">IP</span>
+                            {selectedSubmission.submitterIp}
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2 text-gray-600">
+                          <Clock className="w-4 h-4 text-gray-400" />
+                          {new Date(selectedSubmission.submittedAt).toLocaleTimeString()}
+                          {selectedSubmission.completionTimeSeconds && (
+                            <span className="text-gray-400">
+                              • {Math.floor(selectedSubmission.completionTimeSeconds / 60)}m {selectedSubmission.completionTimeSeconds % 60}s to complete
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Status */}
+                    <div className="text-right">
                       {getStatusBadge(selectedSubmission.status)}
+                      {!selectedSubmission.isRead && (
+                        <Badge className="bg-blue-500 text-white ml-2">Unread</Badge>
+                      )}
+                      {selectedSubmission.isStarred && (
+                        <Star className="w-5 h-5 text-yellow-400 fill-yellow-400 mt-2 ml-auto" />
+                      )}
                     </div>
                   </div>
-                </div>
-              </div>
+                </CardContent>
+              </Card>
 
               {/* Form Data */}
               <div>
@@ -484,17 +568,17 @@ export default function SubmissionsPage({ params }: { params: Promise<{ id: stri
                   {selectedSubmission.values.map((value, idx) => {
                     const isFileUpload = value.fileUrl || (value.value && (value.value.startsWith('http') || value.value.includes('minio')));
                     const isImage = isFileUpload && value.value && /\.(jpg|jpeg|png|gif|webp)$/i.test(value.value);
-                    
+
                     return (
                       <div key={idx} className="border-l-2 border-blue-500 pl-4">
                         <p className="text-sm font-medium text-gray-700">{value.fieldLabel}</p>
-                        
+
                         {isFileUpload ? (
                           <div className="mt-2">
                             {isImage ? (
                               <div className="space-y-2">
-                                <img 
-                                  src={value.fileUrl || value.value} 
+                                <img
+                                  src={value.fileUrl || value.value}
                                   alt={value.fieldLabel}
                                   className="max-w-md rounded border"
                                   onError={(e) => {

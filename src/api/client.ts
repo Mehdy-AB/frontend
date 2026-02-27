@@ -95,6 +95,55 @@ class ApiClient {
     return response.data;
   }
 
+  // Public endpoint methods - send token if available but don't redirect on auth errors
+  async publicGet<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
+    // Use getAccessToken (not getValidAccessToken) to avoid auth refresh/redirect
+    let token: string | null = null;
+    try {
+      token = await tokenManager.getAccessToken();
+    } catch {
+      // Ignore - proceed without token
+    }
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    const axiosConfig = { ...config, headers: { ...config?.headers, ...headers } };
+
+    try {
+      const response = await axios.get<T>(API_BASE_URL + url, axiosConfig);
+      return response.data;
+    } catch (error: any) {
+      // Re-throw error with better message extraction
+      if (error.response?.data?.message) {
+        throw new Error(error.response.data.message);
+      }
+      throw error;
+    }
+  }
+
+  async publicPost<T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
+    // Use getAccessToken (not getValidAccessToken) to avoid auth refresh/redirect
+    let token: string | null = null;
+    try {
+      token = await tokenManager.getAccessToken();
+    } catch {
+      // Ignore - proceed without token
+    }
+    const headers = token
+      ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+      : { 'Content-Type': 'application/json' };
+    const axiosConfig = { ...config, headers: { ...config?.headers, ...headers } };
+
+    try {
+      const response = await axios.post<T>(API_BASE_URL + url, data, axiosConfig);
+      return response.data;
+    } catch (error: any) {
+      // Re-throw error with better message extraction
+      if (error.response?.data?.message) {
+        throw new Error(error.response.data.message);
+      }
+      throw error;
+    }
+  }
+
   // File upload method
   async uploadFile<T>(url: string, formData: FormData, config?: AxiosRequestConfig): Promise<T> {
     const response: AxiosResponse<T> = await this.client.post(url, formData, {

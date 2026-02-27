@@ -22,8 +22,8 @@ const EndNode = ({ data, selected, id }: EndNodeProps) => {
             <Handle
                 type="target"
                 position={Position.Left}
-                className="w-4 h-4 bg-gray-500 border-2 border-white"
-                style={{ left: -10 }}
+                className="w-6 h-6 bg-gray-500 border-[3px] border-blue-300 ring-3 ring-blue-300 transition-transform hover:scale-125"
+                style={{ left: -12 }}
             />
 
             {/* Action Icons */}

@@ -4,13 +4,19 @@
  * Displays user avatar with fallback to initials or default icon
  * 
  * @example
- * <UserAvatar user={user} size="md" />
+ * <UserAvatar user={user} size="md" showTooltip />
  */
 
 'use client';
 
 import React from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { User } from 'lucide-react';
 import { UserDto } from '@/types/api';
 
@@ -22,6 +28,7 @@ interface UserAvatarProps {
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
   showOnlineStatus?: boolean;
+  showTooltip?: boolean;
 }
 
 const sizeClasses = {
@@ -45,6 +52,7 @@ export default function UserAvatar({
   size = 'md',
   className = '',
   showOnlineStatus = false,
+  showTooltip = false,
 }: UserAvatarProps) {
   if (!user) {
     return (
@@ -84,7 +92,7 @@ export default function UserAvatar({
   const initials = getInitials();
   const displayName = user.displayName || user.username || 'Unknown User';
 
-  return (
+  const avatarElement = (
     <div className="relative inline-block">
       <Avatar className={`${sizeClasses[size]} ${className}`}>
         {imageUrl && (
@@ -107,5 +115,26 @@ export default function UserAvatar({
       )}
     </div>
   );
-}
 
+  if (showTooltip) {
+    return (
+      <TooltipProvider delayDuration={200}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            {avatarElement}
+          </TooltipTrigger>
+          <TooltipContent className="bg-white border shadow-lg p-2">
+            <div className="text-sm">
+              <p className="font-semibold text-gray-900">{displayName}</p>
+              {user.email && (
+                <p className="text-gray-500 text-xs">{user.email}</p>
+              )}
+            </div>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  return avatarElement;
+}

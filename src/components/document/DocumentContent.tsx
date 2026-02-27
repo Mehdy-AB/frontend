@@ -60,8 +60,8 @@ export default function DocumentContent({
   return (
     <div className="flex-1 overflow-auto">
       {activeTab === 'config' && (
-        <ConfigurationTab 
-          document={document} 
+        <ConfigurationTab
+          document={document}
           isLoading={isLoadingConfig}
           onCopyLink={onCopyLink}
           onShare={onShare}
@@ -69,7 +69,7 @@ export default function DocumentContent({
           isFavorite={isFavorite}
         />
       )}
-      
+
       {/* {activeTab === 'models' && (
         <ModelsTab 
           document={document} 
@@ -80,30 +80,31 @@ export default function DocumentContent({
         <DocumentWorkflowTab
           documentId={document.documentId}
           documentName={document.name}
+          canEdit={document.userPermissions?.canEdit}
           onRefreshDocument={onRefreshDocument}
         />
       )}
-      
+
       {activeTab === 'metadata' && (
-        <MetadataTab 
-          document={document} 
+        <MetadataTab
+          document={document}
           isLoading={isLoadingMetadata}
           onUpdateMetadata={onUpdateMetadata}
           onUpdateDocument={onUpdateDocument}
           onRefreshMetadata={onRefreshMetadata}
         />
       )}
-      
+
       {activeTab === 'activity' && (
-        <ActivityTab 
-          document={document} 
-          auditLogs={auditLogs} 
-          isLoading={isLoadingAuditLogs} 
+        <ActivityTab
+          document={document}
+          auditLogs={auditLogs}
+          isLoading={isLoadingAuditLogs}
         />
       )}
-      
+
       {activeTab === 'comments' && (
-        <UnifiedComments 
+        <UnifiedComments
           entityType="DOCUMENT"
           entityId={document.documentId}
           entityName={document.name}

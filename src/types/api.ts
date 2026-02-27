@@ -129,6 +129,19 @@ export const MetadataType = {
 
 export type MetadataType = typeof MetadataType[keyof typeof MetadataType];
 
+// Relation Type enum (matches backend)
+export const RelationType = {
+  REFERENCE: 'REFERENCE',
+  ATTACHMENT: 'ATTACHMENT',
+  PARENT_DOCUMENT: 'PARENT_DOCUMENT',
+  CHILD_DOCUMENT: 'CHILD_DOCUMENT',
+  VERSION: 'VERSION',
+  ALTERNATIVE_VERSION: 'ALTERNATIVE_VERSION',
+  SIMILAR_DOCUMENT: 'SIMILAR_DOCUMENT',
+} as const;
+
+export type RelationType = typeof RelationType[keyof typeof RelationType];
+
 // Condition Logic enum (matches backend)
 export const ConditionLogic = {
   AND: 'AND',
@@ -289,6 +302,13 @@ export interface DocumentWorkflowInstanceDto {
   currentStepInstanceId?: number;
 }
 
+export interface ComposedChildDto {
+  documentId: number;
+  name: string;
+  mimeType?: string;
+  relationType?: string;
+}
+
 export interface DocumentResponseDto {
   documentId: number;
   versionId: number;
@@ -310,6 +330,8 @@ export interface DocumentResponseDto {
   userPermissions: DocumentPermissionResDto;
   workflowInstance?: DocumentWorkflowInstanceDto;
   stamp?: StampResponse; // Stamp applied to the active version
+  composedChildren?: DocumentResponseDto[]; // Child documents linked via INHERIT/CASCADE
+  relationType?: string; // Only set for composed children (e.g. CHILD_DOCUMENT, ATTACHMENT)
 }
 
 // Bulk upload response types
@@ -430,14 +452,29 @@ export interface DocumentTagResponseDto {
 
 // ==================== LINK RULE TYPES ====================
 
+export enum RuleStatus {
+  DRAFT = 'DRAFT',
+  PENDING_APPROVAL = 'PENDING_APPROVAL',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED'
+}
+
 export interface LinkRuleRequestDto {
   name: string;
   description?: string;
-  linkType: string;
+  relationType: RelationType;
   conditionsLogic: ConditionLogic; // 'AND' | 'OR'
   conditions: LinkRuleConditionRequestDto[];
   enabled?: boolean;
   bidirectional?: boolean;
+  priority?: number;
+  executionOrder?: number;
+  scope?: string;
+  cronExpression?: string;
+
+  // Governance
+  status?: RuleStatus | string;
+  ownerId?: string;
 }
 
 export interface LinkRuleConditionRequestDto {
@@ -451,14 +488,29 @@ export interface LinkRuleResponseDto {
   id: number;
   name: string;
   description?: string;
-  linkType: string;
+  relationType: string;
   conditions: LinkRuleConditionResponseDto[];
   enabled: boolean;
   bidirectional: boolean;
+  priority: number;
+  executionOrder: number;
+  scope: string;
+  cronExpression?: string;
+
+  // Governance
+  status: RuleStatus | string;
+  owner?: UserDto;
+  approvedBy?: UserDto;
+  approvedAt?: string;
+
+  lastScheduledExecutionAt?: string;
   createdBy: UserDto;
   createdAt: string;
   updatedAt: string;
   activeLinksCount?: number;
+  lastExecutionDurationMs?: number;
+  lastExecutionStatus?: string;
+  lastExecutedAt?: string;
   sourceCategory?: RuleCategoryDto;
   targetCategory?: RuleCategoryDto;
 }
@@ -469,6 +521,26 @@ export interface LinkRuleConditionResponseDto {
   targetMetadata: MetadataInfoDto;
   operator: ConditionOperator;
   caseSensitive: boolean;
+}
+
+export interface LinkRuleAuditLogDto {
+  id: number;
+  ruleId: number;
+  action: string;
+  previousState?: string;
+  newState?: string;
+  reason?: string;
+  changedBy?: UserDto;
+  changedAt: string;
+}
+
+export interface LinkRuleTrendDto {
+  date: string;
+  totalExecutions: number;
+  successfulExecutions: number;
+  failedExecutions: number;
+  linksCreated: number;
+  errors: number;
 }
 
 export interface MetadataInfoDto {
@@ -506,7 +578,7 @@ export interface RuleListDto {
 export interface DocumentLinkRequestDto {
   sourceDocumentId: number;
   targetDocumentId: number;
-  linkType: string;
+  relationType: RelationType;
   description?: string;
 }
 
@@ -518,7 +590,7 @@ export interface DocumentLinkResponseDto {
   targetDocumentId: number;
   targetDocumentName: string;
   targetDocumentTitle: string;
-  linkType: string;
+  relationType: string;
   description?: string;
   isManual: boolean;
   ruleId?: number;
@@ -542,7 +614,13 @@ export interface RelatedDocumentResponseDto {
   documentCreatedAt: string;
   isPublic: boolean;
   ownedBy: RelatedDocumentUserDto;
-  linkType: string;
+  relationType: string;
+  strength?: string;
+  permissionMode?: string;
+  movementMode?: string;
+  workflowMode?: string;
+  removable?: boolean;
+  systemGenerated?: boolean;
   description?: string;
   manual: boolean;
   ruleName?: string;
@@ -1271,7 +1349,7 @@ export interface RuleStatistics {
   ruleName: string;
   ruleDescription?: string;
   enabled?: boolean;
-  linkType?: string;
+  relationType?: string;
   totalExecutions: number;
   totalLinksCreated?: number;
   linksCreated?: number;
@@ -1312,6 +1390,46 @@ export interface LinkRuleCacheStatistics {
     REFERENCES: number;
     CONTAINS: number;
   };
+}
+
+export interface LinkRuleExecutionLogDto {
+  id: number;
+  ruleId: number | null;
+  ruleName: string | null;
+  relationType: string | null;
+  startedAt: string;
+  completedAt: string | null;
+  status: 'RUNNING' | 'COMPLETED' | 'FAILED';
+  totalDocumentsProcessed: number;
+  linksCreated: number;
+  linksSkippedExisting: number;
+  linksSkippedParent: number;
+  linksSkippedSelf: number;
+  errors: number;
+  errorDetails: string | null;
+  skippedDetails: string | null;
+  durationMs: number | null;
+  executedById: string | null;
+  executedByName: string | null;
+  triggerSource: string | null;
+  sourceDocumentId: number | null;
+  sourceDocumentName: string | null;
+  errorStackTrace: string | null;
+}
+
+export interface LinkRuleAggregatedStats {
+  ruleId: number;
+  totalExecutions: number;
+  totalLinksCreated: number;
+  activeLinks: number;
+  avgDurationMs: number;
+  lastExecutedAt?: string;
+  lastStatus?: 'RUNNING' | 'COMPLETED' | 'FAILED';
+  lastLinksCreated?: number;
+  lastSkippedParent?: number;
+  lastSkippedExisting?: number;
+  lastErrors?: number;
+  lastDurationMs?: number;
 }
 
 // ==================== MOVING TYPES ====================
@@ -1510,6 +1628,8 @@ export interface WorkflowNodeInstanceResponse {
   comment?: string;
   isOverdue: boolean;
   approvalsCount: number;
+  resultEdge?: string;
+  resultData?: Record<string, any>;
   documentId?: number;
   documentTitle?: string;
   workflowId?: number;
@@ -1616,11 +1736,13 @@ export interface StartWorkflowInstanceRequest {
 
 export interface CompleteStepRequest {
   comment?: string;
+  chosenOptionId?: number;
 }
 
 export interface RejectStepRequest {
   rejectionReason: string;
   comment?: string;
+  formData?: Record<string, any>;
 }
 
 export interface AddWorkflowAdminRequest {
@@ -1893,6 +2015,13 @@ export interface FormResponse {
   createDocumentOnSubmit: boolean;
   templateMinioKey?: string;
   templateFilename?: string;
+  outputAsPdf?: boolean;
+
+  // Model integration
+  filingCategoryId?: number;
+  filingCategoryName?: string;
+  fieldMetadataMappings?: FieldMetadataMappingDto[];
+  defaultCreatorUserId?: string;
 
   // Statistics
   viewCount: number;
@@ -1918,7 +2047,7 @@ export interface FormFieldResponse {
   fieldType: 'TEXT' | 'EMAIL' | 'NUMBER' | 'PHONE' | 'URL' | 'TEXTAREA' | 'RICH_TEXT' |
   'SELECT' | 'RADIO' | 'CHECKBOX' | 'MULTI_SELECT' | 'DATE' | 'TIME' | 'DATETIME' |
   'FILE_UPLOAD' | 'IMAGE_UPLOAD' | 'RATING' | 'SLIDER' | 'SIGNATURE' | 'LOCATION' |
-  'SECTION_HEADER' | 'DIVIDER' | 'HTML_CONTENT';
+  'TABLE' | 'SECTION_HEADER' | 'DIVIDER' | 'HTML_CONTENT';
   placeholder?: string;
   description?: string;
   defaultValue?: string;
@@ -1985,11 +2114,28 @@ export interface CreateFormRequest {
   // Document integration
   saveToFolderId?: number;
   createDocumentOnSubmit?: boolean;
+  autoApprove?: boolean;
+  generateDocumentOnApprovalOnly?: boolean;
   templateMinioKey?: string;
   templateFilename?: string;
+  outputAsPdf?: boolean;
+
+  // Model integration
+  filingCategoryId?: number;
+  fieldMetadataMappings?: FieldMetadataMappingDto[];
+  defaultCreatorUserId?: string;
 
   // Fields
   fields?: CreateFormFieldRequest[];
+}
+
+export interface FieldMetadataMappingDto {
+  id?: number;
+  fieldKey?: string;
+  metadataDefinitionId: number;
+  metadataKey?: string;
+  isStatic?: boolean;
+  staticFieldType?: string; // 'form_id', 'creation_date', 'submission_id'
 }
 
 export interface CreateFormFieldRequest {

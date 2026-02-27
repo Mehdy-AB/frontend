@@ -24,8 +24,8 @@ const EmailNode = ({ data, selected }: EmailNodeProps) => {
             <Handle
                 type="target"
                 position={Position.Left}
-                className="w-4 h-4 bg-sky-500 border-2 border-white"
-                style={{ left: -10 }}
+                className="w-6 h-6 bg-sky-500 border-[3px] border-blue-300 ring-3 ring-blue-300 transition-transform hover:scale-125"
+                style={{ left: -12 }}
             />
 
             {/* Action Icons */}
@@ -105,8 +105,8 @@ const EmailNode = ({ data, selected }: EmailNodeProps) => {
             <Handle
                 type="source"
                 position={Position.Right}
-                className="w-4 h-4 bg-sky-500 border-2 border-white"
-                style={{ right: -10 }}
+                className="w-6 h-6 bg-sky-500 border-[3px] border-blue-300 ring-3 ring-blue-300 transition-transform hover:scale-125"
+                style={{ right: -12 }}
             />
         </div>
     );

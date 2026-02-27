@@ -25,7 +25,8 @@ export class UnclassifiedDocumentService {
     categoryId: number,
     createdBy: string,
     title?: string,
-    fileName?: string
+    fileName?: string,
+    metadataJson?: string
   ): Promise<UnclassifiedDocumentResponseDto> {
     const formData = new FormData();
     formData.append('file', file);
@@ -38,6 +39,10 @@ export class UnclassifiedDocumentService {
 
     if (fileName) {
       formData.append('fileName', fileName);
+    }
+
+    if (metadataJson) {
+      formData.append('metadataJson', metadataJson);
     }
 
     return apiClient.uploadFile<UnclassifiedDocumentResponseDto>(`${this.baseUrl}/upload`, formData);
@@ -125,7 +130,7 @@ export class UnclassifiedDocumentService {
     if (payload.tagsIds && payload.tagsIds.length) {
       form.append('tags', JSON.stringify(payload.tagsIds));
     }
-    
+
     // Always send filingCategory if it exists, even with empty metadata
     if (payload.filingCategory) {
       const filingCategoryJson = JSON.stringify(payload.filingCategory);
@@ -137,10 +142,10 @@ export class UnclassifiedDocumentService {
     } else {
       console.warn('No filingCategory provided in payload!');
     }
-    
+
     // Debug: Log all form data keys
     console.log('FormData keys:', Array.from(form.keys()));
-    
+
     return apiClient.uploadFile<DocumentResponseDto>(`${this.baseUrl}/${id}/classify`, form);
   }
 
