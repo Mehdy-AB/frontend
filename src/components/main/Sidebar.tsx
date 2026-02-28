@@ -46,19 +46,19 @@ export default function Sidebar() {
   const userIsAdmin = isAdmin();
 
   useEffect(() => {
-    // const fetchTaskCount = async () => {
-    //   try {
-    //     const response = await workflowAdminService.getActiveSteps(0, 1, '', 'all');
-    //     setPendingTasksCount(response.totalElements);
-    //   } catch (error) {
-    //     console.error('Failed to fetch task count', error);
-    //   }
-    // };
+    const fetchTaskCount = async () => {
+      try {
+        const tasks = await workflowAdminService.getPendingNodes();
+        setPendingTasksCount(tasks.length);
+      } catch (error) {
+        console.error('Failed to fetch task count', error);
+      }
+    };
 
-    // fetchTaskCount();
-    // // Poll every minute
-    // const interval = setInterval(fetchTaskCount, 60000);
-    // return () => clearInterval(interval);
+    fetchTaskCount();
+    // Poll every 30 seconds
+    const interval = setInterval(fetchTaskCount, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   // Base navigation items for all users
@@ -73,7 +73,7 @@ export default function Sidebar() {
       id: 'tasks',
       label: 'My Tasks',
       icon: FileCheck,
-      href: '/admin/tasks',
+      href: '/tasks',
     },
     {
       id: 'myrepo',
@@ -186,12 +186,12 @@ export default function Sidebar() {
       {/* Logo Section */}
       <div className=" border-b">
         <div className="flex items-center ml-8 w-full">
-            <img
-              src="/logo.svg"
-              alt="Logo"
-              className="h-32 w-32"
-            />
-          </div>
+          <img
+            src="/logo.svg"
+            alt="Logo"
+            className="h-32 w-32"
+          />
+        </div>
       </div>
 
 

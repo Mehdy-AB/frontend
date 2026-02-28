@@ -30,6 +30,7 @@ export interface WorkflowCondition {
   secondaryValue?: string | number; // For 'between' operator
   metadataFieldId?: number; // For metadata conditions
   metadataFieldName?: string;
+  metadataDataType?: string; // e.g. STRING, NUMBER, DATE, DATETIME, BOOLEAN, LIST
   categoryId?: number;
 }
 

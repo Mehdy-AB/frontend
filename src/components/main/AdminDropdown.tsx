@@ -132,12 +132,12 @@ const SECTIONS: Section[] = [
     ],
   },
   {
-    id: 'workflow',
-    label: 'Workflow',
+    id: 'others',
+    label: 'Others',
     Icon: Workflow,
     items: [
-      { label: 'Designer', href: '/admin/workflow/designer', description: 'Design and edit workflows.', Icon: Workflow },
-      { label: 'Task List', href: '/admin/workflow/tasks', description: 'View and manage workflow tasks.', Icon: CheckSquare },
+      { label: 'Workflow Designer', href: '/admin/workflow/designer', description: 'Design and edit workflow processes.', Icon: Workflow },
+      { label: 'Form Designer', href: '/admin/forms', description: 'Create and manage custom forms.', Icon: FileText },
       { label: 'Working Hours', href: '/admin/workflow/working-hours', description: 'Business hours used for SLA calculations.', Icon: Clock },
     ],
   },

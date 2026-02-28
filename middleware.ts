@@ -15,7 +15,7 @@ export default withAuth(
   function middleware(req) {
     const pathname = req.nextUrl.pathname
     const token = req.nextauth.token
-    
+
     // Allow access to auth pages (signin, error) for non-authenticated users
     if (pathname.startsWith('/auth/')) {
       // If user is authenticated and trying to access signin, redirect to home
@@ -28,7 +28,12 @@ export default withAuth(
       // Allow access to auth pages for non-authenticated users
       return NextResponse.next()
     }
-    
+
+    // Allow access to public forms - no authentication required
+    if (pathname.startsWith('/forms/')) {
+      return NextResponse.next()
+    }
+
     // Handle root route first - redirect to signin if not authenticated
     if (pathname === '/' || pathname === '') {
       if (!token) {
@@ -44,17 +49,17 @@ export default withAuth(
       // The LanguageProvider handles translations on the client side
       return NextResponse.next()
     }
-    
+
     // Handle locale-based routes
     if (pathname.startsWith('/en/') || pathname.startsWith('/fr/') || pathname.startsWith('/ar/')) {
       // First handle internationalization for locale-based routes
       const intlResponse = intlMiddleware(req)
-      
+
       // If intl middleware returns a response (redirect), use it
       if (intlResponse) {
         return intlResponse
       }
-      
+
       // After handling intl, check authentication for these routes
       if (!token) {
         const signInUrl = new URL('/auth/signin', req.url)
@@ -63,36 +68,37 @@ export default withAuth(
       }
       return NextResponse.next()
     }
-    
+
     // For all other routes, require authentication
     if (!token) {
       const signInUrl = new URL('/auth/signin', req.url)
       signInUrl.searchParams.set('callbackUrl', req.url)
       return NextResponse.redirect(signInUrl)
     }
-    
+
     return NextResponse.next()
   },
   {
     callbacks: {
       authorized: ({ token, req }) => {
         const pathname = req.nextUrl.pathname
-        
+
         // Allow access to auth pages without token
         if (pathname.startsWith('/auth/')) {
           return true
         }
-        
+
         // Allow access to public assets
         if (
-          pathname.startsWith('/_next/') || 
-          pathname.startsWith('/api/auth/') || 
+          pathname.startsWith('/_next/') ||
+          pathname.startsWith('/api/auth/') ||
+          pathname.startsWith('/forms/') ||
           pathname.includes('.') ||
           pathname === '/favicon.ico'
         ) {
           return true
         }
-        
+
         // Require token for all other routes
         return !!token
       },

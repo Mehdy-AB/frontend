@@ -80,6 +80,10 @@ export default function EditFormPage() {
             createDocumentOnSubmit: form.createDocumentOnSubmit ?? false,
             templateMinioKey: form.templateMinioKey,
             templateFilename: form.templateFilename,
+            outputAsPdf: form.outputAsPdf ?? false,
+            filingCategoryId: form.filingCategoryId,
+            fieldMetadataMappings: form.fieldMetadataMappings,
+            defaultCreatorUserId: form.defaultCreatorUserId,
             fields: form.fields?.map(field => ({
                 label: field.label,
                 fieldKey: field.fieldKey,
@@ -122,6 +126,7 @@ export default function EditFormPage() {
     return (
         <div className="h-screen overflow-hidden">
             <FormDesigner
+                formId={form.id}
                 initialData={getInitialData()}
                 initialFolderName={form.saveToFolderName}
                 onSave={handleSave}

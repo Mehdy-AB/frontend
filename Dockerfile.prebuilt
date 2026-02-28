@@ -1,0 +1,33 @@
+# ============================================================================
+# PRE-BUILT FRONTEND DOCKERFILE
+# Uses locally built artifacts (.next/standalone) to avoid building in Docker
+# ============================================================================
+
+FROM node:20-alpine
+WORKDIR /app
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nextjs -u 1001
+
+# Copy standalone build (includes node_modules and server.js)
+COPY --chown=nextjs:nodejs .next/standalone/Desktop/AebDMS/frontend/ ./
+
+# Copy static assets (required for standalone mode)
+COPY --chown=nextjs:nodejs .next/static ./.next/static
+COPY --chown=nextjs:nodejs public ./public
+
+# Switch to non-root user
+USER nextjs
+
+EXPOSE 3000
+
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3000', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})" || exit 1
+
+CMD ["node", "server.js"]

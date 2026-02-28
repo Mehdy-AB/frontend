@@ -65,6 +65,7 @@ import {
 } from '@/components/ui/select';
 import { useLanguage } from '../../../../contexts/LanguageContext';
 import { workflowAdminService } from '@/api/services/workflowAdminService';
+import { apiClient } from '@/api/client';
 import { notificationApiClient } from '@/api/notificationClient';
 import { useNotifications } from '@/hooks/useNotifications';
 import { RoleDto, CreateStepAssignmentRequest, AddWorkflowAdminRequest, WorkflowTriggerResponse, AddWorkflowTriggerRequest, FilingCategoryResponseDto } from '@/types/api';
@@ -84,7 +85,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import ConfirmationModal from '@/components/modals/ConfirmationModal';
-import ApplyWorkflowChangesDialog from '@/components/modals/ApplyWorkflowChangesDialog';
 import { ReactFlowProvider, useReactFlow } from '@xyflow/react';
 import WorkflowStepNode from './nodes/WorkflowStepNode';
 import StartNode from './nodes/StartNode';
@@ -121,6 +121,7 @@ import CancelNode from './nodes/CancelNode';
 import ErrorHandlerNode from './nodes/ErrorHandlerNode';
 import GetContextNode from './nodes/GetContextNode';
 import ApprovalNode from './nodes/ApprovalNode';
+import MultiChoiceNode from './nodes/MultiChoiceNode';
 import { WorkflowNodeData } from './nodes/types';
 import { useRef } from 'react';
 // Import node configuration modals
@@ -152,6 +153,7 @@ import ScriptNodeModal from './modals/ScriptNodeModal';
 import OcrNodeModal from './modals/OcrNodeModal';
 import CancelNodeModal from './modals/CancelNodeModal';
 import ErrorHandlerNodeModal from './modals/ErrorHandlerNodeModal';
+import MultiChoiceNodeModal from './modals/MultiChoiceNodeModal';
 import GetContextNodeModal from './modals/GetContextNodeModal';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import InstancesTab from './tabs/InstancesTab';
@@ -161,6 +163,7 @@ import useWorkflowValidation from './hooks/useWorkflowValidation';
 import ValidationPanel from './components/ValidationPanel';
 import CustomEdge from './components/CustomEdge';
 import NodesPalette from './components/NodesPalette';
+import VariablesPanel from './components/VariablesPanel';
 // Custom Node Components are imported from ./nodes/ directory
 
 // Mapping from frontend node type to backend WorkflowNodeType
@@ -172,6 +175,7 @@ const nodeTypeToBackendType: Record<string, string> = {
   firstStep: 'APPROVAL',
   reviewNode: 'REVIEW',
   manualTaskNode: 'MANUAL_TASK',
+  multiChoiceNode: 'MULTI_CHOICE',
   conditionalNode: 'CONDITION',
   splitNode: 'SPLIT',
   joinNode: 'JOIN',
@@ -213,6 +217,7 @@ const nodeTypes: NodeTypes = {
   firstStep: WorkflowStepNode,
   reviewNode: ReviewNode,
   manualTaskNode: ManualTaskNode,
+  multiChoiceNode: MultiChoiceNode,
 
   // Logic / Flow
   conditionalNode: ConditionalNode,
@@ -277,6 +282,9 @@ export default function WorkflowDesignerPage() {
   const [isActive, setIsActive] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingWorkflow, setIsLoadingWorkflow] = useState(!!workflowId); // Start loading if editing existing workflow
+
+  // Local variables for new workflows (before they have an ID)
+  const [localVariables, setLocalVariables] = useState<import('./components/VariablesPanel').VariableDefinition[]>([]);
   const [workflowAdmins, setWorkflowAdmins] = useState<Array<{
     userId: string;
     user?: { id: string; displayName?: string; username?: string; email?: string; imgUrl?: string };
@@ -286,13 +294,18 @@ export default function WorkflowDesignerPage() {
 
   // Sidebar tab state
   const [sidebarTab, setSidebarTab] = useState<'properties' | 'nodes'>('properties');
-  const [activeTab, setActiveTab] = useState("designer");
+  // Get initial tab from URL or default to designer
+  const initialTab = searchParams?.get('tab') || 'designer';
+  const [activeTab, setActiveTab] = useState(initialTab);
 
-  // Apply changes dialog
-  const [showApplyChangesDialog, setShowApplyChangesDialog] = useState(false);
-  const [workflowToApplyChanges, setWorkflowToApplyChanges] = useState<number | null>(null);
-  const [applyChangesReason, setApplyChangesReason] = useState('');
-  const [isApplyingChanges, setIsApplyingChanges] = useState(false);
+  // Sync tab to URL when it changes
+  const handleTabChange = useCallback((tab: string) => {
+    setActiveTab(tab);
+    // Update URL without navigation
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', tab);
+    window.history.replaceState({}, '', url.toString());
+  }, []);
 
   // Workflow Triggers
   const [workflowTriggers, setWorkflowTriggers] = useState<WorkflowTriggerResponse[]>([]);
@@ -412,6 +425,7 @@ export default function WorkflowDesignerPage() {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showErrorHandlerModal, setShowErrorHandlerModal] = useState(false);
   const [showGetContextModal, setShowGetContextModal] = useState(false);
+  const [showMultiChoiceModal, setShowMultiChoiceModal] = useState(false);
   const [editingNodeData, setEditingNodeData] = useState<Node<WorkflowNodeData> | null>(null);
   const [nodeSearchQuery, setNodeSearchQuery] = useState('');
 
@@ -423,7 +437,7 @@ export default function WorkflowDesignerPage() {
     showReviewModal || showManualTaskModal || showApprovalModal || showSplitModal || showJoinModal ||
     showUpdateMetadataModal || showChangeStatusModal || showNewVersionModal ||
     showLockDocumentModal || showUnlockDocumentModal ||
-    showScriptModal || showOcrModal || showCancelModal || showErrorHandlerModal || showGetContextModal;
+    showScriptModal || showOcrModal || showCancelModal || showErrorHandlerModal || showGetContextModal || showMultiChoiceModal;
 
   // Workflow validation hook for connection validation and error detection
   const { errors: validationErrors, isValid: isWorkflowValid, canConnect, validateConnection, getNodeErrors } = useWorkflowValidation(nodes, edges);
@@ -491,10 +505,7 @@ export default function WorkflowDesignerPage() {
               setEditingNodeData(node);
               setShowArchiveModal(true);
               break;
-            case 'deleteNode':
-              setEditingNodeData(node);
-              setShowDeleteModal(true);
-              break;
+            // deleteNode has no config — terminal node
             // New backend-aligned node types
             case 'reviewNode':
               setEditingNodeData(node);
@@ -551,6 +562,10 @@ export default function WorkflowDesignerPage() {
             case 'ocrNode':
               setEditingNodeData(node);
               setShowOcrModal(true);
+              break;
+            case 'multiChoiceNode':
+              setEditingNodeData(node);
+              setShowMultiChoiceModal(true);
               break;
             default:
               console.log('No modal for node type:', node.type);
@@ -745,6 +760,11 @@ export default function WorkflowDesignerPage() {
             nodeType: step.nodeType,
             nodeConfig: step.nodeConfigJson,
             stepId: step.id, // Ensure stepId is available
+            // Extract form fields and shared config from nodeConfigJson
+            formFields: nodeConfig.formFields || [],
+            rejectFormFields: nodeConfig.rejectFormFields || [],
+            instructions: nodeConfig.instructions || '',
+            notificationSubject: nodeConfig.notificationSubject || '',
             ...nodeData, // Spread node-specific data
             onEdit: createEditHandler(nodeId),
             onDelete: () => handleDeleteNode(nodeId),
@@ -991,10 +1011,7 @@ export default function WorkflowDesignerPage() {
           setEditingNodeData(newNode);
           setShowArchiveModal(true);
           break;
-        case 'deleteNode':
-          setEditingNodeData(newNode);
-          setShowDeleteModal(true);
-          break;
+        // deleteNode has no config modal — it's a terminal node
         // New backend-aligned node types
         case 'reviewNode':
           setEditingNodeData(newNode);
@@ -1059,22 +1076,46 @@ export default function WorkflowDesignerPage() {
 
   const onConnect = useCallback(
     (params: Connection) => {
-      // Use hook validation for consistent checking
-      const validationResult = validateConnection(params);
+      // Skip validation for "output already connected" - we'll replace the edge
+      // But still check for cycles and other structural issues
+      const sourceNode = nodes.find(n => n.id === params.source);
+      const targetNode = nodes.find(n => n.id === params.target);
 
-      if (!validationResult.valid) {
-        showError('Invalid Connection', validationResult.reason || 'Connection not allowed');
+      // Basic validation
+      if (!params.source || !params.target) return;
+      if (params.source === params.target) {
+        showError('Invalid Connection', 'Self-loops are not allowed');
+        return;
+      }
+
+      // Check if target can receive connections
+      if (sourceNode?.type === 'finishNode' || sourceNode?.type === 'endSuccessNode' || sourceNode?.type === 'endFailureNode') {
+        showError('Invalid Connection', 'End nodes cannot have outgoing connections');
+        return;
+      }
+      if (targetNode?.type === 'startNode' || targetNode?.type === 'triggerNode') {
+        showError('Invalid Connection', 'Start nodes cannot have incoming connections');
         return;
       }
 
       setEdges((eds) => {
-        // Remove the start-finish edge if connecting from start or to finish
-        const filteredEdges = eds.filter(e => !(e.id === 'edge-start-finish' &&
-          (params.source === 'start-node' || params.target === 'finish-node')));
+        // Remove existing edge from the same source+sourceHandle (auto-replace behavior)
+        const filteredEdges = eds.filter(e => {
+          // Remove start-finish if connecting from/to those nodes
+          if (e.id === 'edge-start-finish' && (params.source === 'start-node' || params.target === 'finish-node')) {
+            return false;
+          }
+          // Remove existing edge from same source handle to allow replacement
+          if (e.source === params.source &&
+            (e.sourceHandle === params.sourceHandle || (!e.sourceHandle && !params.sourceHandle))) {
+            return false;
+          }
+          return true;
+        });
         return addEdge({ ...params, type: 'default' }, filteredEdges);
       });
     },
-    [setEdges, showError, validateConnection]
+    [setEdges, showError, nodes]
   );
 
   // Initialize Start and Finish nodes on mount if creating new workflow
@@ -1310,19 +1351,7 @@ export default function WorkflowDesignerPage() {
   useEffect(() => {
     const handleDeleteEdge = (event: CustomEvent<{ edgeId: string }>) => {
       const edgeId = event.detail.edgeId;
-      // Prevent deleting the start-finish edge if it's the only connection
-      if (edgeId === 'edge-start-finish') {
-        const otherEdges = edges.filter(e => e.id !== edgeId);
-        const workflowStepEdges = otherEdges.filter(e => {
-          const sourceNode = nodes.find(n => n.id === e.source);
-          const targetNode = nodes.find(n => n.id === e.target);
-          return sourceNode?.type !== 'startNode' && targetNode?.type !== 'finishNode';
-        });
-        if (workflowStepEdges.length === 0) {
-          showError('Cannot Delete', 'Cannot delete the only connection between Start and Finish');
-          return;
-        }
-      }
+      // Allow deleting any edge - validation will catch issues at save time
       setEdges((eds) => eds.filter((edge) => edge.id !== edgeId));
     };
 
@@ -1330,13 +1359,13 @@ export default function WorkflowDesignerPage() {
       const edgeId = event.detail.edgeId;
       const edge = edges.find(e => e.id === edgeId);
       if (edge) {
-        // Create a new step between the edge's source and target
+        // Create a new approval node between the edge's source and target
         const sourceNode = nodes.find(n => n.id === edge.source);
         const targetNode = nodes.find(n => n.id === edge.target);
-        const nodeId = `step-${Date.now()}`;
+        const nodeId = `node_${Date.now()}`;
         const newNode: Node = {
           id: nodeId,
-          type: 'workflowStep',
+          type: 'approvalNode',
           position: {
             x: sourceNode && targetNode
               ? (sourceNode.position.x + targetNode.position.x) / 2
@@ -1346,14 +1375,12 @@ export default function WorkflowDesignerPage() {
               : (sourceNode?.position.y || 0),
           },
           data: {
-            label: `Step ${nodes.filter(n => n.type === 'workflowStep' || n.type === 'firstStep').length + 1}`,
+            label: `Approval ${nodes.filter(n => n.type === 'approvalNode').length + 1}`,
             description: '',
             assignments: [],
-            expirationDays: 0,
-            onCompleteAction: 'NONE',
-            isRequired: true,
-            allowParallelApproval: false,
-            isFirstStep: false,
+            assignmentEntities: [],
+            approvalPolicy: 'ANY',
+            rejectPolicy: 'ANY_REJECTS',
             onEdit: createEditHandler(nodeId),
             onDelete: () => handleDeleteNode(nodeId),
           },
@@ -1367,13 +1394,13 @@ export default function WorkflowDesignerPage() {
           return [
             ...filtered,
             { id: `edge-${edge.source}-${nodeId}`, source: edge.source, target: nodeId, type: 'default' },
-            { id: `edge-${nodeId}-${edge.target}`, source: nodeId, target: edge.target, type: 'default' },
+            { id: `edge-${nodeId}-${edge.target}`, source: nodeId, sourceHandle: 'approved', target: edge.target, type: 'default' },
           ];
         });
 
-        // Open modal to configure the new step
-        setEditingStepData(newNode);
-        setShowStepModal(true);
+        // Open approval modal to configure the new node
+        setEditingNodeData(newNode);
+        setShowApprovalModal(true);
       }
     };
 
@@ -1435,48 +1462,6 @@ export default function WorkflowDesignerPage() {
     setShowStepModal(false);
     setEditingStepData(null);
   }, [editingStepData, setNodes]);
-
-  const handleApplyChangesConfirm = useCallback(async (applyToExisting: boolean, reason?: string) => {
-    if (!workflowToApplyChanges) return;
-
-    setIsApplyingChanges(true);
-    try {
-      if (applyToExisting) {
-        const result = await workflowAdminService.applyWorkflowChanges(
-          workflowToApplyChanges,
-          true,
-          undefined, // Apply to all instances
-          reason
-        );
-
-        if (result.failureCount > 0) {
-          showError(
-            'Partial Success',
-            `Updated ${result.successCount} instances, but ${result.failureCount} failed`
-          );
-        } else {
-          showSuccess(
-            'Changes Applied',
-            `Successfully updated ${result.successCount} workflow instance(s)`
-          );
-        }
-      }
-
-      // Navigate back to workflow list
-      router.push('/admin/workflow');
-    } catch (error: any) {
-      console.error('Failed to apply workflow changes:', error);
-      showError(
-        'Apply Failed',
-        error?.response?.data?.message || 'Failed to apply changes to instances'
-      );
-    } finally {
-      setIsApplyingChanges(false);
-      setShowApplyChangesDialog(false);
-      setWorkflowToApplyChanges(null);
-      setApplyChangesReason('');
-    }
-  }, [workflowToApplyChanges, router, showSuccess, showError]);
 
   const handleSave = useCallback(async () => {
     // Filter out start and finish nodes
@@ -1559,7 +1544,7 @@ export default function WorkflowDesignerPage() {
 
     // NEW: Validate that all nodes have their source (output) points connected
     // Every node except finish nodes and trigger nodes must have at least one outgoing edge
-    const endNodeTypes = ['finishNode', 'endSuccessNode', 'endFailureNode', 'triggerNode'];
+    const endNodeTypes = ['finishNode', 'endSuccessNode', 'endFailureNode', 'triggerNode', 'cancelNode', 'endNode', 'deleteNode'];
     const nodesRequiringOutput = nodes.filter(n =>
       !endNodeTypes.includes(n.type || '') && n.id !== 'finish-node'
     );
@@ -1575,30 +1560,50 @@ export default function WorkflowDesignerPage() {
       return;
     }
 
-    // Additional check: All non-finish nodes must eventually lead to finish
-    // Check that every reachable node can reach finish node (no dead ends)
-    const canReachFinish = new Set<string>();
-    const reverseQueue: string[] = ['finish-node'];
-    canReachFinish.add('finish-node');
+    // Additional check: All non-terminal nodes must eventually lead to a terminal node
+    // Terminal nodes include: finish-node, cancelNode, endSuccessNode, endFailureNode
+    const terminalNodeTypes = ['finishNode', 'endSuccessNode', 'endFailureNode', 'cancelNode', 'endNode', 'deleteNode'];
+    const terminalNodeIds = nodes
+      .filter(n => terminalNodeTypes.includes(n.type || '') || n.id === 'finish-node')
+      .map(n => n.id);
+
+    const canReachTerminal = new Set<string>(terminalNodeIds);
+    const reverseQueue: string[] = [...terminalNodeIds];
 
     while (reverseQueue.length > 0) {
       const currentNodeId = reverseQueue.shift()!;
       edges.forEach(edge => {
-        if (edge.target === currentNodeId && !canReachFinish.has(edge.source)) {
-          canReachFinish.add(edge.source);
+        if (edge.target === currentNodeId && !canReachTerminal.has(edge.source)) {
+          canReachTerminal.add(edge.source);
           reverseQueue.push(edge.source);
         }
       });
     }
 
-    // Find nodes that are reachable from start but cannot reach finish (dead ends)
+    // Find nodes that are reachable from start but cannot reach any terminal node (dead ends)
     const deadEndNodes = nodes.filter(n =>
-      visited.has(n.id) && !canReachFinish.has(n.id) && !endNodeTypes.includes(n.type || '')
+      visited.has(n.id) && !canReachTerminal.has(n.id) && !endNodeTypes.includes(n.type || '')
     );
 
     if (deadEndNodes.length > 0) {
       const nodeNames = deadEndNodes.map(n => n.data.label || n.type || 'Unnamed node').join(', ');
-      showError('Validation Error', `Some nodes do not lead to the Finish node. Please connect: ${nodeNames}`);
+      showError('Validation Error', `Some nodes do not lead to a terminal node (End or Cancel). Please connect: ${nodeNames}`);
+      return;
+    }
+
+    // Validate that all human task form fields have variable mappings
+    const humanTaskNodeTypes = ['approvalNode', 'reviewNode', 'manualTaskNode', 'workflowStep', 'firstStep'];
+    const humanTaskNodes = nodes.filter(n => humanTaskNodeTypes.includes(n.type || ''));
+    const unmappedNodes: string[] = [];
+    for (const node of humanTaskNodes) {
+      const formFields: any[] = node.data.formFields || [];
+      const unmappedFields = formFields.filter((f: any) => !f.mappedVariableKey);
+      if (unmappedFields.length > 0) {
+        unmappedNodes.push(node.data.label || 'Unnamed step');
+      }
+    }
+    if (unmappedNodes.length > 0) {
+      showError('Validation Error', `The following steps have form fields without variable mapping: ${unmappedNodes.join(', ')}. Every form field must be mapped to a variable.`);
       return;
     }
 
@@ -1715,6 +1720,14 @@ export default function WorkflowDesignerPage() {
         if (node.data.instructions) configData.instructions = node.data.instructions;
         if (node.data.notificationSubject) configData.notificationSubject = node.data.notificationSubject;
 
+        // For human task nodes - include form fields
+        if (node.data.formFields && Array.isArray(node.data.formFields) && node.data.formFields.length > 0) {
+          configData.formFields = node.data.formFields;
+        }
+        if (node.data.rejectFormFields && Array.isArray(node.data.rejectFormFields) && node.data.rejectFormFields.length > 0) {
+          configData.rejectFormFields = node.data.rejectFormFields;
+        }
+
         // For EMAIL nodes - include email recipients
         if (node.data.emailRecipients && node.data.emailRecipients.length > 0) {
           configData.emailRecipients = node.data.emailRecipients;
@@ -1787,14 +1800,15 @@ export default function WorkflowDesignerPage() {
         };
 
       // Prepare Workflow Definition JSON (Visual Graph)
-      // Strip full entity objects to reduce DB size - they'll be resolved at read time
+      // Keep entity objects for edit mode - remove only non-serializable functions
       const cleanedNodes = nodes.map(node => ({
         ...node,
         data: {
           ...node.data,
-          // Remove full entity objects - we only need IDs in assignments[]
-          assignmentEntities: undefined,
-          escalationTargetEntities: undefined,
+          // Remove functions (can't be serialized)
+          onEdit: undefined,
+          onDelete: undefined,
+          // Keep assignmentEntities and escalationTargetEntities for edit mode
         }
       }));
 
@@ -1818,14 +1832,30 @@ export default function WorkflowDesignerPage() {
         // Update existing workflow
         const updatedWorkflow = await workflowAdminService.updateWorkflow(Number(workflowId), commonPayload as UpdateWorkflowRequest);
 
-        // Store workflow ID for the apply changes dialog
-        setWorkflowToApplyChanges(Number(workflowId));
-        setShowApplyChangesDialog(true);
         showSuccess('Workflow Updated', 'Workflow updated successfully');
-        return; // Will navigate after user makes decision
+        // Navigate directly to workflow list (no apply changes dialog)
+        router.push('/admin/workflow');
       } else {
         // Create new workflow
         const newWorkflow = await workflowAdminService.createWorkflow(commonPayload as CreateWorkflowRequest);
+
+        // Save local variables to the newly created workflow
+        if (localVariables && localVariables.length > 0 && newWorkflow.id) {
+          for (const v of localVariables) {
+            try {
+              await apiClient.post(`/api/v1/workflows/${newWorkflow.id}/variables`, {
+                workflowId: newWorkflow.id,
+                variableKey: v.variableKey,
+                label: v.label,
+                type: v.type,
+                defaultValue: v.defaultValue,
+              });
+            } catch (varErr: any) {
+              console.warn(`Failed to save variable '${v.label}':`, varErr);
+            }
+          }
+        }
+
         showSuccess('Workflow Created', 'Workflow created successfully');
         // Route to edit mode of the new workflow
         router.push(`/admin/workflow/designer?id=${newWorkflow.id}`);
@@ -1848,6 +1878,7 @@ export default function WorkflowDesignerPage() {
     folderTriggerFolderId,
     modelTriggerCategoryId,
     workflowAdmins,
+    localVariables,
     router,
     showSuccess,
     showError,
@@ -1868,13 +1899,18 @@ export default function WorkflowDesignerPage() {
   }
 
   return (
-    <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
+    <Tabs value={activeTab} onValueChange={handleTabChange} className="h-full flex flex-col">
       <div className="flex-none border-b px-4 py-2 bg-white flex items-center justify-between z-10">
         <TabsList>
           <TabsTrigger value="designer">Designer</TabsTrigger>
-          <TabsTrigger value="instances">Instances</TabsTrigger>
-          <TabsTrigger value="history">History</TabsTrigger>
-          <TabsTrigger value="statistics">Statistics</TabsTrigger>
+          {/* Only show monitoring tabs when editing an existing workflow */}
+          {workflowId && (
+            <>
+              <TabsTrigger value="instances">Instances</TabsTrigger>
+              <TabsTrigger value="history">History</TabsTrigger>
+              <TabsTrigger value="statistics">Statistics</TabsTrigger>
+            </>
+          )}
         </TabsList>
       </div>
 
@@ -1905,6 +1941,17 @@ export default function WorkflowDesignerPage() {
                 >
                   <div className="flex flex-col items-center gap-1">
                     <span className="font-medium text-sm">Nodes</span>
+                  </div>
+                </button>
+                <button
+                  onClick={() => setSidebarTab('variables')}
+                  className={`flex-1 flex items-center justify-center p-3 border-b-2 transition-colors ${sidebarTab === 'variables'
+                    ? 'border-blue-500 text-blue-600 bg-blue-50/50'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                    }`}
+                >
+                  <div className="flex flex-col items-center gap-1">
+                    <span className="font-medium text-sm">Variables</span>
                   </div>
                 </button>
                 <div className="p-2 border-l flex items-center">
@@ -1943,20 +1990,6 @@ export default function WorkflowDesignerPage() {
                         >
                           <RefreshCw className="h-4 w-4 mr-2" />
                           Update Workflow
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => {
-                            // Clear workflowId to create new, then save
-                            const url = new URL(window.location.href);
-                            url.searchParams.delete('id');
-                            window.history.replaceState({}, '', url.toString());
-                            // Trigger save as new
-                            handleSave();
-                          }}
-                          disabled={isSaving}
-                        >
-                          <Copy className="h-4 w-4 mr-2" />
-                          Save as New
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -2280,11 +2313,18 @@ export default function WorkflowDesignerPage() {
                       </div>
                     </div>
                   </div>
-                ) : (
+                ) : sidebarTab === 'nodes' ? (
                   /* Add Nodes Tab Content */
                   <NodesPalette
                     searchQuery={nodeSearchQuery}
                     onSearchChange={setNodeSearchQuery}
+                  />
+                ) : (
+                  /* Variables Tab Content */
+                  <VariablesPanel
+                    workflowId={workflowId ? Number(workflowId) : null}
+                    localVariables={localVariables}
+                    onLocalVariablesChange={setLocalVariables}
                   />
                 )}
               </div>
@@ -2699,20 +2739,6 @@ export default function WorkflowDesignerPage() {
             existingAdminUserIds={workflowAdmins.map(a => a.userId)}
           />
 
-          {/* Apply Workflow Changes Dialog */}
-          <ApplyWorkflowChangesDialog
-            isOpen={showApplyChangesDialog}
-            onClose={() => {
-              setShowApplyChangesDialog(false);
-              setWorkflowToApplyChanges(null);
-              setApplyChangesReason('');
-              // Navigate even if user cancels
-              router.push('/admin/workflow');
-            }}
-            onConfirm={handleApplyChangesConfirm}
-            isLoading={isApplyingChanges}
-          />
-
           {/* Node Configuration Modals */}
           {
             editingNodeData && (
@@ -2966,6 +2992,9 @@ export default function WorkflowDesignerPage() {
                   isOpen={showReviewModal}
                   onClose={() => { setShowReviewModal(false); setEditingNodeData(null); }}
                   nodeData={editingNodeData.data}
+                  workflowId={workflowId ? Number(workflowId) : undefined}
+                  nodeId={editingNodeData.id}
+                  localVariables={localVariables}
                   onSave={(updatedData) => {
                     setNodes((nds) => nds.map((n) => n.id === editingNodeData.id ? { ...n, data: { ...n.data, ...updatedData } } : n));
                     setShowReviewModal(false);
@@ -2977,6 +3006,9 @@ export default function WorkflowDesignerPage() {
                   isOpen={showManualTaskModal}
                   onClose={() => { setShowManualTaskModal(false); setEditingNodeData(null); }}
                   nodeData={editingNodeData.data}
+                  workflowId={workflowId ? Number(workflowId) : undefined}
+                  nodeId={editingNodeData.id}
+                  localVariables={localVariables}
                   onSave={(updatedData) => {
                     setNodes((nds) => nds.map((n) => n.id === editingNodeData.id ? { ...n, data: { ...n.data, ...updatedData } } : n));
                     setShowManualTaskModal(false);
@@ -2988,9 +3020,25 @@ export default function WorkflowDesignerPage() {
                   isOpen={showApprovalModal}
                   onClose={() => { setShowApprovalModal(false); setEditingNodeData(null); }}
                   nodeData={editingNodeData.data}
+                  workflowId={workflowId ? Number(workflowId) : undefined}
+                  nodeId={editingNodeData.id}
+                  localVariables={localVariables}
                   onSave={(updatedData) => {
                     setNodes((nds) => nds.map((n) => n.id === editingNodeData.id ? { ...n, data: { ...n.data, ...updatedData } } : n));
                     setShowApprovalModal(false);
+                    setEditingNodeData(null);
+                  }}
+                />
+
+                <MultiChoiceNodeModal
+                  isOpen={showMultiChoiceModal}
+                  onClose={() => { setShowMultiChoiceModal(false); setEditingNodeData(null); }}
+                  nodeData={editingNodeData.data}
+                  workflowId={workflowId ? Number(workflowId) : undefined}
+                  nodeId={editingNodeData.id}
+                  onSave={(updatedData) => {
+                    setNodes((nds) => nds.map((n) => n.id === editingNodeData.id ? { ...n, data: { ...n.data, ...updatedData } } : n));
+                    setShowMultiChoiceModal(false);
                     setEditingNodeData(null);
                   }}
                 />

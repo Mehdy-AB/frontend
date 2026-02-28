@@ -120,13 +120,22 @@ export default function MetadataTab({
     return [];
   };
 
-  // Initialize editing of existing metadata
+  // Initialize editing of existing metadata - include ALL fields from model definition
   const startEditingExistingMetadata = () => {
-    if (document.filingCategory && document.filingCategory.metadata) {
-      const metadata = document.filingCategory.metadata.map((meta: any) => ({
-        id: meta.metadataId,
-        value: meta.value
-      }));
+    if (document.filingCategory) {
+      // Use metadataDefinitions to include ALL fields (not just those with values)
+      const metadataDefinitions = document.filingCategory.metadataDefinitions || [];
+      const existingMetadata = document.filingCategory.metadata || [];
+
+      const metadata = metadataDefinitions.map((def: any) => {
+        // Find existing value if any
+        const existingValue = existingMetadata.find((m: any) => m.metadataId === def.id);
+        return {
+          id: def.id,
+          value: existingValue?.value || ''
+        };
+      });
+
       setEditingMetadata(metadata);
       setIsEditingExistingMetadata(true);
     }
@@ -913,7 +922,8 @@ export default function MetadataTab({
                       </div>
                     </div>
 
-                    {document.filingCategory.metadata && document.filingCategory.metadata.length > 0 && (
+                    {/* Show all metadata fields from model definition (including empty optional ones) */}
+                    {document.filingCategory.metadataDefinitions && document.filingCategory.metadataDefinitions.length > 0 && (
                       <div>
                         <div className="flex items-center justify-between mb-2">
                           <div className="text-sm font-medium text-gray-700">Model Metadata</div>
@@ -968,26 +978,30 @@ export default function MetadataTab({
                           </div>
                         ) : (
                           <div className="space-y-2">
-                            {document.filingCategory.metadata.map((meta: any) => {
-                              // Use document metadata definitions if available, otherwise fallback to model definitions
-                              const metadataDefinitions = getMetadataDefinitionsForEditing();
-                              const metadataDef = metadataDefinitions?.find(
-                                (def: any) => def.id === meta.metadataId
+                            {/* Show ALL metadata definitions, not just those with values */}
+                            {document.filingCategory.metadataDefinitions.map((metadataDef: any) => {
+                              // Find the value for this metadata field (if any)
+                              const metaValue = document.filingCategory?.metadata?.find(
+                                (m: any) => m.metadataId === metadataDef.id
                               );
-                              const dataType = metadataDef?.dataType || MetadataType.STRING;
+                              const value = metaValue?.value || '';
+                              const dataType = metadataDef.dataType || MetadataType.STRING;
 
                               return (
-                                <div key={meta.metadataId} className="p-3 bg-gray-50 rounded border">
+                                <div key={metadataDef.id} className={`p-3 rounded border ${value ? 'bg-gray-50' : 'bg-amber-50/50 border-amber-200'}`}>
                                   <div className="flex items-center justify-between mb-2">
                                     <div className="flex items-center gap-2">
                                       {getMetadataTypeIcon(dataType)}
-                                      <span className="text-sm font-medium text-gray-700">{meta.metadataName}</span>
-                                      {metadataDef && (
-                                        <span className="text-xs text-gray-400">({dataType.toLowerCase()})</span>
+                                      <span className="text-sm font-medium text-gray-700">{metadataDef.key}</span>
+                                      {metadataDef.mandatory ? (
+                                        <span className="text-xs text-red-500">*Required</span>
+                                      ) : (
+                                        <span className="text-xs text-gray-400">Optional</span>
                                       )}
+                                      <span className="text-xs text-gray-400">({dataType.toLowerCase()})</span>
                                     </div>
-                                    <span className="text-sm text-gray-900 font-medium">
-                                      {formatMetadataValue(meta.value, dataType)}
+                                    <span className={`text-sm font-medium ${value ? 'text-gray-900' : 'text-amber-600 italic'}`}>
+                                      {value ? formatMetadataValue(value, dataType) : 'Not set'}
                                     </span>
                                   </div>
 

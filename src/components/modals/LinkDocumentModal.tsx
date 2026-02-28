@@ -20,34 +20,33 @@ interface LinkDocumentModalProps {
   sourceDocumentName: string;
 }
 
-const LINK_TYPES = [
-  { value: 'related', label: 'Related Document' },
-  { value: 'reference', label: 'Reference' },
-  { value: 'attachment', label: 'Attachment' },
-  { value: 'version', label: 'Version' },
-  { value: 'parent', label: 'Parent Document' },
-  { value: 'child', label: 'Child Document' },
-  { value: 'similar', label: 'Similar Document' },
-  { value: 'alternative', label: 'Alternative Version' }
+const RELATION_TYPES = [
+  { value: 'REFERENCE', label: 'Reference' },
+  { value: 'ATTACHMENT', label: 'Attachment' },
+  { value: 'PARENT_DOCUMENT', label: 'Parent Document' },
+  { value: 'CHILD_DOCUMENT', label: 'Child Document' },
+  { value: 'VERSION', label: 'Version' },
+  { value: 'ALTERNATIVE_VERSION', label: 'Alternative Version' },
+  { value: 'SIMILAR_DOCUMENT', label: 'Similar Document' }
 ];
 
 // Unified type for table items
 type TableItem = (FolderResDto & { type: 'folder' }) | (DocumentResponseDto & { type: 'document' });
 
-export default function LinkDocumentModal({ 
-  isOpen, 
-  onClose, 
-  onLinkCreated, 
-  sourceDocumentId, 
-  sourceDocumentName 
+export default function LinkDocumentModal({
+  isOpen,
+  onClose,
+  onLinkCreated,
+  sourceDocumentId,
+  sourceDocumentName
 }: LinkDocumentModalProps) {
   const [selectedDocument, setSelectedDocument] = useState<DocumentResponseDto | null>(null);
-  const [linkType, setLinkType] = useState('related');
+  const [relationType, setRelationType] = useState('REFERENCE');
   const [description, setDescription] = useState('');
   const [isLinking, setIsLinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'folders' | 'shared'>('folders');
-  
+
   // Shared items state
   const [sharedData, setSharedData] = useState<FolderRepoResDto | null>(null);
   const [sharedLoading, setSharedLoading] = useState(false);
@@ -78,7 +77,7 @@ export default function LinkDocumentModal({
     setSharedLoading(true);
     try {
       let response: FolderRepoResDto;
-      
+
       if (sharedCurrentFolderId !== null) {
         // Fetch folder contents
         response = await notificationApiClient.getFolder(sharedCurrentFolderId, {
@@ -100,7 +99,7 @@ export default function LinkDocumentModal({
           desc: false
         });
       }
-      
+
       setSharedData(response);
     } catch (err: any) {
       console.error('Error fetching shared data:', err);
@@ -164,17 +163,17 @@ export default function LinkDocumentModal({
   // Combine folders and documents for shared items
   const sharedTableItems = useMemo(() => {
     if (!sharedData) return [];
-    
+
     const folderItems: TableItem[] = (sharedData.folders || []).map(folder => ({
       ...folder,
       type: 'folder' as const
     }));
-    
+
     const documentItems: TableItem[] = (sharedData.documents || []).map(doc => ({
       ...doc,
       type: 'document' as const
     }));
-    
+
     return [...folderItems, ...documentItems];
   }, [sharedData]);
 
@@ -198,7 +197,7 @@ export default function LinkDocumentModal({
       const linkRequest: DocumentLinkRequestDto = {
         sourceDocumentId: sourceDocumentId,
         targetDocumentId: selectedDocument.documentId,
-        linkType: linkType,
+        relationType: relationType as any,
         description: description.trim() || undefined
       };
 
@@ -216,7 +215,7 @@ export default function LinkDocumentModal({
   const handleClose = () => {
     if (!isLinking) {
       setSelectedDocument(null);
-      setLinkType('related');
+      setRelationType('REFERENCE');
       setDescription('');
       setError(null);
       setActiveTab('folders');
@@ -259,11 +258,10 @@ export default function LinkDocumentModal({
           <div className="flex gap-2 border-b">
             <button
               onClick={() => setActiveTab('folders')}
-              className={`px-4 py-2 font-medium text-sm transition-colors border-b-2 ${
-                activeTab === 'folders'
+              className={`px-4 py-2 font-medium text-sm transition-colors border-b-2 ${activeTab === 'folders'
                   ? 'border-blue-600 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
+                }`}
             >
               <div className="flex items-center gap-2">
                 <Folder className="h-4 w-4" />
@@ -272,11 +270,10 @@ export default function LinkDocumentModal({
             </button>
             <button
               onClick={() => setActiveTab('shared')}
-              className={`px-4 py-2 font-medium text-sm transition-colors border-b-2 ${
-                activeTab === 'shared'
+              className={`px-4 py-2 font-medium text-sm transition-colors border-b-2 ${activeTab === 'shared'
                   ? 'border-blue-600 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
+                }`}
             >
               <div className="flex items-center gap-2">
                 <Share2 className="h-4 w-4" />
@@ -317,26 +314,24 @@ export default function LinkDocumentModal({
               <div className="p-3 border-b bg-white flex items-center gap-2 text-sm overflow-x-auto">
                 <button
                   onClick={() => navigateSharedBreadcrumb(null)}
-                  className={`flex items-center gap-1 px-2 py-1 rounded transition-colors flex-shrink-0 ${
-                    sharedCurrentFolderId === null 
-                      ? 'font-medium text-blue-600' 
+                  className={`flex items-center gap-1 px-2 py-1 rounded transition-colors flex-shrink-0 ${sharedCurrentFolderId === null
+                      ? 'font-medium text-blue-600'
                       : 'hover:bg-gray-100 text-gray-700'
-                  }`}
+                    }`}
                 >
                   <Home className="h-4 w-4" />
                   <span>Shared</span>
                 </button>
-                
+
                 {sharedBreadcrumbs.map((crumb, index) => (
                   <div key={`${crumb.id}-${index}`} className="flex items-center gap-2 flex-shrink-0">
                     <ChevronRight className="h-4 w-4 text-gray-400" />
                     <button
                       onClick={() => navigateSharedBreadcrumb(crumb.id, index)}
-                      className={`px-2 py-1 rounded transition-colors truncate max-w-[150px] ${
-                        index === sharedBreadcrumbs.length - 1 && sharedCurrentFolderId === crumb.id
+                      className={`px-2 py-1 rounded transition-colors truncate max-w-[150px] ${index === sharedBreadcrumbs.length - 1 && sharedCurrentFolderId === crumb.id
                           ? 'font-medium text-blue-600'
                           : 'hover:bg-gray-100 text-gray-700'
-                      }`}
+                        }`}
                       title={crumb.name}
                     >
                       {crumb.name}
@@ -361,7 +356,7 @@ export default function LinkDocumentModal({
                     </div>
                     <h3 className="text-sm font-medium text-gray-900 mb-1">No shared items found</h3>
                     <p className="text-xs text-gray-500">
-                      {sharedSearchQuery 
+                      {sharedSearchQuery
                         ? `No items match "${sharedSearchQuery}"`
                         : sharedCurrentFolderId !== null
                           ? 'This folder is empty'
@@ -375,7 +370,7 @@ export default function LinkDocumentModal({
                       const isFolder = item.type === 'folder';
                       const excluded = isDocument && item.documentId === sourceDocumentId;
                       const selected = isDocument && selectedDocument?.documentId === item.documentId;
-                      
+
                       if (isFolder) {
                         return (
                           <button
@@ -406,18 +401,18 @@ export default function LinkDocumentModal({
                           onClick={() => !excluded && handleSelectSharedDocument(item)}
                           disabled={excluded}
                           className={`w-full p-3 transition-colors flex items-center gap-3 text-left
-                            ${excluded 
-                              ? 'opacity-50 cursor-not-allowed bg-gray-100' 
+                            ${excluded
+                              ? 'opacity-50 cursor-not-allowed bg-gray-100'
                               : selected
                                 ? 'bg-blue-50 border-l-4 border-blue-500'
                                 : 'hover:bg-gray-50'
                             }`}
                         >
                           <div className={`w-10 h-10 rounded-lg flex items-center justify-center
-                            ${excluded 
-                              ? 'bg-gray-200' 
-                              : selected 
-                                ? 'bg-blue-100' 
+                            ${excluded
+                              ? 'bg-gray-200'
+                              : selected
+                                ? 'bg-blue-100'
                                 : 'bg-green-50'
                             }`}>
                             <FileText className={`h-5 w-5 ${excluded ? 'text-gray-400' : selected ? 'text-blue-600' : 'text-green-600'}`} />
@@ -471,17 +466,17 @@ export default function LinkDocumentModal({
             </div>
           )}
 
-          {/* Link Type */}
+          {/* Relation Type */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Link Type
+              Relation Type
             </label>
-            <Select value={linkType} onValueChange={setLinkType} disabled={isLinking}>
+            <Select value={relationType} onValueChange={setRelationType} disabled={isLinking}>
               <SelectTrigger>
-                <SelectValue placeholder="Select link type" />
+                <SelectValue placeholder="Select relation type" />
               </SelectTrigger>
               <SelectContent>
-                {LINK_TYPES.map((type) => (
+                {RELATION_TYPES.map((type) => (
                   <SelectItem key={type.value} value={type.value}>
                     {type.label}
                   </SelectItem>
@@ -515,12 +510,12 @@ export default function LinkDocumentModal({
                   {selectedDocument.title && selectedDocument.title !== selectedDocument.name && (
                     <p className="text-sm text-blue-700">{selectedDocument.title}</p>
                   )}
-                   <div className="flex items-center gap-4 text-xs text-blue-600 mt-1">
-                     <span>{formatFileSize(selectedDocument.sizeBytes)}</span>
-                     <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                       {selectedDocument.mimeType}
-                     </span>
-                   </div>
+                  <div className="flex items-center gap-4 text-xs text-blue-600 mt-1">
+                    <span>{formatFileSize(selectedDocument.sizeBytes)}</span>
+                    <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                      {selectedDocument.mimeType}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>

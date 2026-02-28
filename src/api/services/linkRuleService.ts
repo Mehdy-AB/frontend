@@ -12,6 +12,10 @@ import {
   BulkRuleExecutionRequest,
   BulkRuleExecutionResponse,
   LinkRuleCacheStatistics,
+  LinkRuleExecutionLogDto,
+  LinkRuleTrendDto,
+  LinkRuleAggregatedStats,
+  LinkRuleAuditLogDto,
 } from '../../types/api';
 
 export class LinkRuleService {
@@ -96,9 +100,69 @@ export class LinkRuleService {
     return apiClient.get<LinkRuleCacheStatistics>(`${this.baseUrl}/cache-statistics`);
   }
 
+  // Get paginated execution history for a specific rule
+  async getRuleExecutionHistory(
+    ruleId: number,
+    page: number = 0,
+    size: number = 20
+  ): Promise<PageResponse<LinkRuleExecutionLogDto>> {
+    return apiClient.get<PageResponse<LinkRuleExecutionLogDto>>(
+      `${this.baseUrl}/${ruleId}/executions?page=${page}&size=${size}`
+    );
+  }
+
+  // Get single execution detail
+  async getRuleExecutionDetail(
+    ruleId: number,
+    executionId: number
+  ): Promise<LinkRuleExecutionLogDto> {
+    return apiClient.get<LinkRuleExecutionLogDto>(
+      `${this.baseUrl}/${ruleId}/executions/${executionId}`
+    );
+  }
+
+  // Get aggregated stats for a specific rule
+  async getRuleAggregatedStats(ruleId: number): Promise<LinkRuleAggregatedStats> {
+    return apiClient.get<LinkRuleAggregatedStats>(`${this.baseUrl}/${ruleId}/stats`);
+  }
+
+  // Get recent executions across all rules
+  async getRecentExecutions(
+    page: number = 0,
+    size: number = 20
+  ): Promise<PageResponse<LinkRuleExecutionLogDto>> {
+    return apiClient.get<PageResponse<LinkRuleExecutionLogDto>>(
+      `${this.baseUrl}/executions/recent?page=${page}&size=${size}`
+    );
+  }
+
   // Clear cache
   async clearCache(): Promise<void> {
     return apiClient.delete<void>(`${this.baseUrl}/cache`);
+  }
+
+  // ==================== GOVERNANCE & COLLABORATION ====================
+
+  // Approve a pending rule
+  async approveRule(ruleId: number): Promise<LinkRuleResponseDto> {
+    return apiClient.put<LinkRuleResponseDto>(`${this.baseUrl}/${ruleId}/approve`, {});
+  }
+
+  // Reject a pending rule
+  async rejectRule(ruleId: number, reason?: string): Promise<LinkRuleResponseDto> {
+    const params = reason ? `?reason=${encodeURIComponent(reason)}` : '';
+    return apiClient.put<LinkRuleResponseDto>(`${this.baseUrl}/${ruleId}/reject${params}`, {});
+  }
+
+  // Get audit logs for a rule
+  async getRuleAuditLogs(
+    ruleId: number,
+    page: number = 0,
+    size: number = 20
+  ): Promise<PageResponse<LinkRuleAuditLogDto>> {
+    return apiClient.get<PageResponse<LinkRuleAuditLogDto>>(
+      `${this.baseUrl}/${ruleId}/audit-logs?page=${page}&size=${size}`
+    );
   }
 
   // Search link rules
@@ -251,6 +315,28 @@ export class LinkRuleService {
     });
 
     return apiClient.get<PageResponse<DocumentLinkResponseDto>>(`/api/v1/document-links/search?${params}`);
+  }
+
+  // Get rule execution trends
+  async getRuleTrends(days: number = 30): Promise<LinkRuleTrendDto[]> {
+    return apiClient.get<LinkRuleTrendDto[]>(`/api/admin/link-rules/analytics/trends?days=${days}`);
+  }
+
+  // Export execution history to CSV
+  async exportExecutionHistoryAsCsv(ruleId: number): Promise<void> {
+    const response = await apiClient.get<Blob>(`/api/admin/link-rules/${ruleId}/export-csv`, {
+      responseType: 'blob',
+    });
+
+    // Create a download link for the Blob
+    const url = window.URL.createObjectURL(new Blob([response as any])); // axios returns data directly in some setups, or response.data
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `rule-${ruleId}-executions.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
   }
 }
 

@@ -14,7 +14,15 @@ import {
   UserCheck,
   FileText,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  GitBranch,
+  Timer,
+  Trash2,
+  ListChecks,
+  Stamp,
+  XCircle,
+  Ban,
+  Repeat2
 } from 'lucide-react';
 import { WorkflowTimelineResponse } from '@/types/workflow';
 import { formatDate } from '@/lib/dateFormatter';
@@ -65,11 +73,17 @@ const getNodeTypeInfo = (nodeType: string) => {
   const types: Record<string, { icon: React.ReactNode; label: string; className: string }> = {
     START: { icon: <Zap className="w-3.5 h-3.5" />, label: 'Start', className: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
     END: { icon: <CheckCircle2 className="w-3.5 h-3.5" />, label: 'End', className: 'bg-gray-100 text-gray-700 border-gray-200' },
+    CANCEL: { icon: <XCircle className="w-3.5 h-3.5" />, label: 'Cancelled', className: 'bg-red-100 text-red-700 border-red-200' },
     APPROVAL: { icon: <UserCheck className="w-3.5 h-3.5" />, label: 'Approval', className: 'bg-blue-100 text-blue-700 border-blue-200' },
     REVIEW: { icon: <FileCheck className="w-3.5 h-3.5" />, label: 'Review', className: 'bg-purple-100 text-purple-700 border-purple-200' },
     MANUAL_TASK: { icon: <FileText className="w-3.5 h-3.5" />, label: 'Task', className: 'bg-amber-100 text-amber-700 border-amber-200' },
+    CONDITION: { icon: <GitBranch className="w-3.5 h-3.5" />, label: 'Condition', className: 'bg-orange-100 text-orange-700 border-orange-200' },
+    MULTI_CHOICE: { icon: <ListChecks className="w-3.5 h-3.5" />, label: 'Choice', className: 'bg-violet-100 text-violet-700 border-violet-200' },
+    DELAY: { icon: <Timer className="w-3.5 h-3.5" />, label: 'Delay', className: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
     SET_METADATA: { icon: <FileText className="w-3.5 h-3.5" />, label: 'Set Metadata', className: 'bg-cyan-100 text-cyan-700 border-cyan-200' },
     MOVE_DOCUMENT: { icon: <FileText className="w-3.5 h-3.5" />, label: 'Move Document', className: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
+    DELETE_DOCUMENT: { icon: <Trash2 className="w-3.5 h-3.5" />, label: 'Delete', className: 'bg-red-100 text-red-700 border-red-200' },
+    STAMP_DOCUMENT: { icon: <Stamp className="w-3.5 h-3.5" />, label: 'Stamp', className: 'bg-teal-100 text-teal-700 border-teal-200' },
     LOCK_DOCUMENT: { icon: <FileText className="w-3.5 h-3.5" />, label: 'Lock', className: 'bg-red-100 text-red-700 border-red-200' },
     UNLOCK_DOCUMENT: { icon: <FileText className="w-3.5 h-3.5" />, label: 'Unlock', className: 'bg-green-100 text-green-700 border-green-200' },
   };
@@ -90,7 +104,7 @@ export function WorkflowTimeline({ workflowInstanceId, documentId }: WorkflowTim
         setTimeline(data);
         // Auto-expand active nodes
         const activeNodeIds = data.nodes
-          .filter(n => n.status === 'ACTIVE')
+          .filter(n => n.status === 'ACTIVE' || n.status === 'SCHEDULED')
           .map(n => n.id ? `inst-${n.id}` : `node-${n.nodeId}`);
         setExpandedNodes(new Set(activeNodeIds));
       } catch (err) {
@@ -142,21 +156,63 @@ export function WorkflowTimeline({ workflowInstanceId, documentId }: WorkflowTim
     return <div className="text-gray-500 p-4 text-center">No timeline steps available</div>;
   }
 
-  const nodes = timeline.nodes;
-  const currentNodeId = timeline.nodes.find(s => s.status === 'ACTIVE')?.id;
+  // Sort nodes: START first, then completed (by completion time), active, pending, END last
+  const sortedNodes = [...timeline.nodes].sort((a, b) => {
+    // START always first
+    if (a.nodeType === 'START') return -1;
+    if (b.nodeType === 'START') return 1;
+    // END always last
+    if (a.nodeType === 'END') return 1;
+    if (b.nodeType === 'END') return -1;
+
+    // Status priority: COMPLETED < REJECTED < ACTIVE < SCHEDULED < PENDING/other
+    const statusOrder: Record<string, number> = {
+      'COMPLETED': 0,
+      'REJECTED': 1,
+      'ACTIVE': 2,
+      'SCHEDULED': 3,  // SCHEDULED is actionable, show before other PENDING
+      'PENDING': 4,
+    };
+    const aOrder = statusOrder[a.status] ?? 5;
+    const bOrder = statusOrder[b.status] ?? 5;
+
+    if (aOrder !== bOrder) return aOrder - bOrder;
+
+    // Within same status, sort by time
+    if (a.status === 'COMPLETED' && b.status === 'COMPLETED') {
+      // Sort by completion time (earliest first)
+      const aTime = a.completedAt ? new Date(a.completedAt).getTime() : 0;
+      const bTime = b.completedAt ? new Date(b.completedAt).getTime() : 0;
+      return aTime - bTime;
+    }
+
+    // For other statuses, use started time or step order
+    const aTime = a.startedAt ? new Date(a.startedAt).getTime() : 0;
+    const bTime = b.startedAt ? new Date(b.startedAt).getTime() : 0;
+    return aTime - bTime;
+  });
+
+  const nodes = sortedNodes;
+  const currentNodeId = timeline.nodes.find(s => s.status === 'ACTIVE' || s.status === 'SCHEDULED')?.id;
 
   const getStatusIcon = (status: string, isOverdue: boolean) => {
     if (status === 'COMPLETED') {
       return <CheckCircle2 className="w-5 h-5 text-green-600" />;
     }
-    if (status === 'ACTIVE') {
+    if (status === 'ACTIVE' || status === 'SCHEDULED') {
       if (isOverdue) {
         return <AlertCircle className="w-5 h-5 text-red-600 animate-pulse" />;
       }
       return <Clock className="w-5 h-5 text-blue-600 animate-pulse" />;
     }
     if (status === 'REJECTED') {
-      return <AlertCircle className="w-5 h-5 text-red-600" />;
+      return <XCircle className="w-5 h-5 text-red-600" />;
+    }
+    if (status === 'CANCELLED') {
+      return <Ban className="w-5 h-5 text-gray-500" />;
+    }
+    if (status === 'FAILED') {
+      return <AlertCircle className="w-5 h-5 text-orange-600" />;
     }
     return <Circle className="w-5 h-5 text-gray-400" />;
   };
@@ -167,10 +223,14 @@ export function WorkflowTimeline({ workflowInstanceId, documentId }: WorkflowTim
       ACTIVE: isOverdue
         ? { label: 'Overdue', className: 'bg-red-100 text-red-700' }
         : { label: 'In Progress', className: 'bg-blue-100 text-blue-700' },
+      SCHEDULED: isOverdue
+        ? { label: 'Overdue', className: 'bg-red-100 text-red-700' }
+        : { label: 'Awaiting Action', className: 'bg-amber-100 text-amber-700' },
       COMPLETED: { label: 'Completed', className: 'bg-green-100 text-green-700' },
       REJECTED: { label: 'Rejected', className: 'bg-red-100 text-red-700' },
       EXPIRED: { label: 'Expired', className: 'bg-orange-100 text-orange-700' },
       CANCELLED: { label: 'Cancelled', className: 'bg-gray-100 text-gray-600' },
+      SKIPPED: { label: 'Not Executed', className: 'bg-gray-50 text-gray-400 border-gray-200' },
     };
     const badge = badges[status] || { label: status, className: 'bg-gray-100 text-gray-600' };
     return (
@@ -184,7 +244,7 @@ export function WorkflowTimeline({ workflowInstanceId, documentId }: WorkflowTim
     let base = 'border rounded-xl transition-all duration-200 ';
     if (status === 'COMPLETED') {
       base += 'border-green-200 bg-gradient-to-r from-green-50 to-white';
-    } else if (status === 'ACTIVE') {
+    } else if (status === 'ACTIVE' || status === 'SCHEDULED') {
       if (isOverdue) {
         base += 'border-red-300 bg-gradient-to-r from-red-50 to-white';
       } else {
@@ -192,6 +252,8 @@ export function WorkflowTimeline({ workflowInstanceId, documentId }: WorkflowTim
       }
     } else if (status === 'REJECTED') {
       base += 'border-red-200 bg-gradient-to-r from-red-50 to-white';
+    } else if (status === 'SKIPPED') {
+      base += 'border-gray-200 bg-gray-50/50 opacity-60';
     } else {
       base += 'border-gray-200 bg-gradient-to-r from-gray-50 to-white';
     }
@@ -211,7 +273,16 @@ export function WorkflowTimeline({ workflowInstanceId, documentId }: WorkflowTim
           const isExpanded = expandedNodes.has(nodeKey);
           const nodeTypeInfo = getNodeTypeInfo(node.nodeType);
           const duration = getDuration(node.startedAt, node.completedAt);
-          const hasDetails = node.description || (node.assignments && node.assignments.length > 0) || node.comment;
+          const isConditionNode = node.nodeType === 'CONDITION';
+          const conditionResult = node.resultEdge;
+          const conditionSummary = node.resultData?.conditionSummary as string | undefined;
+          const hasDetails = node.description || (node.assignments && node.assignments.length > 0) || node.comment || conditionSummary;
+
+          // Loop iteration detection: count how many times this nodeId has appeared before this index
+          const sameNodeOccurrences = nodes.filter((n, i) => i <= index && n.nodeId === node.nodeId);
+          const iterationNumber = sameNodeOccurrences.length;
+          const totalIterations = nodes.filter(n => n.nodeId === node.nodeId).length;
+          const isLoopIteration = totalIterations > 1;
 
           return (
             <div key={nodeKey} className="relative">
@@ -222,14 +293,14 @@ export function WorkflowTimeline({ workflowInstanceId, documentId }: WorkflowTim
 
               {/* Node Card */}
               <Collapsible open={isExpanded} onOpenChange={() => toggleExpand(nodeKey)}>
-                <div className={getCardStyle(node.status, node.isOverdue, isCurrent)}>
+                <div className={getCardStyle(node.status, node.isOverdue ?? false, isCurrent)}>
                   {/* Header - Always visible */}
                   <CollapsibleTrigger asChild>
                     <div className="p-3 cursor-pointer hover:bg-white/50 transition-colors rounded-t-xl">
                       <div className="flex items-start gap-3">
                         {/* Status Icon */}
                         <div className="flex-shrink-0 mt-0.5">
-                          {getStatusIcon(node.status, node.isOverdue)}
+                          {getStatusIcon(node.status, node.isOverdue ?? false)}
                         </div>
 
                         {/* Main Content */}
@@ -240,12 +311,36 @@ export function WorkflowTimeline({ workflowInstanceId, documentId }: WorkflowTim
                               {nodeTypeInfo.icon}
                               <span className="ml-1">{nodeTypeInfo.label}</span>
                             </Badge>
-                            {getStatusBadge(node.status, node.isOverdue)}
+                            {getStatusBadge(node.status, node.isOverdue ?? false)}
                             {duration && (
                               <span className="text-[10px] text-gray-500 flex items-center gap-0.5">
                                 <Clock className="w-3 h-3" />
                                 {duration}
                               </span>
+                            )}
+                            {/* Condition result badge */}
+                            {isConditionNode && conditionResult && (
+                              <Badge
+                                variant="outline"
+                                className={`text-[10px] px-1.5 py-0 h-5 ${conditionResult === 'TRUE'
+                                  ? 'bg-green-100 text-green-700 border-green-200'
+                                  : conditionResult === 'FALSE'
+                                    ? 'bg-red-100 text-red-700 border-red-200'
+                                    : 'bg-gray-100 text-gray-600 border-gray-200'
+                                  }`}
+                              >
+                                {conditionResult === 'TRUE' ? '✅ True' : conditionResult === 'FALSE' ? '❌ False' : conditionResult}
+                              </Badge>
+                            )}
+                            {/* Loop iteration badge */}
+                            {isLoopIteration && (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] px-1.5 py-0 h-5 bg-violet-50 text-violet-700 border-violet-200"
+                              >
+                                <Repeat2 className="w-3 h-3 mr-0.5" />
+                                Iteration {iterationNumber}/{totalIterations}
+                              </Badge>
                             )}
                           </div>
 
@@ -266,6 +361,49 @@ export function WorkflowTimeline({ workflowInstanceId, documentId }: WorkflowTim
                               </span>
                             )}
                           </div>
+
+                          {/* Summary: Completed by + Action in header */}
+                          {node.completedBy && (
+                            <div className="flex items-center gap-2 mt-2">
+                              <span className="text-[10px] text-gray-500">Completed by:</span>
+                              <div className="flex items-center gap-1">
+                                <UserAvatar
+                                  user={{
+                                    id: node.completedBy.id,
+                                    firstName: node.completedBy.firstName,
+                                    lastName: node.completedBy.lastName,
+                                    imgUrl: node.completedBy.imgUrl,
+                                    email: node.completedBy.email,
+                                    username: node.completedBy.username,
+                                  }}
+                                  size="xs"
+                                />
+                                <span className="text-[10px] font-medium text-gray-700">
+                                  {node.completedBy.firstName} {node.completedBy.lastName}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Comment preview in header - show first comment with action color */}
+                          {node.assignments && node.assignments.length > 0 && (() => {
+                            const commentAssignment = node.assignments.find(a => a.comment);
+                            if (!commentAssignment) return null;
+                            const isRejected = commentAssignment.action === 'REJECTED';
+                            return (
+                              <div className={`mt-2 p-1.5 rounded text-[10px] ${isRejected
+                                ? 'bg-red-50 border border-red-200'
+                                : 'bg-amber-50 border border-amber-100'
+                                }`}>
+                                <span className={`font-medium ${isRejected ? 'text-red-600' : 'text-gray-600'}`}>
+                                  {isRejected ? '❌ Rejected: ' : '💬 '}
+                                </span>
+                                <span className={`italic ${isRejected ? 'text-red-600' : 'text-gray-700'}`}>
+                                  "{commentAssignment.comment}"
+                                </span>
+                              </div>
+                            );
+                          })()}
                         </div>
 
                         {/* Expand/Collapse indicator */}
@@ -285,6 +423,28 @@ export function WorkflowTimeline({ workflowInstanceId, documentId }: WorkflowTim
                   {/* Expanded Content */}
                   <CollapsibleContent>
                     <div className="px-3 pb-3 pt-0 border-t border-gray-100 space-y-3">
+                      {/* Condition evaluation summary */}
+                      {isConditionNode && conditionSummary && (
+                        <div className={`mt-3 p-2.5 rounded-lg border ${conditionResult === 'TRUE'
+                          ? 'bg-green-50/70 border-green-100'
+                          : conditionResult === 'FALSE'
+                            ? 'bg-red-50/70 border-red-100'
+                            : 'bg-gray-50/70 border-gray-100'
+                          }`}>
+                          <div className="flex items-start gap-2">
+                            <GitBranch className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${conditionResult === 'TRUE' ? 'text-green-500' : 'text-red-500'
+                              }`} />
+                            <div>
+                              <p className="text-[10px] font-medium text-gray-500 mb-0.5">Evaluated condition:</p>
+                              <p className={`text-xs leading-relaxed ${conditionResult === 'TRUE' ? 'text-green-800' : 'text-red-800'
+                                }`}>
+                                {conditionSummary}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Description/Instructions */}
                       {node.description && (
                         <div className="mt-3 p-2.5 bg-blue-50/70 border border-blue-100 rounded-lg">
@@ -298,72 +458,84 @@ export function WorkflowTimeline({ workflowInstanceId, documentId }: WorkflowTim
                         </div>
                       )}
 
-                      {/* Assignees */}
+                      {/* Assignees with Action Details */}
                       {node.assignments && node.assignments.length > 0 && (
                         <div className="mt-3 p-2.5 bg-white/70 border border-gray-100 rounded-lg">
                           <div className="flex items-center gap-1.5 mb-2">
                             <Users className="w-3.5 h-3.5 text-gray-500" />
                             <span className="text-xs font-semibold text-gray-700">Assignees</span>
                           </div>
-                          <div className="flex flex-wrap gap-2">
+                          <div className="space-y-2">
                             {node.assignments.map((assignment) => (
-                              <Tooltip key={assignment.id}>
-                                <TooltipTrigger asChild>
-                                  <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-50 border border-gray-200 rounded-full cursor-pointer hover:bg-gray-100 transition-colors">
-                                    <UserAvatar
-                                      user={assignment.user ? {
-                                        id: assignment.user.id,
-                                        username: assignment.user.username,
-                                        email: assignment.user.email,
-                                        firstName: assignment.user.firstName,
-                                        lastName: assignment.user.lastName,
-                                        displayName: assignment.user.displayName,
-                                        imgUrl: assignment.user.imgUrl,
-                                        imageUrl: assignment.user.imageUrl,
-                                      } : null}
-                                      size="xs"
-                                    />
-                                    <span className="text-xs text-gray-700">
-                                      {assignment.assigneeName || assignment.user?.displayName || 'Unknown'}
-                                    </span>
-                                    {assignment.action && (
-                                      <Badge
-                                        variant="outline"
-                                        className={`text-[9px] px-1 py-0 h-4 ${assignment.action === 'APPROVED'
-                                          ? 'bg-green-50 text-green-700 border-green-200'
-                                          : assignment.action === 'REJECTED'
-                                            ? 'bg-red-50 text-red-700 border-red-200'
-                                            : 'bg-gray-50 text-gray-600 border-gray-200'
-                                          }`}
-                                      >
-                                        {assignment.action}
-                                      </Badge>
-                                    )}
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent side="bottom" className="p-2 text-xs">
-                                  <div className="space-y-1">
-                                    <div className="font-semibold">
-                                      {assignment.assigneeName || assignment.user?.displayName || 'Unknown'}
+                              <div key={assignment.id} className="p-2 bg-gray-50 border border-gray-200 rounded-lg">
+                                <div className="flex items-center gap-2">
+                                  <UserAvatar
+                                    user={assignment.user ? {
+                                      id: assignment.user.id,
+                                      username: assignment.user.username,
+                                      email: assignment.user.email,
+                                      firstName: assignment.user.firstName,
+                                      lastName: assignment.user.lastName,
+                                      displayName: assignment.user.displayName,
+                                      imgUrl: assignment.user.imgUrl,
+                                      imageUrl: assignment.user.imageUrl,
+                                    } : null}
+                                    size="xs"
+                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="text-xs font-medium text-gray-700">
+                                        {assignment.assigneeName || assignment.user?.displayName || 'Unknown'}
+                                      </span>
+                                      {assignment.action && (
+                                        <Badge
+                                          variant="outline"
+                                          className={`text-[9px] px-1.5 py-0 h-4 ${assignment.action === 'APPROVED'
+                                            ? 'bg-green-50 text-green-700 border-green-200'
+                                            : assignment.action === 'REJECTED'
+                                              ? 'bg-red-50 text-red-700 border-red-200'
+                                              : 'bg-gray-50 text-gray-600 border-gray-200'
+                                            }`}
+                                        >
+                                          {assignment.action}
+                                        </Badge>
+                                      )}
+                                      {assignment.actedAt && (
+                                        <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
+                                          <Clock className="w-3 h-3" />
+                                          {formatDate(assignment.actedAt)}
+                                        </span>
+                                      )}
                                     </div>
-                                    {assignment.user?.username && (
-                                      <div className="text-gray-400">@{assignment.user.username}</div>
-                                    )}
-                                    {assignment.user?.email && (
-                                      <div className="text-gray-400">{assignment.user.email}</div>
-                                    )}
                                     {assignment.role && (
-                                      <div className="text-purple-500">Role: {assignment.role.name}</div>
+                                      <div className="text-[10px] text-purple-500">Role: {assignment.role.name}</div>
                                     )}
                                     {assignment.group && (
-                                      <div className="text-green-500">Group: {assignment.group.name}</div>
-                                    )}
-                                    {assignment.actedAt && (
-                                      <div className="text-gray-400">Acted: {formatDate(assignment.actedAt)}</div>
+                                      <div className="text-[10px] text-green-500">Group: {assignment.group.name}</div>
                                     )}
                                   </div>
-                                </TooltipContent>
-                              </Tooltip>
+                                </div>
+                                {/* Show comment prominently with action-based coloring */}
+                                {assignment.comment && (
+                                  <div className={`mt-2 p-2 rounded text-xs ${assignment.action === 'REJECTED'
+                                    ? 'bg-red-50 border border-red-200'
+                                    : 'bg-amber-50 border border-amber-100'
+                                    }`}>
+                                    <div className="flex items-start gap-1.5">
+                                      <Info className={`w-3.5 h-3.5 flex-shrink-0 mt-0.5 ${assignment.action === 'REJECTED' ? 'text-red-600' : 'text-amber-600'
+                                        }`} />
+                                      <div>
+                                        <span className={`font-medium ${assignment.action === 'REJECTED' ? 'text-red-700' : 'text-gray-600'
+                                          }`}>
+                                          {assignment.action === 'REJECTED' ? 'Rejection reason: ' : 'Comment: '}
+                                        </span>
+                                        <span className={`italic ${assignment.action === 'REJECTED' ? 'text-red-600' : 'text-gray-700'
+                                          }`}>"{assignment.comment}"</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
                             ))}
                           </div>
                         </div>

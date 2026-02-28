@@ -35,6 +35,7 @@ import {
     Database,
     Square,
     Stamp,
+    List,
 } from 'lucide-react';
 
 interface NodesPaletteProps {
@@ -122,7 +123,7 @@ export default function NodesPalette({ searchQuery, onSearchChange }: NodesPalet
             )}
 
             {/* Human Tasks */}
-            {(matchesNodeSearch('approval') || matchesNodeSearch('review') || matchesNodeSearch('manual') || matchesNodeSearch('task')) && (
+            {(matchesNodeSearch('approval') || matchesNodeSearch('review') || matchesNodeSearch('manual') || matchesNodeSearch('task') || matchesNodeSearch('choice') || matchesNodeSearch('decision')) && (
                 <div className="mb-4">
                     <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Human Tasks</h4>
                     <div className="grid grid-cols-2 gap-2">
@@ -151,6 +152,15 @@ export default function NodesPalette({ searchQuery, onSearchChange }: NodesPalet
                                 displayName="Manual Task"
                                 icon={<ClipboardCheck className="w-6 h-6 text-violet-600" />}
                                 colorClass="bg-gradient-to-br from-violet-50 to-violet-100 border-2 border-violet-200 text-violet-900"
+                            />
+                        )}
+                        {(matchesNodeSearch('choice') || matchesNodeSearch('decision') || matchesNodeSearch('multi')) && (
+                            <DraggableNodeCard
+                                nodeType="multiChoiceNode"
+                                label="Multi-Choice"
+                                displayName="Multi-Choice"
+                                icon={<List className="w-6 h-6 text-teal-600" />}
+                                colorClass="bg-gradient-to-br from-teal-50 to-teal-100 border-2 border-teal-200 text-teal-900"
                             />
                         )}
                     </div>
@@ -194,7 +204,7 @@ export default function NodesPalette({ searchQuery, onSearchChange }: NodesPalet
             )}
 
             {/* Time / Scheduling */}
-            {(matchesNodeSearch('delay') || matchesNodeSearch('sla') || matchesNodeSearch('timer') || matchesNodeSearch('wait')) && (
+            {(matchesNodeSearch('delay') || matchesNodeSearch('wait')) && (
                 <div className="mb-4">
                     <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Time / Scheduling</h4>
                     <div className="grid grid-cols-2 gap-2">
@@ -205,15 +215,6 @@ export default function NodesPalette({ searchQuery, onSearchChange }: NodesPalet
                                 displayName="Delay"
                                 icon={<Clock className="w-6 h-6 text-slate-600" />}
                                 colorClass="bg-gradient-to-br from-slate-50 to-slate-100 border-2 border-slate-200 text-slate-900"
-                            />
-                        )}
-                        {(matchesNodeSearch('sla') || matchesNodeSearch('timer')) && (
-                            <DraggableNodeCard
-                                nodeType="slaNode"
-                                label="SLA Monitor"
-                                displayName="SLA"
-                                icon={<Timer className="w-6 h-6 text-orange-600" />}
-                                colorClass="bg-gradient-to-br from-orange-50 to-orange-100 border-2 border-orange-200 text-orange-900"
                             />
                         )}
                     </div>
@@ -378,6 +379,24 @@ export default function NodesPalette({ searchQuery, onSearchChange }: NodesPalet
                                 displayName="Set Var"
                                 icon={<Variable className="w-6 h-6 text-teal-600" />}
                                 colorClass="bg-gradient-to-br from-teal-50 to-teal-100 border-2 border-teal-200 text-teal-900"
+                            />
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Flow Control / Termination */}
+            {(matchesNodeSearch('cancel') || matchesNodeSearch('terminate') || matchesNodeSearch('stop') || matchesNodeSearch('fail')) && (
+                <div className="mb-4">
+                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Termination</h4>
+                    <div className="grid grid-cols-2 gap-2">
+                        {(matchesNodeSearch('cancel') || matchesNodeSearch('terminate') || matchesNodeSearch('stop') || matchesNodeSearch('fail')) && (
+                            <DraggableNodeCard
+                                nodeType="cancelNode"
+                                label="Cancel"
+                                displayName="Cancel"
+                                icon={<XCircle className="w-6 h-6 text-red-600" />}
+                                colorClass="bg-gradient-to-br from-red-50 to-rose-100 border-2 border-red-200 text-red-900"
                             />
                         )}
                     </div>

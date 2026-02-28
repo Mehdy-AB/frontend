@@ -132,13 +132,13 @@ export const formService = {
     return await apiClient.get<string[]>(`${FORM_BASE_URL}/categories`);
   },
 
-  // Public form access
+  // Public form access - send auth token if available, but don't redirect on auth errors
   getPublicForm: async (slug: string): Promise<FormResponse> => {
-    return await apiClient.get<FormResponse>(`${PUBLIC_FORM_BASE_URL}/${slug}`);
+    return await apiClient.publicGet<FormResponse>(`${PUBLIC_FORM_BASE_URL}/${slug}`);
   },
 
   submitPublicForm: async (slug: string, request: SubmitFormRequest): Promise<FormSubmissionResponse> => {
-    return await apiClient.post<FormSubmissionResponse>(`${PUBLIC_FORM_BASE_URL}/${slug}/submit`, request);
+    return await apiClient.publicPost<FormSubmissionResponse>(`${PUBLIC_FORM_BASE_URL}/${slug}/submit`, request);
   },
 
   // File upload for forms
@@ -160,6 +160,13 @@ export const formService = {
       formData.append('fieldKey', fieldKey);
     }
     return await apiClient.uploadFile<Array<{ fileUrl?: string; fileName: string; error?: string }>>('/api/v1/forms/upload/multiple', formData);
+  },
+
+  // Template upload for document generation
+  uploadTemplate: async (formId: number, file: File): Promise<{ templateMinioKey: string; filename: string }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return await apiClient.uploadFile<{ templateMinioKey: string; filename: string }>(`${FORM_BASE_URL}/${formId}/template`, formData);
   }
 };
 

@@ -8,6 +8,7 @@ export enum WorkflowNodeType {
   APPROVAL = 'APPROVAL',
   REVIEW = 'REVIEW',
   MANUAL_TASK = 'MANUAL_TASK',
+  MULTI_CHOICE = 'MULTI_CHOICE',
   CONDITION = 'CONDITION',
   SPLIT = 'SPLIT',
   JOIN = 'JOIN',
@@ -69,7 +70,8 @@ export enum AssignmentAction {
   SEND_BACK = 'SEND_BACK',
   ABSTAINED = 'ABSTAINED',
   NOTIFIED = 'NOTIFIED',
-  EMAILED = 'EMAILED'
+  EMAILED = 'EMAILED',
+  CHOICE_SELECTED = 'CHOICE_SELECTED'
 }
 
 export enum HistoryAction {
@@ -190,10 +192,27 @@ export interface WorkflowInstanceResponse {
   startedAt: string;
   completedAt?: string;
   cancelledAt?: string;
-  startedBy?: string; // Name or UUID
+  startedBy?: {
+    id?: string;
+    username?: string;
+    displayName?: string;
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    imgUrl?: string;
+    imageUrl?: string;
+  };
   activeNodeNames: string[];
-  currentNodeName?: string; // @deprecated
+  currentNodeName?: string;
+  currentNodeLabel?: string;
+  currentNodeId?: string;
   progress: number; // 0-100
+  completedNodesCount?: number;
+  totalNodesCount?: number;
+  document?: {
+    name?: string;
+    folderName?: string;
+  };
   variables?: Record<string, any>;
 }
 
@@ -210,8 +229,67 @@ export interface WorkflowNodeInstanceResponse {
   isOverdue?: boolean; // Derivable or from backend
   assignees: string[]; // Names or descriptions
   assignments: WorkflowInstanceAssignmentResponse[];
+  workflowId?: number;
   workflowName?: string; // Name of the parent workflow
   description?: string; // Node description/instructions
+  comment?: string; // Comment/notes on the step
+
+  // Result info (condition, approval, etc.)
+  resultEdge?: string;               // e.g., "TRUE", "FALSE", "APPROVED", "REJECTED"
+  resultData?: Record<string, any>;  // Condition summary, evaluation details
+
+  // Document info - basic (for backward compatibility)
+  documentId: number;
+  documentTitle?: string;
+
+  // Document info - full details from new API
+  document?: {
+    id: number;
+    name: string;
+    title?: string;
+    mimeType?: string;
+    sizeBytes?: number;
+    folderId?: number;
+    folderName?: string;
+    createdAt?: string;
+    updatedAt?: string;
+    createdBy?: {
+      id: string;
+      firstName?: string;
+      lastName?: string;
+      imgUrl?: string;
+    };
+    ownedBy?: {
+      id: string;
+      firstName?: string;
+      lastName?: string;
+      imgUrl?: string;
+    };
+    previewUrl?: string;
+  };
+
+  // Current assignee (first active user assignment)
+  assignedTo?: {
+    id: string;
+    firstName?: string;
+    lastName?: string;
+    imgUrl?: string;
+  };
+
+  completedBy?: {
+    id: string;
+    username?: string;
+    email?: string;
+    firstName?: string;
+    lastName?: string;
+    displayName?: string;
+    imgUrl?: string;
+  };
+
+  // Form fields configured on the node (for human task nodes)
+  formFields?: TaskFormField[];
+  // Raw node config (carries formFields and other settings)
+  config?: Record<string, any>;
 }
 
 export interface WorkflowInstanceAssignmentResponse {
@@ -248,15 +326,20 @@ export interface WorkflowInstanceAssignmentResponse {
 
 export interface WorkflowHistoryResponse {
   id: number;
-  workflowInstanceId: number;
-  action: HistoryAction;
-  performedBy?: string; // Name
-  performedByUserId?: string; // UUID
+  action: string; // HistoryAction enum value as string
+  performedBy?: {
+    id: string;
+    username: string;
+    firstName?: string;
+    lastName?: string;
+    displayName?: string;
+  }; // UserDto from backend
   performedAt: string;
   comment?: string;
-  details?: string;
+  nodeId?: string;
   nodeName?: string;
 }
+
 
 export interface WorkflowTimelineResponse {
   instanceId: number;
@@ -264,6 +347,10 @@ export interface WorkflowTimelineResponse {
   status: InstanceStatus;
   startedAt: string;
   completedAt?: string;
+  // Termination info
+  cancellationReason?: string;
+  terminatedAtNodeName?: string;
+  terminatedAtNodeType?: string;
   totalNodes: number;
   completedNodes: number;
   progressPercentage: number;
@@ -387,11 +474,14 @@ export interface StartWorkflowInstanceRequest {
 export interface CompleteStepRequest {
   action?: string; // 'APPROVE', 'REJECT', etc. (custom labels)
   comment?: string;
+  chosenOptionId?: number; // For MULTI_CHOICE nodes: the 1-based ID of the chosen option
   variables?: Record<string, any>;
+  formData?: Record<string, any>; // Form field values submitted by the user, keyed by field key
 }
 
 export interface RejectStepRequest {
   rejectionReason: string;
+  formData?: Record<string, any>;
 }
 
 export interface ReassignStepRequest {
@@ -474,4 +564,16 @@ export interface BulkInstanceOperationRequest {
 export interface BulkReassignRequest {
   userIds?: string[];
   groupIds?: string[];
+}
+
+// ==================== FORM FIELDS ====================
+
+export interface TaskFormField {
+  fieldKey: string;
+  label: string;
+  type: 'STRING' | 'TEXT' | 'EMAIL' | 'NUMBER' | 'DECIMAL' | 'BOOLEAN' | 'DATE' | 'TIME' | 'DATETIME' | 'FILE';
+  isRequired: boolean;
+  placeholder?: string;
+  mappedVariableKey?: string; // Key of the workflow variable to update
+  mappedVariableLabel?: string; // Display label for the mapped variable
 }

@@ -93,6 +93,27 @@ class WorkflowService {
     async getInstanceState(instanceId: number): Promise<WorkflowInstanceStateResponse> {
         return apiClient.get<WorkflowInstanceStateResponse>(`${this.baseUrl}/instances/${instanceId}/state`);
     }
+
+    // ==================== ADMIN ACTIONS ====================
+
+    async forceCompleteWorkflowInstance(instanceId: number, comment?: string): Promise<void> {
+        return apiClient.post<void>(`${this.baseUrl}/instances/${instanceId}/force-complete`, { comment });
+    }
+
+    async cancelWorkflowInstance(instanceId: number, reason: string): Promise<void> {
+        return apiClient.post<void>(`${this.baseUrl}/instances/${instanceId}/cancel`, { reason });
+    }
+
+    async reassignStep(
+        instanceId: number,
+        nodeInstanceId: number,
+        data: { assignments: any[]; reason: string }
+    ): Promise<void> {
+        return apiClient.post<void>(
+            `${this.baseUrl}/instances/${instanceId}/nodes/${nodeInstanceId}/reassign`,
+            data
+        );
+    }
 }
 
 export const workflowService = new WorkflowService();

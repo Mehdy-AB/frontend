@@ -1,6 +1,6 @@
-import React, { memo } from 'react';
-import { Handle, Position } from '@xyflow/react';
-import { ClipboardCheck, Edit, Trash2, User, Users, Shield } from 'lucide-react';
+import React, { memo, useEffect } from 'react';
+import { Handle, Position, useUpdateNodeInternals } from '@xyflow/react';
+import { ClipboardCheck, Edit, Trash2, User, Users, Shield, AlertTriangle } from 'lucide-react';
 import { WorkflowNodeData } from './types';
 
 interface ManualTaskNodeProps {
@@ -14,16 +14,27 @@ interface ManualTaskNodeProps {
  * Backend: MANUAL_TASK type, ManualTaskNodeHandler
  */
 const ManualTaskNode = ({ data, selected, id }: ManualTaskNodeProps) => {
+    const updateNodeInternals = useUpdateNodeInternals();
+
     // Count assigned entities
     const assigneeCount = data.assignmentEntities?.length || data.assignments?.length || 0;
     const userCount = data.assignmentEntities?.filter((a: any) => a.assigneeType === 'USER').length || 0;
     const groupCount = data.assignmentEntities?.filter((a: any) => a.assigneeType === 'GROUP').length || 0;
     const roleCount = data.assignmentEntities?.filter((a: any) => a.assigneeType === 'ROLE').length || 0;
 
+    // Check for validation issues
+    const hasWarning = assigneeCount === 0;
+    const warningMessage = 'No assignees configured';
+
+    // Update React Flow handle positions when node content changes height
+    useEffect(() => {
+        updateNodeInternals(id);
+    }, [id, updateNodeInternals, assigneeCount, data.timeoutEnabled, data.useTimeoutExit, data.instructions]);
+
     return (
         <div
             className={`px-4 py-3 rounded-xl border-2 min-w-[220px] bg-white relative shadow-sm transition-all duration-200 group ${selected ? 'border-violet-500 ring-4 ring-violet-100 shadow-lg' : 'border-gray-200 hover:border-violet-400 hover:shadow-md'
-                }`}
+                } ${hasWarning ? 'border-amber-400' : ''}`}
         >
             <Handle
                 type="target"
@@ -31,6 +42,18 @@ const ManualTaskNode = ({ data, selected, id }: ManualTaskNodeProps) => {
                 className="w-4 h-4 bg-violet-500 border-2 border-white"
                 style={{ left: -10 }}
             />
+
+            {/* Warning Icon */}
+            {hasWarning && (
+                <div
+                    className="absolute top-2 left-8 z-10"
+                    title={warningMessage}
+                >
+                    <div className="p-1 bg-amber-100 rounded-full animate-pulse">
+                        <AlertTriangle className="w-4 h-4 text-amber-600" />
+                    </div>
+                </div>
+            )}
 
             {/* Action Icons */}
             <div className={`absolute top-2 right-2 flex items-center gap-1 z-10 opacity-0 group-hover:opacity-100 transition-opacity ${selected ? 'opacity-100' : ''}`}>
@@ -100,7 +123,7 @@ const ManualTaskNode = ({ data, selected, id }: ManualTaskNodeProps) => {
                         type="source"
                         position={Position.Right}
                         id="completed"
-                        className="!relative !transform-none w-4 h-4 bg-violet-500 border-2 border-white"
+                        className="!relative !transform-none w-5 h-5 bg-violet-500 border-[3px] border-blue-300 ring-2 ring-blue-100 hover:scale-125 transition-transform"
                     />
                 </div>
                 {/* Timeout - Only when enabled */}
@@ -113,7 +136,7 @@ const ManualTaskNode = ({ data, selected, id }: ManualTaskNodeProps) => {
                             type="source"
                             position={Position.Right}
                             id="timeout"
-                            className="!relative !transform-none w-4 h-4 bg-orange-500 border-2 border-white"
+                            className="!relative !transform-none w-5 h-5 bg-orange-500 border-[3px] border-blue-300 ring-2 ring-blue-100 hover:scale-125 transition-transform"
                         />
                     </div>
                 )}

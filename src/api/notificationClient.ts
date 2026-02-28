@@ -569,9 +569,9 @@ class NotificationApiClient {
   }
 
   // Note: Multiple upload is now handled by unclassified documents
-  async uploadUnclassifiedDocument(file: File, folderId: number, categoryId: number, createdBy: string, title?: string, fileName?: string, options?: ApiNotificationOptions) {
+  async uploadUnclassifiedDocument(file: File, folderId: number, categoryId: number, createdBy: string, title?: string, fileName?: string, metadataJson?: string, options?: ApiNotificationOptions) {
     return this.withNotification(
-      () => unclassifiedDocumentService.uploadUnclassifiedDocument(file, folderId, categoryId, createdBy, title, fileName),
+      () => unclassifiedDocumentService.uploadUnclassifiedDocument(file, folderId, categoryId, createdBy, title, fileName, metadataJson),
       {
         successMessage: `File "${file.name}" uploaded to unclassified successfully`,
         errorMessage: `Failed to upload "${file.name}" to unclassified`,

@@ -21,7 +21,7 @@ export default function ConditionalLayout({ children }: ConditionalLayoutProps) 
   const isPublicFormPage = pathname?.startsWith('/forms/')
 
   // Check if current path is a fullscreen page (no sidebar/header)
-  const isFullscreenPage = pathname?.includes('/upload')
+  const isFullscreenPage = pathname?.includes('/upload') || pathname?.startsWith('/classa/') || pathname?.includes('/forms/create') || (pathname?.includes('/forms/') && pathname?.includes('/edit'))
 
   // Check if user is authenticated
   const isAuthenticated = status === 'authenticated' && session
