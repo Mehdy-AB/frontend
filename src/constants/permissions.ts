@@ -130,6 +130,15 @@ export const Permissions = {
   STAMP_UPDATE: 'stamp:update',
   STAMP_DELETE: 'stamp:delete',
   STAMP_APPLY: 'stamp:apply',
+
+  // Organization Management
+  ORG_READ: 'org:read',
+  ORG_CREATE: 'org:create',
+  ORG_UPDATE: 'org:update',
+  ORG_DELETE: 'org:delete',
+  ORG_ASSIGN_USER: 'org:assign-user',
+  ORG_ASSIGN_HEAD: 'org:assign-head',
+  ORG_VIEW_MEMBERS: 'org:view-members',
 } as const;
 
 /**
@@ -204,6 +213,15 @@ export const AdminPagePermissions: Record<string, {
     update: Permissions.GROUP_UPDATE,
     delete: Permissions.GROUP_DELETE,
     assign: Permissions.GROUP_ASSIGN_USER,
+  },
+
+  // Organization management
+  '/admin/organization': {
+    view: Permissions.ORG_READ,
+    create: Permissions.ORG_CREATE,
+    update: Permissions.ORG_UPDATE,
+    delete: Permissions.ORG_DELETE,
+    assign: Permissions.ORG_ASSIGN_USER,
   },
 
   // Role management

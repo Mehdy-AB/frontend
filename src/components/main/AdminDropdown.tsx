@@ -111,6 +111,7 @@ const SECTIONS: Section[] = [
       { label: 'Users', href: '/admin/users', description: 'List and manage user accounts.', Icon: Users },
       { label: 'Groups', href: '/admin/groups', description: 'Organize users into groups.', Icon: FolderTree },
       { label: 'Roles', href: '/admin/roles', description: 'Role-based permissions and access control.', Icon: Shield },
+      { label: 'Organization', href: '/admin/organization', description: 'Manage organizational units hierarchy.', Icon: Globe },
       { label: 'LDAP Servers', href: '/admin/users/ldap-servers', description: 'Configure LDAP/AD servers.', Icon: Server },
       { label: 'Alias', href: '/admin/users/alias', description: 'Manage address aliases.', Icon: MessageSquare },
       { label: 'Notifications', href: '/admin/users/notifications', description: 'User notification rules.', Icon: Bell },
@@ -241,7 +242,7 @@ export default function AdminDropdown() {
               {selectedSection.items.map((item) => {
                 const pagePermissions = AdminPagePermissions[item.href];
                 const canView = !pagePermissions?.view || hasPermission(pagePermissions.view);
-                
+
                 return (
                   <Tooltip key={item.href}>
                     <TooltipTrigger asChild>
@@ -249,9 +250,8 @@ export default function AdminDropdown() {
                         <button
                           onClick={() => handleNavigate(item.href)}
                           disabled={!canView}
-                          className={`flex items-start gap-3 w-full text-left ${
-                            canView ? 'cursor-pointer' : 'cursor-not-allowed'
-                          }`}
+                          className={`flex items-start gap-3 w-full text-left ${canView ? 'cursor-pointer' : 'cursor-not-allowed'
+                            }`}
                         >
                           {item.Icon && <item.Icon className="h-5 w-5 mt-1 text-slate-600" />}
                           <div className="flex-1">

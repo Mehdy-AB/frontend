@@ -467,7 +467,7 @@ class NotificationApiClient {
     const { ldapServerService } = await import('./services/ldapServerService');
     return this.withNotification(
       () => ldapServerService.createServer(data),
-      { successMessage: 'LDAP server created successfully', errorMessage: 'Failed to create LDAP server', ...options },
+      { silent: true, ...options },
       'create'
     )
   }
@@ -476,7 +476,7 @@ class NotificationApiClient {
     const { ldapServerService } = await import('./services/ldapServerService');
     return this.withNotification(
       () => ldapServerService.updateServer(id, data),
-      { successMessage: 'LDAP server updated successfully', errorMessage: 'Failed to update LDAP server', ...options },
+      { silent: true, ...options },
       'update'
     )
   }
@@ -485,7 +485,7 @@ class NotificationApiClient {
     const { ldapServerService } = await import('./services/ldapServerService');
     return this.withNotification(
       () => ldapServerService.deleteServer(id),
-      { successMessage: 'LDAP server deleted successfully', errorMessage: 'Failed to delete LDAP server', ...options },
+      { silent: true, ...options },
       'delete'
     )
   }
@@ -494,7 +494,7 @@ class NotificationApiClient {
     const { ldapServerService } = await import('./services/ldapServerService');
     return this.withNotification(
       () => ldapServerService.toggleServer(id, enabled),
-      { successMessage: `LDAP server ${enabled ? 'enabled' : 'disabled'} successfully`, errorMessage: 'Failed to toggle LDAP server', ...options },
+      { silent: true, ...options },
       'update'
     )
   }
@@ -503,7 +503,7 @@ class NotificationApiClient {
     const { ldapServerService } = await import('./services/ldapServerService');
     return this.withNotification(
       () => ldapServerService.testConnection(id),
-      { successMessage: 'Connection test completed', errorMessage: 'Failed to test connection', ...options },
+      { silent: true, ...options },
       'update'
     )
   }
@@ -512,7 +512,7 @@ class NotificationApiClient {
     const { ldapServerService } = await import('./services/ldapServerService');
     return this.withNotification(
       () => ldapServerService.syncUsers(id),
-      { successMessage: 'User sync completed', errorMessage: 'Failed to sync users', ...options },
+      { silent: true, ...options },
       'update'
     )
   }
