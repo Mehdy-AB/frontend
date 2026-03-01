@@ -7,7 +7,6 @@ import { useNotification } from '@/contexts/NotificationContext';
 import {
     notificationSystemService,
     NotificationDto,
-    NotificationSeverity,
 } from '@/api/services/notificationSystemService';
 
 // ─── Notification Route Resolver ────────────────────────
@@ -61,7 +60,6 @@ interface GlobalNotificationContextType {
     markAsRead: (id: string) => Promise<void>;
     markAllAsRead: () => Promise<void>;
     refreshNotifications: () => Promise<void>;
-    emitTestNotification: () => Promise<void>;
 }
 
 const GlobalNotificationContext = createContext<GlobalNotificationContextType | undefined>(undefined);
@@ -253,30 +251,6 @@ export function GlobalNotificationProvider({ children }: Props) {
         }
     }, [fetchNotifications]);
 
-    const emitTestNotification = useCallback(async () => {
-        if (!userId) return;
-        try {
-            const testTypes = [
-                { type: 'TEST_NOTIFICATION', title: 'Test Notification', message: 'This is a test notification from the DMS system.', severity: 'INFO' as NotificationSeverity },
-                { type: 'DOCUMENT_UPLOADED', title: 'Document Uploaded', message: 'A new document "Report Q4.pdf" has been uploaded.', severity: 'INFO' as NotificationSeverity, data: { documentId: 1 } },
-                { type: 'WORKFLOW_ASSIGNED', title: 'Workflow Assigned', message: 'You have been assigned to review workflow "Invoice Approval".', severity: 'WARNING' as NotificationSeverity, data: { workflowId: 1 } },
-                { type: 'SYSTEM_ALERT', title: 'System Alert', message: 'Scheduled maintenance in 30 minutes.', severity: 'CRITICAL' as NotificationSeverity },
-            ];
-            const randomTest = testTypes[Math.floor(Math.random() * testTypes.length)];
-
-            await notificationSystemService.emitTestNotification({
-                recipientUserId: userId,
-                type: randomTest.type,
-                title: randomTest.title,
-                message: randomTest.message,
-                severity: randomTest.severity,
-                data: randomTest.data || {},
-            });
-        } catch (err) {
-            console.error('[GlobalNotification] Failed to emit test notification:', err);
-        }
-    }, [userId]);
-
     const value: GlobalNotificationContextType = {
         notifications,
         unreadCount,
@@ -285,7 +259,6 @@ export function GlobalNotificationProvider({ children }: Props) {
         markAsRead,
         markAllAsRead,
         refreshNotifications: fetchNotifications,
-        emitTestNotification,
     };
 
     return (

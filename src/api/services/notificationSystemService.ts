@@ -32,14 +32,7 @@ export interface UnreadCountResponse {
     count: number;
 }
 
-export interface EmitNotificationRequest {
-    recipientUserId: string;
-    type: string;
-    title: string;
-    message?: string;
-    severity?: NotificationSeverity;
-    data?: Record<string, any>;
-}
+
 
 // ─── API ────────────────────────────────────────────────
 
@@ -74,10 +67,4 @@ export const notificationSystemService = {
         return apiClient.patch<{ updated: number }>('/api/notifications/read-all');
     },
 
-    /**
-     * Emit a test notification (internal endpoint).
-     */
-    async emitTestNotification(request: EmitNotificationRequest): Promise<NotificationDto> {
-        return apiClient.post<NotificationDto>('/api/internal/notifications/emit', request);
-    },
 };

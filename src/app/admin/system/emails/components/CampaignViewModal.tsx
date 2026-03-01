@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import UserAvatar from '@/components/main/UserAvatar';
 import {
     Dialog,
     DialogContent,
@@ -131,7 +132,7 @@ function StatItem({ label, value, icon: Icon, color }: {
 // Activity Timeline
 // ============================================================================
 
-function ActivityTimeline({ activities }: { activities: CampaignActivity[] }) {
+function ActivityTimeline({ activities, creatorImageUrl }: { activities: CampaignActivity[]; creatorImageUrl?: string }) {
     const getActivityIcon = (type: CampaignActivity['type']) => {
         switch (type) {
             case 'CREATED': return <FileText className="h-4 w-4 text-blue-500" />;
@@ -162,6 +163,10 @@ function ActivityTimeline({ activities }: { activities: CampaignActivity[] }) {
                     <div className="flex-1 pb-3">
                         <p className="text-sm font-medium">{activity.description}</p>
                         <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                            <UserAvatar
+                                user={activity.userName ? { displayName: activity.userName, imageUrl: creatorImageUrl } : null}
+                                size="xs"
+                            />
                             <span>{activity.userName || 'System'}</span>
                             <span>•</span>
                             <span>{new Date(activity.timestamp).toLocaleString()}</span>
@@ -331,9 +336,18 @@ export default function CampaignViewModal({
                                             <span className="text-muted-foreground">Created:</span>
                                             <span>{formatDate(campaign.createdAt)}</span>
                                         </div>
-                                        <div className="flex justify-between">
+                                        <div className="flex items-center justify-between">
                                             <span className="text-muted-foreground">By:</span>
-                                            <span>{campaign.createdBy}</span>
+                                            <div className="flex items-center gap-2">
+                                                <UserAvatar
+                                                    user={campaign.createdByName
+                                                        ? { displayName: campaign.createdByName, imageUrl: campaign.createdByImageUrl }
+                                                        : null
+                                                    }
+                                                    size="xs"
+                                                />
+                                                <span>{campaign.createdByName || 'Unknown'}</span>
+                                            </div>
                                         </div>
                                     </div>
                                 </CardContent>
@@ -366,7 +380,7 @@ export default function CampaignViewModal({
                             <Card>
                                 <CardContent className="p-4">
                                     {activities.length > 0 ? (
-                                        <ActivityTimeline activities={activities} />
+                                        <ActivityTimeline activities={activities} creatorImageUrl={campaign.createdByImageUrl} />
                                     ) : (
                                         <p className="text-sm text-muted-foreground text-center py-4">
                                             No activity recorded yet

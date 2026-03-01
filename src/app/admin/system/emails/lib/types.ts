@@ -65,6 +65,8 @@ export interface EmailCampaign {
   createdAt: string;
   updatedAt: string;
   createdBy: string;
+  createdByName?: string;
+  createdByImageUrl?: string;
 }
 
 export interface CampaignActivity {
