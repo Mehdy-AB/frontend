@@ -3,6 +3,7 @@ import { apiClient } from '../client';
 export interface LdapServerDto {
     id: string;
     name: string;
+    serverType?: string;
     description?: string;
     hostname: string;
     port: number;
@@ -27,10 +28,16 @@ export interface LdapServerDto {
     lastTest?: string;
     createdAt: string;
     updatedAt: string;
+    createdByName?: string;
+    // Sync scheduling
+    syncSchedule: string;
+    autoDisableUsers: boolean;
+    nextSyncAt?: string;
 }
 
 export interface CreateLdapServerRequest {
     name: string;
+    serverType?: string;
     description?: string;
     hostname: string;
     port?: number;
@@ -46,6 +53,9 @@ export interface CreateLdapServerRequest {
     groupFilter?: string;
     attributeMappings?: Record<string, string>;
     enabled?: boolean;
+    // Sync scheduling
+    syncSchedule?: string;
+    autoDisableUsers?: boolean;
 }
 
 export interface UpdateLdapServerRequest extends CreateLdapServerRequest { }
@@ -60,6 +70,7 @@ export interface LdapSyncResult {
     success: boolean;
     imported: number;
     updated: number;
+    disabled: number;
     errors: number;
     errorMessage?: string;
     errorDetails: string[];
@@ -122,6 +133,20 @@ class LdapServerService {
         return apiClient.post<TestConnectionResponse>(`${this.basePath}/${id}/test`);
     }
 
+    async testConnectionWithParams(params: {
+        hostname: string;
+        port?: number;
+        sslPort?: number;
+        useSSL?: boolean;
+        useTLS?: boolean;
+        baseDn: string;
+        bindDn?: string;
+        bindPassword?: string;
+        connectionTimeout?: number;
+    }): Promise<TestConnectionResponse> {
+        return apiClient.post<TestConnectionResponse>(`${this.basePath}/test-connection`, params);
+    }
+
     async syncUsers(id: string): Promise<LdapSyncResult> {
         return apiClient.post<LdapSyncResult>(`${this.basePath}/${id}/sync`);
     }
@@ -132,6 +157,55 @@ class LdapServerService {
 
     async getEnabledServers(): Promise<LdapServerDto[]> {
         return apiClient.get<LdapServerDto[]>(`${this.basePath}/enabled`);
+    }
+
+    // ── LDAP Group & Role Mapping ──
+
+    async fetchLdapGroups(serverId: string): Promise<{ dn: string; name: string }[]> {
+        return apiClient.get<{ dn: string; name: string }[]>(`${this.basePath}/${serverId}/ldap-groups`);
+    }
+
+    async searchLdapGroups(serverId: string, query: string, limit: number = 15): Promise<{ dn: string; name: string }[]> {
+        return apiClient.get<{ dn: string; name: string }[]>(
+            `${this.basePath}/${serverId}/ldap-groups/search?query=${encodeURIComponent(query)}&limit=${limit}`
+        );
+    }
+
+    async getGroupMappings(serverId: string): Promise<{
+        defaultRoleName: string;
+        mappings: { ldapGroupDn: string; ldapGroupName: string; roleId: string; roleName: string }[];
+    }> {
+        return apiClient.get(`${this.basePath}/${serverId}/group-mappings`);
+    }
+
+    async saveGroupMappings(serverId: string, data: {
+        defaultRoleName: string;
+        mappings: { ldapGroupDn: string; ldapGroupName: string; roleId: string; roleName?: string }[];
+    }): Promise<{
+        defaultRoleName: string;
+        mappings: { ldapGroupDn: string; ldapGroupName: string; roleId: string; roleName: string }[];
+    }> {
+        return apiClient.put(`${this.basePath}/${serverId}/group-mappings`, data);
+    }
+
+    // ── LDAP Group → DMS Group Mapping ──
+
+    async getGroupGroupMappings(serverId: string): Promise<{
+        mappings: { ldapGroupDn: string; ldapGroupName: string; groupId: string; groupName: string }[];
+    }> {
+        return apiClient.get(`${this.basePath}/${serverId}/group-group-mappings`);
+    }
+
+    async saveGroupGroupMappings(serverId: string, data: {
+        mappings: { ldapGroupDn: string; ldapGroupName: string; groupId: string; groupName?: string }[];
+    }): Promise<{
+        mappings: { ldapGroupDn: string; ldapGroupName: string; groupId: string; groupName: string }[];
+    }> {
+        return apiClient.put(`${this.basePath}/${serverId}/group-group-mappings`, data);
+    }
+
+    async fetchDmsGroups(): Promise<{ id: string; name: string }[]> {
+        return apiClient.get<{ id: string; name: string }[]>('/api/v1/admin/groups/active');
     }
 }
 

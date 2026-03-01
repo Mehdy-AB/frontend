@@ -111,6 +111,7 @@ const SECTIONS: Section[] = [
       { label: 'Users', href: '/admin/users', description: 'List and manage user accounts.', Icon: Users },
       { label: 'Groups', href: '/admin/groups', description: 'Organize users into groups.', Icon: FolderTree },
       { label: 'Roles', href: '/admin/roles', description: 'Role-based permissions and access control.', Icon: Shield },
+      { label: 'Organization', href: '/admin/organization', description: 'Manage organizational units hierarchy.', Icon: Globe },
       { label: 'LDAP Servers', href: '/admin/users/ldap-servers', description: 'Configure LDAP/AD servers.', Icon: Server },
       { label: 'Alias', href: '/admin/users/alias', description: 'Manage address aliases.', Icon: MessageSquare },
       { label: 'Notifications', href: '/admin/users/notifications', description: 'User notification rules.', Icon: Bell },

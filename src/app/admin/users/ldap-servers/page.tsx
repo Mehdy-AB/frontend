@@ -1,947 +1,683 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import {
-  Server,
-  Plus,
-  Search,
-  Edit,
-  Trash2,
-  Wrench,
-  MoreVertical,
-  ChevronDown,
-  ChevronRight,
-  FileText,
-  Settings,
-  Eye,
-  EyeOff,
-  BarChart3,
-  Clock,
-  Users,
-  Key,
-  Database,
-  CheckCircle,
-  XCircle,
-  AlertCircle,
-  Play,
-  Pause,
-  RotateCcw,
-  Calendar,
-  User,
-  Hash,
-  Fingerprint,
-  Globe,
-  Building,
-  Folder,
-  Tag,
-  Type,
-  List,
-  ToggleLeft,
-  ToggleRight,
-  ArrowRight,
-  ArrowLeft,
-  Copy,
-  ExternalLink,
-  Shield,
-  Lock,
-  Unlock,
-  Mail,
-  Phone,
-  MapPin,
-  Wifi,
-  WifiOff,
-  TestTube,
-  Activity
-} from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Plus, Upload, ChevronLeft, ChevronRight } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { useLanguage } from '../../../../contexts/LanguageContext';
 import { notificationApiClient } from '@/api/notificationClient';
-import { LdapServerDto, LdapStatistics } from '@/api/services/ldapServerService';
+import { useGlobalNotifications } from '@/contexts/GlobalNotificationContext';
+import type {
+  LdapServer,
+  LdapStatistics,
+  LdapServerFormValues,
+  AttributeMapping,
+} from './_components/ldap-types';
+import { getSecurityLabel } from './_components/ldap-types';
+import type { LdapServerDto } from '@/api/services/ldapServerService';
+import LdapMetricCards from './_components/LdapMetricCards';
+import LdapToolbar from './_components/LdapToolbar';
+import LdapServerTable from './_components/LdapServerTable';
+import LdapServerModal from './_components/LdapServerModal';
+import DeleteServerDialog from './_components/DeleteServerDialog';
 
-// Mock data for demonstration
-const mockLdapServers = [
-  {
-    id: '1',
-    name: 'Corporate Active Directory',
-    description: 'Main corporate Active Directory server',
-    hostname: 'ad.company.com',
-    port: 389,
-    sslPort: 636,
-    baseDN: 'DC=company,DC=com',
-    bindDN: 'CN=ldap-service,OU=Service Accounts,DC=company,DC=com',
-    isActive: true,
-    isSecure: true,
-    useSSL: true,
-    useTLS: false,
-    connectionTimeout: 30,
-    searchTimeout: 10,
-    maxConnections: 100,
-    currentConnections: 45,
-    lastSync: '2024-01-20T14:22:00Z',
-    lastTest: '2024-01-20T14:20:00Z',
-    status: 'Connected',
-    createdBy: 'Admin User',
-    createdAt: '2024-01-15T10:30:00Z',
-    lastModified: '2024-01-20T14:22:00Z',
-    syncCount: 1247,
-    errorCount: 12,
-    userCount: 1250,
-    groupCount: 45,
-    attributes: {
-      username: 'sAMAccountName',
-      firstName: 'givenName',
-      lastName: 'sn',
-      email: 'mail',
-      department: 'department',
-      title: 'title',
-      phone: 'telephoneNumber'
-    },
-    filters: {
-      userFilter: '(&(objectClass=user)(objectCategory=person))',
-      groupFilter: '(&(objectClass=group)(objectCategory=group))',
-      enabledFilter: '(!(userAccountControl:1.2.840.113556.1.4.803:=2))'
-    }
-  },
-  {
-    id: '2',
-    name: 'HR Directory Server',
-    description: 'HR department LDAP server for employee data',
-    hostname: 'hr-ldap.company.com',
-    port: 389,
-    sslPort: 636,
-    baseDN: 'OU=HR,DC=company,DC=com',
-    bindDN: 'CN=hr-ldap,OU=Service Accounts,DC=company,DC=com',
-    isActive: true,
-    isSecure: true,
-    useSSL: true,
-    useTLS: false,
-    connectionTimeout: 30,
-    searchTimeout: 10,
-    maxConnections: 50,
-    currentConnections: 12,
-    lastSync: '2024-01-19T16:45:00Z',
-    lastTest: '2024-01-19T16:43:00Z',
-    status: 'Connected',
-    createdBy: 'HR Manager',
-    createdAt: '2024-01-10T09:15:00Z',
-    lastModified: '2024-01-19T16:45:00Z',
-    syncCount: 456,
-    errorCount: 3,
-    userCount: 89,
-    groupCount: 8,
-    attributes: {
-      username: 'uid',
-      firstName: 'givenName',
-      lastName: 'sn',
-      email: 'mail',
-      department: 'ou',
-      title: 'title',
-      phone: 'telephoneNumber'
-    },
-    filters: {
-      userFilter: '(&(objectClass=inetOrgPerson)(objectClass=person))',
-      groupFilter: '(&(objectClass=groupOfNames)(objectClass=group))',
-      enabledFilter: '(!(accountStatus=disabled))'
-    }
-  },
-  {
-    id: '3',
-    name: 'External Partner LDAP',
-    description: 'External partner company LDAP server',
-    hostname: 'ldap.partnercompany.com',
-    port: 389,
-    sslPort: 636,
-    baseDN: 'DC=partner,DC=com',
-    bindDN: 'CN=partner-service,OU=Service Accounts,DC=partner,DC=com',
-    isActive: true,
-    isSecure: false,
-    useSSL: false,
-    useTLS: true,
-    connectionTimeout: 60,
-    searchTimeout: 15,
-    maxConnections: 25,
-    currentConnections: 8,
-    lastSync: '2024-01-18T12:15:00Z',
-    lastTest: '2024-01-18T12:13:00Z',
-    status: 'Connected',
-    createdBy: 'Partner Manager',
-    createdAt: '2024-01-05T11:20:00Z',
-    lastModified: '2024-01-18T12:15:00Z',
-    syncCount: 234,
-    errorCount: 8,
-    userCount: 156,
-    groupCount: 12,
-    attributes: {
-      username: 'uid',
-      firstName: 'givenName',
-      lastName: 'sn',
-      email: 'mail',
-      department: 'ou',
-      title: 'title',
-      phone: 'telephoneNumber'
-    },
-    filters: {
-      userFilter: '(&(objectClass=inetOrgPerson)(objectClass=person))',
-      groupFilter: '(&(objectClass=groupOfNames)(objectClass=group))',
-      enabledFilter: '(!(accountStatus=disabled))'
-    }
-  },
-  {
-    id: '4',
-    name: 'Legacy LDAP Server',
-    description: 'Legacy LDAP server (deprecated)',
-    hostname: 'legacy-ldap.company.com',
-    port: 389,
-    sslPort: 636,
-    baseDN: 'DC=legacy,DC=company,DC=com',
-    bindDN: 'CN=legacy-service,OU=Service Accounts,DC=legacy,DC=company,DC=com',
-    isActive: false,
-    isSecure: false,
-    useSSL: false,
-    useTLS: false,
-    connectionTimeout: 30,
-    searchTimeout: 10,
-    maxConnections: 10,
-    currentConnections: 0,
-    lastSync: '2024-01-10T09:30:00Z',
-    lastTest: '2024-01-10T09:28:00Z',
-    status: 'Disconnected',
-    createdBy: 'System Admin',
-    createdAt: '2023-12-01T08:00:00Z',
-    lastModified: '2024-01-10T09:30:00Z',
-    syncCount: 89,
-    errorCount: 45,
-    userCount: 0,
-    groupCount: 0,
-    attributes: {
-      username: 'uid',
-      firstName: 'givenName',
-      lastName: 'sn',
-      email: 'mail',
-      department: 'ou',
-      title: 'title',
-      phone: 'telephoneNumber'
-    },
-    filters: {
-      userFilter: '(&(objectClass=inetOrgPerson)(objectClass=person))',
-      groupFilter: '(&(objectClass=groupOfNames)(objectClass=group))',
-      enabledFilter: '(!(accountStatus=disabled))'
-    }
-  },
-  {
-    id: '5',
-    name: 'Test LDAP Server',
-    description: 'Development and testing LDAP server',
-    hostname: 'test-ldap.company.com',
-    port: 389,
-    sslPort: 636,
-    baseDN: 'DC=test,DC=company,DC=com',
-    bindDN: 'CN=test-service,OU=Service Accounts,DC=test,DC=company,DC=com',
-    isActive: true,
-    isSecure: true,
-    useSSL: true,
-    useTLS: false,
-    connectionTimeout: 30,
-    searchTimeout: 10,
-    maxConnections: 20,
-    currentConnections: 3,
-    lastSync: '2024-01-17T11:20:00Z',
-    lastTest: '2024-01-17T11:18:00Z',
-    status: 'Error',
-    createdBy: 'Developer',
-    createdAt: '2024-01-12T13:45:00Z',
-    lastModified: '2024-01-17T11:20:00Z',
-    syncCount: 23,
-    errorCount: 15,
-    userCount: 12,
-    groupCount: 3,
-    attributes: {
-      username: 'uid',
-      firstName: 'givenName',
-      lastName: 'sn',
-      email: 'mail',
-      department: 'ou',
-      title: 'title',
-      phone: 'telephoneNumber'
-    },
-    filters: {
-      userFilter: '(&(objectClass=inetOrgPerson)(objectClass=person))',
-      groupFilter: '(&(objectClass=groupOfNames)(objectClass=group))',
-      enabledFilter: '(!(accountStatus=disabled))'
-    }
-  }
-];
+// ─── API → UI mapping ───────────────────────────────────────────────────────
 
-const serverTypes = ['All', 'Active Directory', 'OpenLDAP', 'Apache Directory', 'Custom'];
-const statuses = ['All', 'Connected', 'Disconnected', 'Error', 'Testing', 'Maintenance'];
+function mapDtoToServer(dto: LdapServerDto): LdapServer {
+  const statusMap: Record<string, LdapServer['status']> = {
+    CONNECTED: 'Connected',
+    DISCONNECTED: 'Disconnected',
+    ERROR: 'Error',
+    TESTING: 'Testing',
+    MAINTENANCE: 'Maintenance',
+  };
+  return {
+    id: dto.id,
+    name: dto.name,
+    description: dto.description || '',
+    serverType: dto.serverType || 'Active Directory',
+    hostname: dto.hostname,
+    port: dto.port,
+    sslPort: dto.sslPort,
+    baseDN: dto.baseDn,
+    bindDN: dto.bindDn || '',
+    isActive: dto.enabled,
+    isSecure: dto.useSSL || dto.useTLS,
+    useSSL: dto.useSSL,
+    useTLS: dto.useTLS,
+    connectionTimeout: dto.connectionTimeout,
+    searchTimeout: dto.searchTimeout,
+    lastSync: dto.lastSync || '',
+    lastTest: dto.lastTest || '',
+    status: statusMap[dto.status] || 'Unknown',
+    createdBy: dto.createdByName || 'System',
+    createdAt: dto.createdAt,
+    lastModified: dto.updatedAt,
+    syncCount: dto.syncCount,
+    errorCount: dto.errorCount,
+    userCount: dto.userCount,
+    groupCount: dto.groupCount,
+    attributes: dto.attributeMappings || {},
+    defaultRoleName: '',
+    filters: {
+      userFilter: dto.userFilter || '',
+      groupFilter: dto.groupFilter || '',
+      enabledFilter: '',
+    },
+    syncSchedule: dto.syncSchedule || 'DAILY',
+    autoDisableUsers: dto.autoDisableUsers ?? true,
+    nextSyncAt: dto.nextSyncAt || '',
+  };
+}
+
+// ─── Page component ──────────────────────────────────────────────────────────
 
 export default function LdapServersPage() {
-  const { t } = useLanguage();
+  // ── Data state ──
+  const [servers, setServers] = useState<LdapServer[]>([]);
+  const [statistics, setStatistics] = useState<LdapStatistics | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [statsLoading, setStatsLoading] = useState(true);
+
+  // ── Pagination state ──
+  const [currentPage, setCurrentPage] = useState(0);
+  const [pageSize] = useState(10);
+  const [totalElements, setTotalElements] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+
+  // ── Filter state ──
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedItems, setSelectedItems] = useState<string[]>([]);
-  const [ldapServers, setLdapServers] = useState<any[]>([]);
-  const [filteredServers, setFilteredServers] = useState<any[]>([]);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [selectedType, setSelectedType] = useState('All');
   const [selectedStatus, setSelectedStatus] = useState('All');
-  const [loading, setLoading] = useState(true);
-  const [expandedServers, setExpandedServers] = useState<string[]>([]);
-  const [statistics, setStatistics] = useState<LdapStatistics | null>(null);
+  const [selectedSecurity, setSelectedSecurity] = useState('All');
 
-  // Fetch LDAP servers from API
-  const fetchServers = async () => {
+  // ── Selection & expansion ──
+  const [selectedItems, setSelectedItems] = useState<string[]>([]);
+  const [expandedServers, setExpandedServers] = useState<string[]>([]);
+  const [syncingServers, setSyncingServers] = useState<string[]>([]);
+  const [testingServers, setTestingServers] = useState<string[]>([]);
+
+  // ── Modal state ──
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingServer, setEditingServer] = useState<LdapServer | null>(null);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [deletingServer, setDeletingServer] = useState<LdapServer | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // ── Debounced search ──
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchQuery(value);
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    debounceTimerRef.current = setTimeout(() => {
+      setDebouncedSearch(value);
+      setCurrentPage(0); // Reset to first page on new search
+    }, 300);
+  }, []);
+
+  // Cleanup debounce timer
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    };
+  }, []);
+
+  // ── Data fetching ──
+  const fetchServers = useCallback(async (page = currentPage, search = debouncedSearch) => {
     try {
       setLoading(true);
       const response = await notificationApiClient.getAllLdapServers({
-        page: 0,
-        size: 100,
-        search: searchQuery || undefined
+        page,
+        size: pageSize,
+        search: search || undefined,
       });
-      // Map API response to component format
-      const servers = response.content.map((server: LdapServerDto) => ({
-        id: server.id,
-        name: server.name,
-        description: server.description || '',
-        hostname: server.hostname,
-        port: server.port,
-        sslPort: server.sslPort,
-        baseDN: server.baseDn,
-        bindDN: server.bindDn || '',
-        isActive: server.enabled,
-        isSecure: server.useSSL || server.useTLS,
-        useSSL: server.useSSL,
-        useTLS: server.useTLS,
-        connectionTimeout: server.connectionTimeout,
-        searchTimeout: server.searchTimeout,
-        maxConnections: 100,
-        currentConnections: 0,
-        lastSync: server.lastSync || '',
-        lastTest: server.lastTest || '',
-        status: server.status === 'CONNECTED' ? 'Connected' :
-          server.status === 'DISCONNECTED' ? 'Disconnected' :
-            server.status === 'ERROR' ? 'Error' : 'Unknown',
-        createdBy: 'System',
-        createdAt: server.createdAt,
-        lastModified: server.updatedAt,
-        syncCount: server.syncCount,
-        errorCount: server.errorCount,
-        userCount: server.userCount,
-        groupCount: server.groupCount,
-        attributes: server.attributeMappings || {},
-        filters: {
-          userFilter: server.userFilter || '',
-          groupFilter: server.groupFilter || '',
-          enabledFilter: ''
-        }
-      }));
-      setLdapServers(servers);
-      setFilteredServers(servers);
+      setServers(response.content.map(mapDtoToServer));
+      setTotalElements(response.totalElements || 0);
+      setTotalPages(response.totalPages || 0);
     } catch (error) {
       console.error('Failed to fetch LDAP servers:', error);
-      setLdapServers([]);
-      setFilteredServers([]);
+      toast.error('Failed to load LDAP servers', {
+        description: 'Please try refreshing the page.',
+      });
+      setServers([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentPage, debouncedSearch, pageSize]);
 
-  // Fetch statistics
-  const fetchStatistics = async () => {
+  const fetchStatistics = useCallback(async () => {
     try {
+      setStatsLoading(true);
       const stats = await notificationApiClient.getLdapStatistics();
       setStatistics(stats);
     } catch (error) {
-      console.error('Failed to fetch LDAP statistics:', error);
+      console.error('Failed to fetch statistics:', error);
+      // Fallback: compute from local data
+    } finally {
+      setStatsLoading(false);
     }
-  };
-
-  // Initial data fetch
-  useEffect(() => {
-    fetchServers();
-    fetchStatistics();
   }, []);
 
-
-  // Filter servers based on search, type, and status
   useEffect(() => {
-    let filtered = ldapServers;
+    fetchServers(currentPage, debouncedSearch);
+  }, [currentPage, debouncedSearch, fetchServers]);
+
+  useEffect(() => {
+    fetchStatistics();
+  }, [fetchStatistics]);
+
+  // ── Real-time sync updates via SSE notifications ──
+  const { notifications } = useGlobalNotifications();
+  const lastSyncNotifIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    // Look for the latest LDAP_SYNC_COMPLETED notification
+    const syncNotif = notifications.find((n) => n.type === 'LDAP_SYNC_COMPLETED');
+    if (syncNotif && syncNotif.id !== lastSyncNotifIdRef.current) {
+      lastSyncNotifIdRef.current = syncNotif.id;
+      // Refetch data immediately
+      fetchServers(currentPage, debouncedSearch);
+      fetchStatistics();
+    }
+  }, [notifications, fetchServers, fetchStatistics, currentPage, debouncedSearch]);
+
+  // ── Filtered servers ──
+  const filteredServers = useMemo(() => {
+    let result = servers;
 
     if (searchQuery) {
-      filtered = filtered.filter(server =>
-        server.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        server.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        server.hostname.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        server.baseDN.toLowerCase().includes(searchQuery.toLowerCase())
+      const q = searchQuery.toLowerCase();
+      result = result.filter(
+        (s) =>
+          s.name.toLowerCase().includes(q) ||
+          s.description.toLowerCase().includes(q) ||
+          s.hostname.toLowerCase().includes(q) ||
+          s.baseDN.toLowerCase().includes(q)
       );
     }
 
     if (selectedType !== 'All') {
-      // This would need to be mapped based on actual server type detection
-      filtered = filtered;
+      result = result.filter((s) => s.serverType === selectedType);
     }
 
     if (selectedStatus !== 'All') {
-      filtered = filtered.filter(server => server.status === selectedStatus);
+      result = result.filter((s) => s.status === selectedStatus);
     }
 
-    setFilteredServers(filtered);
-  }, [searchQuery, selectedType, selectedStatus, ldapServers]);
+    if (selectedSecurity !== 'All') {
+      result = result.filter((s) => {
+        const label = getSecurityLabel(s);
+        return label === selectedSecurity;
+      });
+    }
 
-  const formatDate = (dateString: string): string => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    return result;
+  }, [servers, searchQuery, selectedType, selectedStatus, selectedSecurity]);
+
+  const hasActiveFilters =
+    selectedType !== 'All' || selectedStatus !== 'All' || selectedSecurity !== 'All';
+
+  // ── Computed fallback stats ──
+  const displayStats: LdapStatistics = statistics || {
+    totalServers: servers.length,
+    enabledServers: servers.filter((s) => s.isActive).length,
+    connectedServers: servers.filter((s) => s.status === 'Connected').length,
+    totalLdapUsers: servers.reduce((sum, s) => sum + s.userCount, 0),
+    totalSyncs: servers.reduce((sum, s) => sum + s.syncCount, 0),
   };
 
-  const toggleServerExpansion = (serverId: string) => {
-    setExpandedServers(prev =>
+  // ── Selection handlers ──
+  const handleToggleSelect = (serverId: string) => {
+    setSelectedItems((prev) =>
       prev.includes(serverId)
-        ? prev.filter(id => id !== serverId)
+        ? prev.filter((id) => id !== serverId)
         : [...prev, serverId]
     );
   };
 
-  const toggleSelectServer = (serverId: string) => {
-    setSelectedItems(prev =>
-      prev.includes(serverId)
-        ? prev.filter(id => id !== serverId)
-        : [...prev, serverId]
-    );
-  };
-
-  const handleToggleActive = (serverId: string) => {
-    setLdapServers(prev => prev.map(server =>
-      server.id === serverId ? {
-        ...server,
-        isActive: !server.isActive,
-        status: !server.isActive ? 'Connected' : 'Disconnected'
-      } : server
-    ));
-  };
-
-  const handleDeleteServer = async (serverId: string) => {
-    if (confirm('Are you sure you want to delete this LDAP server?')) {
-      try {
-        await notificationApiClient.deleteLdapServer(serverId);
-        setLdapServers(prev => prev.filter(server => server.id !== serverId));
-        setSelectedItems(prev => prev.filter(id => id !== serverId));
-      } catch (error) {
-        console.error('Failed to delete LDAP server:', error);
-      }
-    }
-  };
-
-  const handleBulkDelete = () => {
-    if (confirm(`Are you sure you want to delete ${selectedItems.length} LDAP servers?`)) {
-      setLdapServers(prev => prev.filter(server => !selectedItems.includes(server.id)));
+  const handleToggleSelectAll = () => {
+    if (selectedItems.length === filteredServers.length) {
       setSelectedItems([]);
+    } else {
+      setSelectedItems(filteredServers.map((s) => s.id));
     }
   };
 
-  const handleBulkToggleActive = () => {
-    setLdapServers(prev => prev.map(server =>
-      selectedItems.includes(server.id) ? {
-        ...server,
-        isActive: !server.isActive,
-        status: !server.isActive ? 'Connected' : 'Disconnected'
-      } : server
-    ));
-    setSelectedItems([]);
+  const handleToggleExpand = (serverId: string) => {
+    setExpandedServers((prev) =>
+      prev.includes(serverId)
+        ? prev.filter((id) => id !== serverId)
+        : [...prev, serverId]
+    );
   };
 
-  const handleTestConnection = async (serverId: string) => {
+  // ── CRUD handlers ──
+  const handleAddServer = () => {
+    setEditingServer(null);
+    setIsModalOpen(true);
+  };
+
+  const handleEditServer = (server: LdapServer) => {
+    setEditingServer(server);
+    setIsModalOpen(true);
+  };
+
+  const handleSaveServer = async (
+    values: LdapServerFormValues,
+    mappings: AttributeMapping[]
+  ) => {
+    const request = {
+      name: values.name,
+      serverType: values.serverType,
+      description: values.description,
+      hostname: values.hostname,
+      port: values.port,
+      sslPort: values.useSSL ? 636 : 636,
+      useSSL: values.useSSL,
+      useTLS: values.useTLS,
+      baseDn: values.baseDn,
+      bindDn: values.bindDn,
+      bindPassword: values.bindPassword || undefined,
+      connectionTimeout: values.connectionTimeout,
+      searchTimeout: values.searchTimeout,
+      userFilter: values.userFilter,
+      groupFilter: values.groupFilter,
+      attributeMappings: Object.fromEntries(
+        mappings.map((m) => [m.dmsField, m.ldapAttribute])
+      ),
+      enabled: true,
+      syncSchedule: values.syncSchedule,
+      autoDisableUsers: values.autoDisableUsers,
+    };
+
     try {
-      const result = await notificationApiClient.testLdapConnection(serverId);
-      setLdapServers(prev => prev.map(server =>
-        server.id === serverId ? {
-          ...server,
-          lastTest: new Date().toISOString(),
-          status: result.success ? 'Connected' : 'Error'
-        } : server
-      ));
-    } catch (error) {
-      console.error('Failed to test connection:', error);
+      if (editingServer) {
+        await notificationApiClient.updateLdapServer(editingServer.id, request);
+        toast.success('Server updated successfully', {
+          description: `"${values.name}" configuration has been saved.`,
+        });
+      } else {
+        await notificationApiClient.createLdapServer(request);
+        toast.success('Server added successfully', {
+          description: `"${values.name}" has been added to your LDAP servers.`,
+        });
+      }
+      setIsModalOpen(false);
+      fetchServers();
+      fetchStatistics();
+    } catch (error: any) {
+      const message = error?.response?.data?.message || error?.message || 'An error occurred';
+      toast.error(editingServer ? 'Failed to update server' : 'Failed to add server', {
+        description: message,
+      });
+      throw error; // Let the modal handle its own loading state
     }
   };
 
-  const handleSyncNow = async (serverId: string) => {
+  const handleTestConnection = async (values: LdapServerFormValues): Promise<boolean> => {
+    try {
+      // For existing servers, use the server ID endpoint
+      if (editingServer) {
+        const result = await notificationApiClient.testLdapConnection(editingServer.id);
+        if (result.success) {
+          toast.success('Connection successful', {
+            description: result.message || `Connected to ${values.hostname}`,
+          });
+        } else {
+          toast.error('Connection failed', {
+            description: result.message || 'Could not connect to the LDAP server.',
+          });
+        }
+        return result.success;
+      }
+
+      // For new servers, use raw parameters endpoint
+      const { ldapServerService } = await import('@/api/services/ldapServerService');
+      const result = await ldapServerService.testConnectionWithParams({
+        hostname: values.hostname,
+        port: values.port,
+        sslPort: values.sslPort,
+        useSSL: values.useSSL,
+        useTLS: values.useTLS,
+        baseDn: values.baseDn,
+        bindDn: values.bindDn,
+        bindPassword: values.bindPassword,
+        connectionTimeout: values.connectionTimeout,
+      });
+
+      if (result.success) {
+        toast.success('Connection successful', {
+          description: `Successfully connected to ${values.hostname}:${values.port}`,
+        });
+      } else {
+        toast.error('Connection failed', {
+          description: result.message || `Could not reach ${values.hostname}:${values.port}. Check your settings.`,
+        });
+      }
+      return result.success;
+    } catch (error: any) {
+      toast.error('Connection test failed', {
+        description: error?.message || 'An unexpected error occurred during the test.',
+      });
+      return false;
+    }
+  };
+
+  const handleDeleteClick = (server: LdapServer) => {
+    setDeletingServer(server);
+    setIsDeleteOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deletingServer) return;
+    setIsDeleting(true);
+    try {
+      await notificationApiClient.deleteLdapServer(deletingServer.id);
+      toast.success('Server deleted', {
+        description: `"${deletingServer.name}" has been permanently removed.`,
+      });
+      setIsDeleteOpen(false);
+      setDeletingServer(null);
+      setSelectedItems((prev) => prev.filter((id) => id !== deletingServer.id));
+      fetchServers();
+      fetchStatistics();
+    } catch (error: any) {
+      toast.error('Failed to delete server', {
+        description: error?.message || 'An error occurred while deleting.',
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // ── Sync handler ──
+  const handleSync = async (serverId: string) => {
+    setSyncingServers((prev) => [...prev, serverId]);
+    const server = servers.find((s) => s.id === serverId);
     try {
       const result = await notificationApiClient.syncLdapUsers(serverId);
-      setLdapServers(prev => prev.map(server =>
-        server.id === serverId ? {
-          ...server,
-          lastSync: new Date().toISOString(),
-          syncCount: server.syncCount + 1,
-          userCount: result.imported || server.userCount
-        } : server
-      ));
-    } catch (error) {
-      console.error('Failed to sync users:', error);
+      if (result.success) {
+        toast.success('Synchronization complete', {
+          description: `${result.imported} users imported, ${result.updated} updated from "${server?.name}".`,
+        });
+      } else {
+        toast.warning('Synchronization completed with errors', {
+          description: result.errorMessage || `${result.errors} errors occurred.`,
+        });
+      }
+      fetchServers();
+      fetchStatistics();
+    } catch (error: any) {
+      toast.error('Synchronization failed', {
+        description: error?.message || `Failed to sync users from "${server?.name}".`,
+      });
+    } finally {
+      setSyncingServers((prev) => prev.filter((id) => id !== serverId));
     }
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'Connected':
-        return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case 'Disconnected':
-        return <XCircle className="h-4 w-4 text-gray-500" />;
-      case 'Error':
-        return <AlertCircle className="h-4 w-4 text-red-500" />;
-      case 'Testing':
-        return <TestTube className="h-4 w-4 text-yellow-500" />;
-      case 'Maintenance':
-        return <Wrench className="h-4 w-4 text-orange-500" />;
-      default:
-        return <AlertCircle className="h-4 w-4 text-gray-500" />;
+  // ── Test connection from table ──
+  const handleTestFromTable = async (serverId: string) => {
+    setTestingServers((prev) => [...prev, serverId]);
+    const server = servers.find((s) => s.id === serverId);
+    try {
+      const result = await notificationApiClient.testLdapConnection(serverId);
+      if (result.success) {
+        toast.success('Connection successful', {
+          description: `"${server?.name}" is reachable.`,
+        });
+      } else {
+        toast.error('Connection failed', {
+          description: result.message || `"${server?.name}" is unreachable.`,
+        });
+      }
+      fetchServers();
+    } catch (error: any) {
+      toast.error('Connection test failed', {
+        description: error?.message || 'An unexpected error occurred.',
+      });
+    } finally {
+      setTestingServers((prev) => prev.filter((id) => id !== serverId));
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Connected':
-        return 'bg-green-100 text-green-800';
-      case 'Disconnected':
-        return 'bg-gray-100 text-gray-800';
-      case 'Error':
-        return 'bg-red-100 text-red-800';
-      case 'Testing':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'Maintenance':
-        return 'bg-orange-100 text-orange-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
+  // ── Bulk actions ──
+  const handleBulkDelete = () => {
+    if (selectedItems.length === 1) {
+      const server = servers.find((s) => s.id === selectedItems[0]);
+      if (server) handleDeleteClick(server);
+    } else {
+      toast.info(`Bulk delete ${selectedItems.length} servers`, {
+        description: 'Bulk deletion is not yet implemented. Please delete servers individually.',
+      });
     }
   };
+
+  const handleBulkTest = async () => {
+    toast.info('Testing connections...', {
+      description: `Running connection tests for ${selectedItems.length} servers.`,
+    });
+    for (const serverId of selectedItems) {
+      await handleTestFromTable(serverId);
+    }
+  };
+
+  // ── Import Config ──
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleImportConfig = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const json = JSON.parse(e.target?.result as string);
+
+        // Validate required fields
+        if (!json.name || !json.hostname || !json.port || !json.baseDn) {
+          toast.error('Invalid config file', {
+            description: 'Missing required fields: name, hostname, port, or baseDn.',
+          });
+          return;
+        }
+
+        const request = {
+          name: json.name,
+          serverType: json.serverType || 'Other',
+          description: json.description || '',
+          hostname: json.hostname,
+          port: json.port,
+          sslPort: json.sslPort || 636,
+          useSSL: json.useSSL ?? false,
+          useTLS: json.useTLS ?? false,
+          baseDn: json.baseDn,
+          bindDn: json.bindDn || '',
+          bindPassword: json.bindPassword || undefined,
+          connectionTimeout: json.connectionTimeout || 5000,
+          searchTimeout: json.searchTimeout || 10000,
+          userFilter: json.userFilter || '(objectClass=inetOrgPerson)',
+          groupFilter: json.groupFilter || '(&(objectClass=groupOfNames))',
+          attributeMappings: json.attributeMappings || {},
+          enabled: json.enabled ?? true,
+          syncSchedule: json.syncSchedule || 'MANUAL',
+          autoDisableUsers: json.autoDisableUsers ?? true,
+        };
+
+        await notificationApiClient.createLdapServer(request);
+        toast.success('Server imported successfully', {
+          description: `"${json.name}" has been created from the config file.`,
+        });
+        fetchServers();
+        fetchStatistics();
+      } catch (err: any) {
+        if (err instanceof SyntaxError) {
+          toast.error('Invalid JSON file', {
+            description: 'The file could not be parsed as valid JSON.',
+          });
+        } else {
+          toast.error('Import failed', {
+            description: err?.response?.data?.message || err?.message || 'An unexpected error occurred.',
+          });
+        }
+      } finally {
+        // Reset file input so the same file can be re-imported
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">LDAP Servers</h1>
-          <p className="text-muted-foreground">Manage LDAP server connections and synchronization</p>
+          <h1 className="text-3xl font-bold tracking-tight">LDAP Servers</h1>
+          <p className="text-muted-foreground mt-1">
+            Manage LDAP server connections and synchronization
+          </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" className="gap-2">
-            <Copy className="h-4 w-4" />
+        <div className="flex items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json"
+            className="hidden"
+            onChange={handleImportConfig}
+          />
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Upload className="h-4 w-4" />
             Import Config
           </Button>
-          <Button className="gap-2">
+          <Button onClick={handleAddServer} className="gap-2">
             <Plus className="h-4 w-4" />
             Add Server
           </Button>
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Total Servers</p>
-                <p className="text-2xl font-semibold">{ldapServers.length}</p>
-              </div>
-              <Server className="h-8 w-8 text-primary" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Connected</p>
-                <p className="text-2xl font-semibold">{ldapServers.filter(s => s.status === 'Connected').length}</p>
-              </div>
-              <CheckCircle className="h-8 w-8 text-green-500" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Total Users</p>
-                <p className="text-2xl font-semibold">{ldapServers.reduce((sum, server) => sum + server.userCount, 0)}</p>
-              </div>
-              <Users className="h-8 w-8 text-blue-500" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Total Syncs</p>
-                <p className="text-2xl font-semibold">{ldapServers.reduce((sum, server) => sum + server.syncCount, 0)}</p>
-              </div>
-              <Activity className="h-8 w-8 text-purple-500" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      {/* Metric Cards */}
+      <LdapMetricCards statistics={displayStats} loading={loading && statsLoading} />
 
-      {/* Search and Filters */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="flex items-center gap-3">
-          <div className="relative w-64">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-            <Input
-              type="text"
-              placeholder="Search servers..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
-          </div>
+      {/* Toolbar */}
+      <LdapToolbar
+        searchQuery={searchQuery}
+        onSearchChange={handleSearchChange}
+        selectedType={selectedType}
+        onTypeChange={setSelectedType}
+        selectedStatus={selectedStatus}
+        onStatusChange={setSelectedStatus}
+        selectedSecurity={selectedSecurity}
+        onSecurityChange={setSelectedSecurity}
+        selectedCount={selectedItems.length}
+        onBulkDelete={handleBulkDelete}
+        onBulkTest={handleBulkTest}
+      />
 
-          <Select value={selectedType} onValueChange={setSelectedType}>
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {serverTypes.map(type => (
-                <SelectItem key={type} value={type}>
-                  {type}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+      {/* Data Table */}
+      <LdapServerTable
+        servers={filteredServers}
+        loading={loading}
+        selectedItems={selectedItems}
+        expandedServers={expandedServers}
+        syncingServers={syncingServers}
+        testingServers={testingServers}
+        onToggleSelect={handleToggleSelect}
+        onToggleSelectAll={handleToggleSelectAll}
+        onToggleExpand={handleToggleExpand}
+        onEdit={handleEditServer}
+        onDelete={handleDeleteClick}
+        onSync={handleSync}
+        onTest={handleTestFromTable}
+        onAddServer={handleAddServer}
+        searchQuery={searchQuery}
+        hasActiveFilters={hasActiveFilters}
+      />
 
-          <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="All">All Status</SelectItem>
-              {statuses.slice(1).map(status => (
-                <SelectItem key={status} value={status}>
-                  {status}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select defaultValue="all">
-            <SelectTrigger className="w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Security</SelectItem>
-              <SelectItem value="secure">Secure</SelectItem>
-              <SelectItem value="insecure">Insecure</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">
-            {selectedItems.length} selected
-          </span>
-          {selectedItems.length > 0 && (
-            <>
-              <Button variant="outline" size="sm" onClick={handleBulkToggleActive}>
-                {ldapServers.find(s => selectedItems.includes(s.id) && s.isActive) ? 'Disconnect' : 'Connect'}
-              </Button>
-              <Button variant="outline" size="sm">
-                <TestTube className="h-4 w-4 mr-1" />
-                Test All
-              </Button>
-              <Button variant="destructive" size="sm" onClick={handleBulkDelete}>
-                Delete
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Servers Table */}
-      <Card>
-        <div className="overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-muted/50">
-              <tr>
-                <th className="text-left p-4 w-8">
-                  <input
-                    type="checkbox"
-                    className="rounded border-input"
-                    checked={selectedItems.length === filteredServers.length}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedItems(filteredServers.map(server => server.id));
-                      } else {
-                        setSelectedItems([]);
-                      }
-                    }}
-                  />
-                </th>
-                <th className="text-left p-4 text-sm font-medium">Server</th>
-                <th className="text-left p-4 text-sm font-medium">Hostname</th>
-                <th className="text-left p-4 text-sm font-medium">Security</th>
-                <th className="text-left p-4 text-sm font-medium">Status</th>
-                <th className="text-left p-4 text-sm font-medium">Users</th>
-                <th className="text-left p-4 text-sm font-medium">Last Sync</th>
-                <th className="text-left p-4 text-sm font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredServers.map((server) => {
-                const isExpanded = expandedServers.includes(server.id);
-
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between border-t pt-4">
+          <p className="text-sm text-muted-foreground">
+            Showing {currentPage * pageSize + 1}–{Math.min((currentPage + 1) * pageSize, totalElements)} of {totalElements} servers
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
+              disabled={currentPage === 0 || loading}
+              className="gap-1"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Previous
+            </Button>
+            <div className="flex items-center gap-1">
+              {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                // Show pages around current page
+                let page: number;
+                if (totalPages <= 5) {
+                  page = i;
+                } else if (currentPage <= 2) {
+                  page = i;
+                } else if (currentPage >= totalPages - 3) {
+                  page = totalPages - 5 + i;
+                } else {
+                  page = currentPage - 2 + i;
+                }
                 return (
-                  <React.Fragment key={server.id}>
-                    <tr className="border-b hover:bg-muted/30">
-                      <td className="p-4">
-                        <input
-                          type="checkbox"
-                          className="rounded border-input"
-                          checked={selectedItems.includes(server.id)}
-                          onChange={() => toggleSelectServer(server.id)}
-                        />
-                      </td>
-                      <td className="p-4">
-                        <div className="flex items-center gap-3">
-                          <button
-                            onClick={() => toggleServerExpansion(server.id)}
-                            className="p-1 rounded hover:bg-muted transition-colors"
-                          >
-                            {isExpanded ? (
-                              <ChevronDown className="h-4 w-4" />
-                            ) : (
-                              <ChevronRight className="h-4 w-4" />
-                            )}
-                          </button>
-                          <div className="h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center">
-                            <Server className="h-5 w-5 text-primary" />
-                          </div>
-                          <div>
-                            <div className="font-medium flex items-center gap-2">
-                              {server.name}
-                              {server.isSecure && (
-                                <Lock className="h-4 w-4 text-green-500" />
-                              )}
-                            </div>
-                            <div className="text-sm text-muted-foreground">{server.description}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div className="font-mono text-sm">{server.hostname}</div>
-                        <div className="text-xs text-muted-foreground">Port: {server.port}</div>
-                      </td>
-                      <td className="p-4">
-                        <div className="flex items-center gap-2">
-                          {server.isSecure ? (
-                            <Lock className="h-4 w-4 text-green-500" />
-                          ) : (
-                            <Unlock className="h-4 w-4 text-red-500" />
-                          )}
-                          <span className="text-sm">
-                            {server.useSSL ? 'SSL' : server.useTLS ? 'TLS' : 'None'}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div className="flex items-center gap-2">
-                          {getStatusIcon(server.status)}
-                          <Badge className={getStatusColor(server.status)}>
-                            {server.status}
-                          </Badge>
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div className="text-sm">{server.userCount}</div>
-                      </td>
-                      <td className="p-4">
-                        <div className="text-sm text-muted-foreground">
-                          {formatDate(server.lastSync)}
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div className="flex gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleToggleActive(server.id)}
-                            title={server.isActive ? 'Disconnect' : 'Connect'}
-                          >
-                            {server.isActive ? <WifiOff className="h-4 w-4" /> : <Wifi className="h-4 w-4" />}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleTestConnection(server.id)}
-                            title="Test Connection"
-                          >
-                            <TestTube className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleSyncNow(server.id)}
-                            title="Sync Now"
-                          >
-                            <Activity className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="sm" title="Edit">
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="sm" title="Settings">
-                            <Settings className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteServer(server.id)}
-                            title="Delete"
-                            className="text-destructive hover:text-destructive"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-
-                    {/* Expanded Details */}
-                    {isExpanded && (
-                      <tr className="bg-muted/20">
-                        <td colSpan={8} className="p-4">
-                          <div className="grid grid-cols-3 gap-6 ml-12">
-                            {/* Server Details */}
-                            <div>
-                              <h4 className="font-medium mb-3 flex items-center gap-2">
-                                <Server className="h-4 w-4" />
-                                Server Configuration
-                              </h4>
-                              <div className="space-y-2 text-sm">
-                                <div className="flex justify-between">
-                                  <span className="text-muted-foreground">Base DN:</span>
-                                  <span className="font-mono text-xs">{server.baseDN}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-muted-foreground">Bind DN:</span>
-                                  <span className="font-mono text-xs">{server.bindDN}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-muted-foreground">SSL Port:</span>
-                                  <span>{server.sslPort}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-muted-foreground">Timeout:</span>
-                                  <span>{server.connectionTimeout}s</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-muted-foreground">Max Connections:</span>
-                                  <span>{server.currentConnections}/{server.maxConnections}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-muted-foreground">Created by:</span>
-                                  <span>{server.createdBy}</span>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Attribute Mapping */}
-                            <div>
-                              <h4 className="font-medium mb-3 flex items-center gap-2">
-                                <Tag className="h-4 w-4" />
-                                Attribute Mapping
-                              </h4>
-                              <div className="space-y-2 text-sm">
-                                {Object.entries(server.attributes).map(([key, value]) => (
-                                  <div key={key} className="flex justify-between">
-                                    <span className="text-muted-foreground">{key}:</span>
-                                    <span className="font-mono text-xs">{String(value)}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-
-                            {/* Statistics */}
-                            <div>
-                              <h4 className="font-medium mb-3 flex items-center gap-2">
-                                <BarChart3 className="h-4 w-4" />
-                                Statistics
-                              </h4>
-                              <div className="space-y-2 text-sm">
-                                <div className="flex justify-between">
-                                  <span className="text-muted-foreground">Sync Count:</span>
-                                  <span>{server.syncCount}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-muted-foreground">Error Count:</span>
-                                  <span className="text-red-600">{server.errorCount}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-muted-foreground">Users:</span>
-                                  <span>{server.userCount}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-muted-foreground">Groups:</span>
-                                  <span>{server.groupCount}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-muted-foreground">Last Test:</span>
-                                  <span>{formatDate(server.lastTest)}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-muted-foreground">Last Modified:</span>
-                                  <span>{formatDate(server.lastModified)}</span>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
+                  <Button
+                    key={page}
+                    variant={page === currentPage ? 'default' : 'outline'}
+                    size="sm"
+                    className="h-8 w-8 p-0"
+                    onClick={() => setCurrentPage(page)}
+                    disabled={loading}
+                  >
+                    {page + 1}
+                  </Button>
                 );
               })}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-
-      {/* Empty State */}
-      {filteredServers.length === 0 && (
-        <Card className="flex flex-col items-center justify-center py-12">
-          <CardContent className="text-center">
-            <Server className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No LDAP servers found</h3>
-            <p className="text-muted-foreground mb-4">
-              {searchQuery || selectedType !== 'All' || selectedStatus !== 'All'
-                ? 'Try adjusting your search or filter criteria'
-                : 'Get started by adding your first LDAP server'
-              }
-            </p>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Server
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
+              disabled={currentPage >= totalPages - 1 || loading}
+              className="gap-1"
+            >
+              Next
+              <ChevronRight className="h-4 w-4" />
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
+
+      {/* Add/Edit Modal */}
+      <LdapServerModal
+        open={isModalOpen}
+        onOpenChange={setIsModalOpen}
+        server={editingServer}
+        onSave={handleSaveServer}
+        onTestConnection={handleTestConnection}
+      />
+
+      {/* Delete Confirmation */}
+      <DeleteServerDialog
+        open={isDeleteOpen}
+        onOpenChange={setIsDeleteOpen}
+        server={deletingServer}
+        onConfirm={handleDeleteConfirm}
+        loading={isDeleting}
+      />
     </div>
   );
 }

@@ -40,6 +40,9 @@ const NOTIFICATION_ROUTES: Record<string, RouteResolver> = {
     // ── Generic / test ──────────────────────────────────
     TEST_NOTIFICATION: () => null,
     SYSTEM_ALERT: () => null,
+
+    // ── LDAP sync ────────────────────────────────────────
+    LDAP_SYNC_COMPLETED: () => `/admin/users/ldap-servers`,
 };
 
 export function resolveNotificationRoute(type: string, data: Record<string, any>): string | null {
