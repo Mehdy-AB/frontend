@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, Trash2, GripVertical, Variable, Loader2, Link2, AlertCircle } from 'lucide-react';
+import React from 'react';
+import { Plus, Trash2, GripVertical, Variable, Link2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,7 +13,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { apiClient } from '@/api/client';
+
 import { TaskFormField } from '@/types/workflow';
 import { VariableDefinition } from './variables/types';
 
@@ -41,6 +41,7 @@ const TYPE_COMPATIBILITY: Record<string, string[]> = {
     DATE: ['DATE', 'DATETIME'],
     TIME: ['TIME', 'DATETIME'],
     DATETIME: ['DATETIME'],
+    FILE: ['FILE'],
 };
 
 interface TaskFormFieldsEditorProps {
@@ -52,29 +53,9 @@ interface TaskFormFieldsEditorProps {
 }
 
 export default function TaskFormFieldsEditor({ fields, onChange, workflowId, localVariables }: TaskFormFieldsEditorProps) {
-    const [apiVariables, setApiVariables] = useState<VariableDefinition[]>([]);
-    const [loadingVars, setLoadingVars] = useState(false);
+    // Always use local variables from the designer (passed as prop)
+    const variables: VariableDefinition[] = localVariables || [];
 
-    // Use API variables if workflowId exists, otherwise use local variables
-    const variables: VariableDefinition[] = workflowId ? apiVariables : (localVariables || []);
-
-    // Fetch from API only when workflowId is present
-    const fetchVariables = useCallback(async () => {
-        if (!workflowId) return;
-        try {
-            setLoadingVars(true);
-            const data = await apiClient.get<VariableDefinition[]>(`/api/v1/workflows/${workflowId}/variables`);
-            setApiVariables(data);
-        } catch (err) {
-            console.error('Failed to load variables for mapping', err);
-        } finally {
-            setLoadingVars(false);
-        }
-    }, [workflowId]);
-
-    useEffect(() => {
-        if (workflowId) fetchVariables();
-    }, [fetchVariables, workflowId]);
 
     const addField = () => {
         const newField: TaskFormField = {
@@ -206,45 +187,39 @@ export default function TaskFormFieldsEditor({ fields, onChange, workflowId, loc
                                         <Label className="text-xs flex items-center gap-1">
                                             <Link2 className="w-3 h-3" /> Map to Variable <span className="text-red-500">*</span>
                                         </Label>
-                                        {loadingVars ? (
-                                            <div className="h-8 flex items-center justify-center">
-                                                <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
-                                            </div>
-                                        ) : (
-                                            <Select
-                                                value={field.mappedVariableKey || '_none_'}
-                                                onValueChange={(val) => {
-                                                    if (val === '_none_') {
-                                                        updateField(idx, { mappedVariableKey: undefined, mappedVariableLabel: undefined });
-                                                    } else {
-                                                        const v = variables.find(v => v.variableKey === val);
-                                                        updateField(idx, {
-                                                            mappedVariableKey: val,
-                                                            mappedVariableLabel: v?.label || val,
-                                                        });
-                                                    }
-                                                }}
-                                            >
-                                                <SelectTrigger className={`h-8 text-sm ${isMappingMissing ? 'border-red-300' : ''}`}>
-                                                    <SelectValue placeholder="Select variable..." />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {compatibleVars.map(v => (
-                                                        <SelectItem key={v.variableKey} value={v.variableKey}>
-                                                            <span className="flex items-center gap-1">
-                                                                <Variable className="w-3 h-3 text-blue-500" />
-                                                                {v.label} <span className="text-xs text-gray-400">({v.type})</span>
-                                                            </span>
-                                                        </SelectItem>
-                                                    ))}
-                                                    {compatibleVars.length === 0 && (
-                                                        <div className="px-2 py-1.5 text-xs text-gray-400">
-                                                            No compatible variables (type: {field.type}). Add one in the Variables tab.
-                                                        </div>
-                                                    )}
-                                                </SelectContent>
-                                            </Select>
-                                        )}
+                                        <Select
+                                            value={field.mappedVariableKey || '_none_'}
+                                            onValueChange={(val) => {
+                                                if (val === '_none_') {
+                                                    updateField(idx, { mappedVariableKey: undefined, mappedVariableLabel: undefined });
+                                                } else {
+                                                    const v = variables.find(v => v.variableKey === val);
+                                                    updateField(idx, {
+                                                        mappedVariableKey: val,
+                                                        mappedVariableLabel: v?.label || val,
+                                                    });
+                                                }
+                                            }}
+                                        >
+                                            <SelectTrigger className={`h-8 text-sm ${isMappingMissing ? 'border-red-300' : ''}`}>
+                                                <SelectValue placeholder="Select variable..." />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {compatibleVars.map(v => (
+                                                    <SelectItem key={v.variableKey} value={v.variableKey}>
+                                                        <span className="flex items-center gap-1">
+                                                            <Variable className="w-3 h-3 text-blue-500" />
+                                                            {v.label} <span className="text-xs text-gray-400">({v.type})</span>
+                                                        </span>
+                                                    </SelectItem>
+                                                ))}
+                                                {compatibleVars.length === 0 && (
+                                                    <div className="px-2 py-1.5 text-xs text-gray-400">
+                                                        No compatible variables (type: {field.type}). Add one in the Variables tab.
+                                                    </div>
+                                                )}
+                                            </SelectContent>
+                                        </Select>
                                     </div>
                                 </div>
 

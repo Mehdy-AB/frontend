@@ -49,6 +49,11 @@ import {
   Trash,
   RefreshCw,
   Copy,
+  ClipboardCopy,
+  ClipboardPaste,
+  Download,
+  Upload,
+  FileJson,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -122,6 +127,8 @@ import ErrorHandlerNode from './nodes/ErrorHandlerNode';
 import GetContextNode from './nodes/GetContextNode';
 import ApprovalNode from './nodes/ApprovalNode';
 import MultiChoiceNode from './nodes/MultiChoiceNode';
+import FormRequestNode from './nodes/FormRequestNode';
+import AttachDocumentNode from './nodes/AttachDocumentNode';
 import { WorkflowNodeData } from './nodes/types';
 import { useRef } from 'react';
 // Import node configuration modals
@@ -155,6 +162,8 @@ import CancelNodeModal from './modals/CancelNodeModal';
 import ErrorHandlerNodeModal from './modals/ErrorHandlerNodeModal';
 import MultiChoiceNodeModal from './modals/MultiChoiceNodeModal';
 import GetContextNodeModal from './modals/GetContextNodeModal';
+import FormRequestNodeModal from './modals/FormRequestNodeModal';
+import AttachDocumentNodeModal from './modals/AttachDocumentNodeModal';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import InstancesTab from './tabs/InstancesTab';
 import StatisticsTab from './tabs/StatisticsTab';
@@ -192,6 +201,8 @@ const nodeTypeToBackendType: Record<string, string> = {
   stampNode: 'STAMP',
   notificationNode: 'NOTIFICATION',
   emailNode: 'NOTIFICATION',
+  formRequestNode: 'FORM_REQUEST',
+  attachDocumentNode: 'ATTACH_DOCUMENT',
   apiCallNode: 'API_CALL',
   scriptNode: 'SCRIPT',
   ocrNode: 'OCR_PROCESS',
@@ -238,10 +249,12 @@ const nodeTypes: NodeTypes = {
   archiveNode: ArchiveNode,
   deleteNode: DeleteNode,
   stampNode: StampNode,
+  attachDocumentNode: AttachDocumentNode,
 
   // Communication
   notificationNode: NotificationNode,
   emailNode: EmailNode,
+  formRequestNode: FormRequestNode,
 
   // Integration
   apiCallNode: ApiCallNode,
@@ -426,8 +439,13 @@ export default function WorkflowDesignerPage() {
   const [showErrorHandlerModal, setShowErrorHandlerModal] = useState(false);
   const [showGetContextModal, setShowGetContextModal] = useState(false);
   const [showMultiChoiceModal, setShowMultiChoiceModal] = useState(false);
+  const [showFormRequestModal, setShowFormRequestModal] = useState(false);
+  const [showAttachDocumentModal, setShowAttachDocumentModal] = useState(false);
   const [editingNodeData, setEditingNodeData] = useState<Node<WorkflowNodeData> | null>(null);
   const [nodeSearchQuery, setNodeSearchQuery] = useState('');
+  // JSON import/export modal
+  const [showJsonImportModal, setShowJsonImportModal] = useState(false);
+  const [jsonImportText, setJsonImportText] = useState('');
 
   // Computed flag to disable ReactFlow interactions when any modal is open
   const isAnyModalOpen = showStepModal || showDelayModal || showStampModal || showMoveDocumentModal ||
@@ -437,10 +455,10 @@ export default function WorkflowDesignerPage() {
     showReviewModal || showManualTaskModal || showApprovalModal || showSplitModal || showJoinModal ||
     showUpdateMetadataModal || showChangeStatusModal || showNewVersionModal ||
     showLockDocumentModal || showUnlockDocumentModal ||
-    showScriptModal || showOcrModal || showCancelModal || showErrorHandlerModal || showGetContextModal || showMultiChoiceModal;
+    showScriptModal || showOcrModal || showCancelModal || showErrorHandlerModal || showGetContextModal || showMultiChoiceModal || showFormRequestModal || showJsonImportModal;
 
   // Workflow validation hook for connection validation and error detection
-  const { errors: validationErrors, isValid: isWorkflowValid, canConnect, validateConnection, getNodeErrors } = useWorkflowValidation(nodes, edges);
+  const { errors: validationErrors, isValid: isWorkflowValid, canConnect, validateConnection, getNodeErrors } = useWorkflowValidation(nodes, edges, localVariables);
 
   // Create edit handler function that can be used in node data
   const createEditHandler = useCallback((nodeId: string) => {
@@ -566,6 +584,14 @@ export default function WorkflowDesignerPage() {
             case 'multiChoiceNode':
               setEditingNodeData(node);
               setShowMultiChoiceModal(true);
+              break;
+            case 'formRequestNode':
+              setEditingNodeData(node);
+              setShowFormRequestModal(true);
+              break;
+            case 'attachDocumentNode':
+              setEditingNodeData(node);
+              setShowAttachDocumentModal(true);
               break;
             default:
               console.log('No modal for node type:', node.type);
@@ -881,6 +907,10 @@ export default function WorkflowDesignerPage() {
                 }
               })));
               setEdges(definition.edges);
+              // Load variables from definition if present
+              if (definition.variables && Array.isArray(definition.variables)) {
+                setLocalVariables(definition.variables);
+              }
             } else {
               loadLegacySteps(workflow);
             }
@@ -945,6 +975,9 @@ export default function WorkflowDesignerPage() {
         data: {
           label: label,
           nodeType: backendNodeType, // Backend node type for API
+          // Type-specific defaults
+          ...(type === 'splitNode' ? { branches: 2 } : {}),
+          ...(type === 'joinNode' ? { branches: 2, joinMode: 'ALL' } : {}),
           onEdit: createEditHandler(nodeId),
           onDelete: () => {
             setNodes((nds) => nds.filter((n) => n.id !== nodeId));
@@ -1592,18 +1625,18 @@ export default function WorkflowDesignerPage() {
     }
 
     // Validate that all human task form fields have variable mappings
-    const humanTaskNodeTypes = ['approvalNode', 'reviewNode', 'manualTaskNode', 'workflowStep', 'firstStep'];
-    const humanTaskNodes = nodes.filter(n => humanTaskNodeTypes.includes(n.type || ''));
+    const formNodeTypes = ['formRequestNode'];
+    const formNodes = nodes.filter(n => formNodeTypes.includes(n.type || ''));
     const unmappedNodes: string[] = [];
-    for (const node of humanTaskNodes) {
-      const formFields: any[] = node.data.formFields || [];
-      const unmappedFields = formFields.filter((f: any) => !f.mappedVariableKey);
+    for (const node of formNodes) {
+      const formFields: any[] = (node.data as any).formFields || [];
+      const unmappedFields = formFields.filter((f: any) => !f.variableKey || f.variableKey.trim() === '');
       if (unmappedFields.length > 0) {
         unmappedNodes.push(node.data.label || 'Unnamed step');
       }
     }
     if (unmappedNodes.length > 0) {
-      showError('Validation Error', `The following steps have form fields without variable mapping: ${unmappedNodes.join(', ')}. Every form field must be mapped to a variable.`);
+      showError('Validation Error', `The following steps have form fields without variable mapping: ${unmappedNodes.join(', ')}. Every form field must be mapped to a workflow variable.`);
       return;
     }
 
@@ -1661,7 +1694,17 @@ export default function WorkflowDesignerPage() {
 
       const steps = workflowSteps.map((node) => {
         const stepOrder = stepOrderMap.get(node.id) || 1;
-        const assignments: CreateStepAssignmentRequest[] = (Array.isArray(node.data.assignments) ? node.data.assignments : []).map((a: any) => ({
+        // Build step-level assignments from node.data.assignments or fall back to recipients (for formRequestNode)
+        let rawAssignments = Array.isArray(node.data.assignments) ? node.data.assignments : [];
+        if (rawAssignments.length === 0 && Array.isArray(node.data.recipients) && node.data.recipients.length > 0) {
+          // Convert recipients [{id, type, ...}] to assignment format [{assigneeType, assigneeId}]
+          rawAssignments = node.data.recipients.map((r: any) => ({
+            assigneeType: r.type?.toUpperCase() || 'USER',
+            assigneeId: r.id,
+            canEdit: true,
+          }));
+        }
+        const assignments: CreateStepAssignmentRequest[] = rawAssignments.map((a: any) => ({
           assigneeType: a.assigneeType as 'USER' | 'ROLE' | 'GROUP',
           assigneeId: a.assigneeId as string,
           canEdit: (a.canEdit as boolean) ?? true,
@@ -1728,13 +1771,35 @@ export default function WorkflowDesignerPage() {
           configData.rejectFormFields = node.data.rejectFormFields;
         }
 
-        // For EMAIL nodes - include email recipients
-        if (node.data.emailRecipients && node.data.emailRecipients.length > 0) {
-          configData.emailRecipients = node.data.emailRecipients;
-          configData.ccRecipients = node.data.ccRecipients;
-          configData.emailSubject = node.data.emailSubject;
-          configData.emailBody = node.data.emailBody;
+        // For EMAIL nodes - include all email config
+        if (node.data.emailSubject || node.data.emailBody ||
+          (node.data.emailRecipients && node.data.emailRecipients.length > 0) ||
+          (node.data.staticEmails && node.data.staticEmails.length > 0) ||
+          (node.data.emailVarKeys && node.data.emailVarKeys.length > 0)) {
+          if (node.data.emailRecipients) configData.emailRecipients = node.data.emailRecipients;
+          if (node.data.ccRecipients) configData.ccRecipients = node.data.ccRecipients;
+          if (node.data.emailSubject) configData.emailSubject = node.data.emailSubject;
+          if (node.data.emailBody) configData.emailBody = node.data.emailBody;
           configData.attachDocument = node.data.attachDocument;
+          if (node.data.staticEmails) configData.staticEmails = node.data.staticEmails;
+          if (node.data.emailVarKeys) configData.emailVarKeys = node.data.emailVarKeys;
+          if (node.data.attachVariableKeys) configData.attachVariableKeys = node.data.attachVariableKeys;
+        }
+
+        // For FORM_REQUEST nodes - include form request config + convert recipients to assignments
+        if (node.type === 'formRequestNode') {
+          if (node.data.formFields) configData.formFields = node.data.formFields;
+          configData.recipientEmail = node.data.recipientEmail;
+          configData.recipientEmailVarKey = node.data.recipientEmailVarKey;
+          configData.timeoutEnabled = node.data.timeoutEnabled;
+          configData.timeout = node.data.timeout;
+          // Convert recipients [{id, type, ...}] to assignments [{assigneeType, assigneeId}]
+          if (node.data.recipients && Array.isArray(node.data.recipients) && node.data.recipients.length > 0) {
+            configData.assignments = node.data.recipients.map((r: any) => ({
+              assigneeType: r.type?.toUpperCase() || 'USER',
+              assigneeId: r.id,
+            }));
+          }
         }
 
         // For STAMP nodes - include stamp config
@@ -1815,6 +1880,7 @@ export default function WorkflowDesignerPage() {
       const workflowDefinition = {
         nodes: cleanedNodes,
         edges,
+        variables: localVariables,
         viewport: { x: 0, y: 0, zoom: 1 }
       };
 
@@ -1839,22 +1905,6 @@ export default function WorkflowDesignerPage() {
         // Create new workflow
         const newWorkflow = await workflowAdminService.createWorkflow(commonPayload as CreateWorkflowRequest);
 
-        // Save local variables to the newly created workflow
-        if (localVariables && localVariables.length > 0 && newWorkflow.id) {
-          for (const v of localVariables) {
-            try {
-              await apiClient.post(`/api/v1/workflows/${newWorkflow.id}/variables`, {
-                workflowId: newWorkflow.id,
-                variableKey: v.variableKey,
-                label: v.label,
-                type: v.type,
-                defaultValue: v.defaultValue,
-              });
-            } catch (varErr: any) {
-              console.warn(`Failed to save variable '${v.label}':`, varErr);
-            }
-          }
-        }
 
         showSuccess('Workflow Created', 'Workflow created successfully');
         // Route to edit mode of the new workflow
@@ -2371,6 +2421,40 @@ export default function WorkflowDesignerPage() {
                     <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
                     <Controls />
                     <MiniMap />
+                    {/* JSON Import/Export Floating Panel */}
+                    <div className="absolute top-3 right-3 z-10 flex items-center gap-1 bg-white/90 backdrop-blur-sm border border-gray-200 rounded-lg shadow-sm px-2 py-1.5">
+                      <button
+                        title="Export workflow as JSON (copy to clipboard)"
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 rounded-md transition-colors"
+                        onClick={() => {
+                          const exportData = {
+                            nodes: nodes.map(n => ({ ...n, data: { ...n.data, onEdit: undefined, onDelete: undefined } })),
+                            edges,
+                            variables: localVariables,
+                          };
+                          const json = JSON.stringify(exportData, null, 2);
+                          navigator.clipboard.writeText(json).then(() => {
+                            showSuccess('Workflow JSON copied to clipboard');
+                          }).catch(() => {
+                            // Fallback: open in a new window
+                            const w = window.open('', '_blank');
+                            if (w) { w.document.write('<pre>' + json + '</pre>'); }
+                          });
+                        }}
+                      >
+                        <ClipboardCopy className="w-3.5 h-3.5" />
+                        Export JSON
+                      </button>
+                      <div className="w-px h-5 bg-gray-200" />
+                      <button
+                        title="Import workflow from JSON (paste from clipboard)"
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-green-50 hover:text-green-700 rounded-md transition-colors"
+                        onClick={() => setShowJsonImportModal(true)}
+                      >
+                        <ClipboardPaste className="w-3.5 h-3.5" />
+                        Import JSON
+                      </button>
+                    </div>
                   </ReactFlow>
                   {/* Validation Panel */}
                   <ValidationPanel
@@ -2386,6 +2470,137 @@ export default function WorkflowDesignerPage() {
                 </div>
               </div>
             </ReactFlowProvider>
+
+            {/* JSON Import Modal */}
+            {showJsonImportModal && (
+              <div
+                className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <div
+                  className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden max-h-[85vh] flex flex-col"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  {/* Header */}
+                  <div className="flex items-center justify-between p-5 border-b bg-green-50">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center">
+                        <FileJson className="w-5 h-5 text-white" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900">Import Workflow JSON</h3>
+                        <p className="text-sm text-gray-500">Paste a workflow definition to load it</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => { setShowJsonImportModal(false); setJsonImportText(''); }}
+                      className="w-10 h-10 rounded-xl hover:bg-gray-200 flex items-center justify-center transition-colors"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                  {/* Content */}
+                  <div className="p-5 flex-1 overflow-y-auto space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          try {
+                            const text = await navigator.clipboard.readText();
+                            setJsonImportText(text);
+                          } catch {
+                            showError('Cannot read clipboard', 'Please paste manually');
+                          }
+                        }}
+                      >
+                        <ClipboardPaste className="w-3.5 h-3.5 mr-1.5" />
+                        Paste from Clipboard
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setJsonImportText('')}
+                      >
+                        Clear
+                      </Button>
+                    </div>
+                    <textarea
+                      value={jsonImportText}
+                      onChange={(e) => setJsonImportText(e.target.value)}
+                      placeholder='{\n  "nodes": [...],\n  "edges": [...]\n}'
+                      className="w-full h-[400px] font-mono text-xs border border-gray-200 rounded-lg p-3 resize-none focus:outline-none focus:ring-2 focus:ring-green-300 bg-gray-50"
+                      spellCheck={false}
+                    />
+                    {jsonImportText && (() => {
+                      try {
+                        const parsed = JSON.parse(jsonImportText);
+                        const nCount = parsed.nodes?.length || 0;
+                        const eCount = parsed.edges?.length || 0;
+                        const vCount = parsed.variables?.length || 0;
+                        return (
+                          <div className="text-xs text-green-600 bg-green-50 p-2 rounded-lg">
+                            ✓ Valid JSON — {nCount} nodes, {eCount} edges, {vCount} variables
+                          </div>
+                        );
+                      } catch {
+                        return (
+                          <div className="text-xs text-red-600 bg-red-50 p-2 rounded-lg">
+                            ✗ Invalid JSON — please check the format
+                          </div>
+                        );
+                      }
+                    })()}
+                  </div>
+                  {/* Footer */}
+                  <div className="flex justify-end gap-3 p-5 border-t bg-gray-50">
+                    <Button variant="outline" onClick={() => { setShowJsonImportModal(false); setJsonImportText(''); }}>
+                      Cancel
+                    </Button>
+                    <Button
+                      className="bg-green-500 hover:bg-green-600"
+                      disabled={!jsonImportText.trim()}
+                      onClick={() => {
+                        try {
+                          const parsed = JSON.parse(jsonImportText);
+                          if (!parsed.nodes || !Array.isArray(parsed.nodes)) {
+                            showError('Invalid format', 'JSON must contain a "nodes" array');
+                            return;
+                          }
+                          // Re-attach onEdit and onDelete handlers
+                          const importedNodes = parsed.nodes.map((n: Node) => ({
+                            ...n,
+                            data: {
+                              ...n.data,
+                              onEdit: createEditHandler(n.id),
+                              onDelete: () => handleDeleteNode(n.id),
+                            },
+                          }));
+                          setNodes(importedNodes);
+                          setEdges(parsed.edges || []);
+                          // Restore variables if present
+                          if (parsed.variables && Array.isArray(parsed.variables)) {
+                            setLocalVariables(parsed.variables);
+                          }
+                          setShowJsonImportModal(false);
+                          setJsonImportText('');
+                          const varCount = parsed.variables?.length || 0;
+                          showSuccess('Workflow imported successfully', `${importedNodes.length} nodes, ${(parsed.edges || []).length} edges, ${varCount} variables loaded`);
+                        } catch (e: any) {
+                          showError('Import failed', e.message || 'Invalid JSON');
+                        }
+                      }}
+                    >
+                      <Upload className="w-4 h-4 mr-1.5" />
+                      Import Workflow
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div >
 
           {/* Step Configuration Modal */}
@@ -2810,6 +3025,7 @@ export default function WorkflowDesignerPage() {
                     setEditingNodeData(null);
                   }}
                   nodeData={editingNodeData.data}
+                  localVariables={localVariables}
                   onSave={(updatedData) => {
                     setNodes((nds) =>
                       nds.map((n) =>
@@ -2830,6 +3046,7 @@ export default function WorkflowDesignerPage() {
                     setEditingNodeData(null);
                   }}
                   nodeData={editingNodeData.data}
+                  localVariables={localVariables}
                   onSave={(updatedData) => {
                     setNodes((nds) =>
                       nds.map((n) =>
@@ -3036,6 +3253,7 @@ export default function WorkflowDesignerPage() {
                   nodeData={editingNodeData.data}
                   workflowId={workflowId ? Number(workflowId) : undefined}
                   nodeId={editingNodeData.id}
+                  localVariables={localVariables}
                   onSave={(updatedData) => {
                     setNodes((nds) => nds.map((n) => n.id === editingNodeData.id ? { ...n, data: { ...n.data, ...updatedData } } : n));
                     setShowMultiChoiceModal(false);
@@ -3069,6 +3287,7 @@ export default function WorkflowDesignerPage() {
                   isOpen={showUpdateMetadataModal}
                   onClose={() => { setShowUpdateMetadataModal(false); setEditingNodeData(null); }}
                   nodeData={editingNodeData.data}
+                  allNodes={nodes}
                   onSave={(updatedData) => {
                     setNodes((nds) => nds.map((n) => n.id === editingNodeData.id ? { ...n, data: { ...n.data, ...updatedData } } : n));
                     setShowUpdateMetadataModal(false);
@@ -3173,6 +3392,30 @@ export default function WorkflowDesignerPage() {
                     setShowGetContextModal(false);
                     setEditingNodeData(null);
                   }}
+                />
+
+                <FormRequestNodeModal
+                  isOpen={showFormRequestModal}
+                  onClose={() => { setShowFormRequestModal(false); setEditingNodeData(null); }}
+                  nodeData={editingNodeData.data}
+                  onSave={(updatedData) => {
+                    setNodes((nds) => nds.map((n) => n.id === editingNodeData.id ? { ...n, data: { ...n.data, ...updatedData } } : n));
+                    setShowFormRequestModal(false);
+                    setEditingNodeData(null);
+                  }}
+                  localVariables={localVariables}
+                />
+
+                <AttachDocumentNodeModal
+                  isOpen={showAttachDocumentModal}
+                  onClose={() => { setShowAttachDocumentModal(false); setEditingNodeData(null); }}
+                  nodeData={editingNodeData.data}
+                  onSave={(updatedData) => {
+                    setNodes((nds) => nds.map((n) => n.id === editingNodeData.id ? { ...n, data: { ...n.data, ...updatedData } } : n));
+                    setShowAttachDocumentModal(false);
+                    setEditingNodeData(null);
+                  }}
+                  allNodes={nodes}
                 />
               </>
             )

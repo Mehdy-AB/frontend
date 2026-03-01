@@ -3,6 +3,7 @@
 import { useCallback, useMemo } from 'react';
 import { Node, Edge, Connection } from '@xyflow/react';
 import { WorkflowNodeData } from '../nodes/types';
+import { VariableDefinition } from '../components/variables/types';
 
 // Node types that cannot have incoming edges (source-only)
 const SOURCE_ONLY_NODES = ['startNode', 'triggerNode'];
@@ -41,7 +42,8 @@ export interface UseWorkflowValidationResult {
  */
 export function useWorkflowValidation(
     nodes: Node<WorkflowNodeData>[],
-    edges: Edge[]
+    edges: Edge[],
+    variables: VariableDefinition[] = []
 ): UseWorkflowValidationResult {
 
     // Build adjacency list for graph traversal
@@ -235,7 +237,39 @@ export function useWorkflowValidation(
             return { valid: false, reason: 'Connection already exists' };
         }
 
-        // 7. Allow loops BUT block infinite loops
+        // 7. JOIN target handle: only 1 connection per entry handle
+        if (targetNode.type === 'joinNode' && connection.targetHandle) {
+            const existingEdgeToHandle = edges.find(e =>
+                e.target === target &&
+                e.targetHandle === connection.targetHandle
+            );
+            if (existingEdgeToHandle) {
+                return { valid: false, reason: 'This JOIN entry is already connected. Each branch entry accepts only one connection.' };
+            }
+        }
+
+        // 8. JOIN can only receive from parallel paths — require a SPLIT upstream
+        if (targetNode.type === 'joinNode') {
+            const hasSplitUpstream = (() => {
+                const visited = new Set<string>();
+                const stack = [source];
+                while (stack.length > 0) {
+                    const current = stack.pop()!;
+                    if (visited.has(current)) continue;
+                    visited.add(current);
+                    const currentNode = nodes.find(n => n.id === current);
+                    if (currentNode?.type === 'splitNode') return true;
+                    // Traverse backward: find nodes that have edges into `current`
+                    edges.filter(e => e.target === current).forEach(e => stack.push(e.source));
+                }
+                return false;
+            })();
+            if (!hasSplitUpstream) {
+                return { valid: false, reason: 'JOIN nodes can only receive connections from paths that originate from a SPLIT node.' };
+            }
+        }
+
+        // 9. Allow loops BUT block infinite loops
         if (wouldBeInfiniteLoop(source, target)) {
             return { valid: false, reason: 'This connection would create an infinite loop. At least one node in the loop must have an exit path outside the cycle.' };
         }
@@ -342,15 +376,38 @@ export function useWorkflowValidation(
             }
         });
 
-        // 7. Check JOIN nodes have multiple incoming
+        // 7. Check JOIN nodes have correct incoming connections
         nodes.forEach(node => {
             if (node.type === 'joinNode') {
                 const incomingCount = edges.filter(e => e.target === node.id).length;
+                const expectedBranches = (node.data as any).branches || 2;
                 if (incomingCount < 2) {
                     validationErrors.push({
                         type: 'WARNING',
                         nodeId: node.id,
                         message: `JOIN node "${node.data.label || node.id}" should have at least 2 incoming connections`,
+                    });
+                }
+                if (incomingCount < expectedBranches) {
+                    validationErrors.push({
+                        type: 'WARNING',
+                        nodeId: node.id,
+                        message: `JOIN node "${node.data.label || node.id}" expects ${expectedBranches} inputs but only ${incomingCount} are connected`,
+                    });
+                }
+            }
+        });
+
+        // 7b. Check SPLIT nodes have all branch exits connected
+        nodes.forEach(node => {
+            if (node.type === 'splitNode') {
+                const expectedBranches = (node.data as any).branches || 2;
+                const outgoingEdges = edges.filter(e => e.source === node.id);
+                if (outgoingEdges.length < expectedBranches) {
+                    validationErrors.push({
+                        type: 'WARNING',
+                        nodeId: node.id,
+                        message: `SPLIT node "${node.data.label || node.id}" has ${expectedBranches} branches but only ${outgoingEdges.length} are connected`,
                     });
                 }
             }
@@ -410,8 +467,41 @@ export function useWorkflowValidation(
             }
         });
 
+        // 10. Check form request nodes — all form fields must be mapped to existing workflow variables
+        const variableKeys = new Set(variables.map(v => v.variableKey));
+        // Also collect variables defined by SET_VARIABLE nodes in the flow
+        nodes.forEach(node => {
+            if (node.type === 'setVariableNode') {
+                const d = node.data as any;
+                if (d.variableName) variableKeys.add(d.variableName);
+            }
+        });
+
+        const nodeTypesWithFormFields = ['formRequestNode'];
+        nodes.forEach(node => {
+            if (nodeTypesWithFormFields.includes(node.type || '')) {
+                const d = node.data as any;
+                const formFields = d.formFields || [];
+                formFields.forEach((field: any) => {
+                    if (!field.variableKey || field.variableKey.trim() === '') {
+                        validationErrors.push({
+                            type: 'ERROR',
+                            nodeId: node.id,
+                            message: `Form field "${field.label || 'Unnamed'}" in "${node.data.label || node.id}" is not mapped to a workflow variable`,
+                        });
+                    } else if (variableKeys.size > 0 && !variableKeys.has(field.variableKey)) {
+                        validationErrors.push({
+                            type: 'ERROR',
+                            nodeId: node.id,
+                            message: `Form field "${field.label || 'Unnamed'}" in "${node.data.label || node.id}" is mapped to unknown variable "${field.variableKey}"`,
+                        });
+                    }
+                });
+            }
+        });
+
         return validationErrors;
-    }, [nodes, edges]);
+    }, [nodes, edges, variables]);
 
     // Get errors for a specific node
     const getNodeErrors = useCallback((nodeId: string): ValidationError[] => {

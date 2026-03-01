@@ -606,7 +606,7 @@ export default function DocumentViewPage() {
         )}
 
         {pendingStep && !refreshingAfterAction && (
-          <div className="px-4 py-2">
+          <div className="px-4 py-2 max-h-[40vh] overflow-y-auto flex-shrink-0">
             <WorkflowStepAction
               stepInstance={pendingStep}
               onComplete={async () => {
@@ -646,7 +646,7 @@ export default function DocumentViewPage() {
         )}
 
         {/* Document Content Area */}
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden min-h-0">
           <FileViewer
             key={`${document.documentId}-${currentVersion || 'latest'}-${fileViewerKey}`}
             document={document}
@@ -694,6 +694,7 @@ export default function DocumentViewPage() {
             }
           }}
           onRefreshDocument={fetchDocument}
+          onSwitchToWorkflowTab={() => setActiveTab('workflows')}
         />
       </div>
 

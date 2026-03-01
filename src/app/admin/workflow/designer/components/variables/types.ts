@@ -20,6 +20,7 @@ export const VARIABLE_TYPES = [
     { value: 'DATE', label: 'Date' },
     { value: 'TIME', label: 'Time' },
     { value: 'DATETIME', label: 'Date & Time' },
+    { value: 'FILE', label: 'File (Document ID)' },
 ];
 
 /**

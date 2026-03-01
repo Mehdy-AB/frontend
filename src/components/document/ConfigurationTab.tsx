@@ -1,12 +1,11 @@
 // components/document/ConfigurationTab.tsx
 'use client';
 
+import { useState, useEffect } from 'react';
 import {
   Info,
-  Settings,
   Copy,
   Share2,
-  MessageSquare,
   Star,
   Globe,
   Lock,
@@ -15,14 +14,22 @@ import {
   Calendar,
   Clock,
   FileText,
-  Hash,
   Workflow,
   CheckCircle2,
-  Circle,
-  AlertCircle
+  AlertCircle,
+  XCircle,
+  Ban,
+  Timer,
+  ChevronDown,
+  ChevronRight,
+  ArrowRight,
+  GitBranch,
+  ExternalLink
 } from 'lucide-react';
 import { DocumentViewDto } from '../../types/documentView';
 import { formatFileSize, formatDate } from '../../utils/documentUtils';
+import { workflowAdminService } from '@/api/services/workflowAdminService';
+import { WorkflowInstanceResponse } from '@/types/workflow';
 
 interface ConfigurationTabProps {
   document: DocumentViewDto;
@@ -31,7 +38,16 @@ interface ConfigurationTabProps {
   onShare: () => void;
   onToggleFavorite: () => void;
   isFavorite: boolean;
+  onSwitchToWorkflowTab?: () => void;
 }
+
+const WF_STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: string; icon: React.ReactNode }> = {
+  ACTIVE: { label: 'In Progress', color: 'text-blue-700', bgColor: 'bg-blue-50 border-blue-200', icon: <Clock className="w-3.5 h-3.5 text-blue-500" /> },
+  COMPLETED: { label: 'Completed', color: 'text-emerald-700', bgColor: 'bg-emerald-50 border-emerald-200', icon: <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> },
+  CANCELLED: { label: 'Cancelled', color: 'text-gray-600', bgColor: 'bg-gray-50 border-gray-200', icon: <Ban className="w-3.5 h-3.5 text-gray-400" /> },
+  FAILED: { label: 'Failed', color: 'text-red-700', bgColor: 'bg-red-50 border-red-200', icon: <XCircle className="w-3.5 h-3.5 text-red-500" /> },
+  EXPIRED: { label: 'Expired', color: 'text-orange-700', bgColor: 'bg-orange-50 border-orange-200', icon: <Timer className="w-3.5 h-3.5 text-orange-500" /> },
+};
 
 export default function ConfigurationTab({
   document,
@@ -39,8 +55,30 @@ export default function ConfigurationTab({
   onCopyLink,
   onShare,
   onToggleFavorite,
-  isFavorite
+  isFavorite,
+  onSwitchToWorkflowTab
 }: ConfigurationTabProps) {
+  const [workflows, setWorkflows] = useState<WorkflowInstanceResponse[]>([]);
+  const [loadingWorkflows, setLoadingWorkflows] = useState(false);
+  const [showPastWorkflows, setShowPastWorkflows] = useState(false);
+
+  useEffect(() => {
+    const fetchWorkflows = async () => {
+      setLoadingWorkflows(true);
+      try {
+        const instances = await workflowAdminService.getAllWorkflowInstancesForDocument(document.documentId);
+        setWorkflows(instances);
+      } catch {
+        // Silently fail — workflow info is supplementary
+      } finally {
+        setLoadingWorkflows(false);
+      }
+    };
+    fetchWorkflows();
+  }, [document.documentId]);
+
+  const activeWorkflows = workflows.filter(w => w.status === 'ACTIVE');
+  const pastWorkflows = workflows.filter(w => w.status !== 'ACTIVE');
   if (isLoading) {
     return (
       <div className="p-4 space-y-6">
@@ -211,170 +249,148 @@ export default function ConfigurationTab({
         </div>
       </div>
 
-      {/* Workflow Instance Information */}
-      {document.workflowInstance && (
-        <div>
-          <h3 className="font-medium text-neutral-text-dark mb-3 flex items-center gap-2">
-            <Workflow className="h-4 w-4" />
-            Workflow Status
-          </h3>
-          <div className="space-y-3 p-4 bg-neutral-background rounded-lg border border-ui">
-            {/* Workflow Name and Status */}
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Workflow className="h-4 w-4 text-primary" />
-                <span className="font-medium text-neutral-text-dark">
-                  {document.workflowInstance.workflowName}
+      {/* Workflow Summary */}
+      <div>
+        <h3 className="font-medium text-neutral-text-dark mb-3 flex items-center gap-2">
+          <Workflow className="h-4 w-4" />
+          Workflows
+          {workflows.length > 0 && (
+            <span className="text-xs font-normal text-neutral-text-light">({workflows.length})</span>
+          )}
+        </h3>
+
+        {/* Workflow Status from Document DTO (instant, no extra API call) */}
+        {document.workflowInstance && (() => {
+          const wi = document.workflowInstance;
+          const statusCfg = WF_STATUS_CONFIG[wi.workflowStatus] || WF_STATUS_CONFIG.ACTIVE;
+          const isActive = wi.workflowStatus === 'ACTIVE';
+          return (
+            <div
+              className={`p-3 rounded-lg border mb-3 cursor-pointer hover:shadow-sm transition-all ${statusCfg.bgColor}`}
+              onClick={() => onSwitchToWorkflowTab?.()}
+            >
+              {/* Name + Status Badge */}
+              <div className="flex items-center gap-2 mb-2">
+                <div className="relative flex-shrink-0">
+                  {statusCfg.icon}
+                  {isActive && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-blue-500 rounded-full animate-pulse" />}
+                </div>
+                <span className="text-sm font-semibold text-gray-900 truncate flex-1">{wi.workflowName}</span>
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border ${statusCfg.bgColor} ${statusCfg.color}`}>
+                  {statusCfg.label}
                 </span>
               </div>
-              <span className={`px-2 py-1 rounded text-xs font-medium ${document.workflowInstance.workflowStatus === 'ACTIVE'
-                ? 'bg-primary/20 text-primary'
-                : document.workflowInstance.workflowStatus === 'COMPLETED'
-                  ? 'bg-success/20 text-success'
-                  : 'bg-neutral-ui text-neutral-text-light'
-                }`}>
-                {document.workflowInstance.workflowStatus}
-              </span>
-            </div>
 
-            {/* Current Step */}
-            {document.workflowInstance.currentStepName && (
-              <div className="border-t border-ui pt-3">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-neutral-text-dark">Current Step</span>
-                  {document.workflowInstance.currentStepStatus === 'ACTIVE' ? (
-                    <div className="flex items-center gap-1 text-xs text-primary">
-                      <Circle className="h-3 w-3 fill-current animate-pulse" />
-                      Active
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-1 text-xs text-neutral-text-light">
-                      <Circle className="h-3 w-3" />
-                      {document.workflowInstance.currentStepStatus || 'Pending'}
-                    </div>
+              {/* Current Step */}
+              {wi.currentStepName && (
+                <div className="flex items-center gap-1.5 mb-2 text-xs text-gray-700">
+                  <ArrowRight className="w-3 h-3 text-blue-400 flex-shrink-0" />
+                  <span className="truncate font-medium">{wi.currentStepName}</span>
+                  {wi.currentNodeType && (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] bg-white/60 text-gray-500 border border-gray-200 flex-shrink-0">
+                      {wi.currentNodeType.replace(/_/g, ' ')}
+                    </span>
                   )}
                 </div>
-                <div className="text-sm text-neutral-text-dark mb-2">
-                  <span className="text-neutral-text-light mr-2">
-                    Node:
+              )}
+
+              {/* Assigned Users */}
+              {wi.assignedUsers && wi.assignedUsers.length > 0 && (
+                <div className="flex items-center gap-1.5 mb-2 text-[11px] text-gray-600">
+                  <User className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                  <span className="truncate">
+                    {wi.assignedUsers.map(u => `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.username).join(', ')}
                   </span>
-                  {document.workflowInstance.currentStepName}
                 </div>
+              )}
 
-                {/* Assigned Users */}
-                {document.workflowInstance.assignedUsers && document.workflowInstance.assignedUsers.length > 0 && (
-                  <div className="mt-3">
-                    <div className="text-xs text-neutral-text-light mb-2 flex items-center gap-1">
-                      <User className="h-3 w-3" />
-                      Assigned To:
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {document.workflowInstance.assignedUsers.map((user) => (
-                        <div
-                          key={user.id}
-                          className="flex items-center gap-2 px-2 py-1 bg-ui rounded text-xs"
-                        >
-                          <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
-                            {user.imageUrl && user.imageUrl.trim() !== '' ? (
-                              <img
-                                src={user.imageUrl}
-                                alt={user.username}
-                                className="w-full h-full object-cover"
-                                onError={(e) => {
-                                  e.currentTarget.style.display = 'none';
-                                  e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                                }}
-                              />
-                            ) : null}
-                            <User className={`h-3 w-3 text-primary ${user.imageUrl && user.imageUrl.trim() !== '' ? 'hidden' : ''}`} />
-                          </div>
-                          <span className="text-neutral-text-dark">
-                            {user.firstName} {user.lastName}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+              {/* Dates + Due Date */}
+              <div className="flex items-center gap-3 text-[10px] text-gray-500 flex-wrap">
+                <span className="flex items-center gap-1">
+                  <Calendar className="w-3 h-3" />
+                  {formatDate(wi.workflowStartedAt || '')}
+                </span>
+                {wi.workflowCompletedAt && (
+                  <span className="flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" />
+                    {formatDate(wi.workflowCompletedAt)}
+                  </span>
                 )}
+                {wi.currentStepDueDate && (
+                  <span className={`flex items-center gap-1 ${new Date(wi.currentStepDueDate) < new Date() ? 'text-red-600 font-medium' : ''
+                    }`}>
+                    <AlertCircle className="w-3 h-3" />
+                    Due: {formatDate(wi.currentStepDueDate)}
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
-                {/* Due Date */}
-                {document.workflowInstance.currentStepDueDate && (
-                  <div className="mt-3 flex items-center gap-2 text-xs">
-                    <Calendar className="h-3 w-3 text-neutral-text-light" />
-                    <span className="text-neutral-text-light">Due:</span>
-                    <span className={`font-medium ${new Date(document.workflowInstance.currentStepDueDate) < new Date()
-                      ? 'text-error'
-                      : 'text-neutral-text-dark'
-                      }`}>
-                      {formatDate(document.workflowInstance.currentStepDueDate)}
-                      {new Date(document.workflowInstance.currentStepDueDate) < new Date() && (
-                        <AlertCircle className="h-3 w-3 inline ml-1 text-error" />
-                      )}
-                    </span>
+        {/* API-fetched Workflow List (enhanced details) */}
+        {loadingWorkflows ? (
+          <div className="flex items-center justify-center py-4">
+            <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-600 border-t-transparent" />
+          </div>
+        ) : !document.workflowInstance && workflows.length === 0 ? (
+          <div className="text-center py-6 bg-neutral-background rounded-lg border border-dashed border-ui">
+            <GitBranch className="h-6 w-6 text-neutral-text-light mx-auto mb-2" />
+            <p className="text-xs text-neutral-text-light">No workflows for this document</p>
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {/* Past Workflows (from API) */}
+            {pastWorkflows.length > 0 && (
+              <div>
+                <button
+                  onClick={() => setShowPastWorkflows(!showPastWorkflows)}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-neutral-text-light hover:text-neutral-text-dark transition-colors"
+                >
+                  {showPastWorkflows ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                  <span>Past Workflows ({pastWorkflows.length})</span>
+                </button>
+                {showPastWorkflows && (
+                  <div className="space-y-1.5 mt-1">
+                    {pastWorkflows.map((wf) => {
+                      const cfg = WF_STATUS_CONFIG[wf.status] || WF_STATUS_CONFIG.ACTIVE;
+                      return (
+                        <button
+                          key={wf.id}
+                          onClick={() => onSwitchToWorkflowTab?.()}
+                          className="w-full text-left flex items-center gap-2.5 p-2.5 rounded-lg border border-gray-100 bg-white hover:bg-gray-50 transition-all group"
+                        >
+                          {cfg.icon}
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-medium text-gray-800 truncate">{wf.workflowName}</div>
+                            <div className="text-[10px] text-gray-400 flex items-center gap-2">
+                              <span>{cfg.label}</span>
+                              <span>·</span>
+                              <span>{formatDate(wf.completedAt || wf.startedAt)}</span>
+                            </div>
+                          </div>
+                          <ExternalLink className="w-3 h-3 text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
             )}
 
-            {/* Workflow Dates */}
-            <div className="border-t border-ui pt-3 space-y-2">
-              {document.workflowInstance.workflowStartedAt && (
-                <div className="flex justify-between text-xs">
-                  <span className="text-neutral-text-light flex items-center gap-1">
-                    <Clock className="h-3 w-3" />
-                    Started:
-                  </span>
-                  <span className="text-neutral-text-dark">
-                    {formatDate(document.workflowInstance.workflowStartedAt)}
-                  </span>
-                </div>
-              )}
-              {document.workflowInstance.workflowCompletedAt && (
-                <div className="flex justify-between text-xs">
-                  <span className="text-neutral-text-light flex items-center gap-1">
-                    <CheckCircle2 className="h-3 w-3" />
-                    Completed:
-                  </span>
-                  <span className="text-neutral-text-dark">
-                    {formatDate(document.workflowInstance.workflowCompletedAt)}
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Model Configurations */}
-      {/* <div>
-        <h3 className="font-medium text-neutral-text-dark mb-3 flex items-center gap-2">
-          <Settings className="h-4 w-4" />
-          Model Configurations
-        </h3>
-        <div className="space-y-3">
-          {document.modelConfigurations?.map((config) => (
-            <div key={config.id} className="p-3 border border-ui rounded-lg">
-              <div className="flex justify-between items-start mb-2">
-                <span className="font-medium text-neutral-text-dark">{config.name}</span>
-                <span className={`px-2 py-1 rounded text-xs ${
-                  config.status === 'active' ? 'bg-success/20 text-success' :
-                  config.status === 'processing' ? 'bg-warning/20 text-warning' :
-                  'bg-neutral-ui text-neutral-text-light'
-                }`}>
-                  {config.status}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm text-neutral-text-light">
-                <span>Confidence: {(config.confidence * 100).toFixed(1)}%</span>
-                <span>{formatDate(config.lastRun)}</span>
-              </div>
-              <button className="w-full mt-2 text-xs text-primary hover:text-primary-dark text-center py-1">
-                Configure
+            {/* View all button */}
+            {onSwitchToWorkflowTab && (workflows.length > 0 || document.workflowInstance) && (
+              <button
+                onClick={onSwitchToWorkflowTab}
+                className="w-full flex items-center justify-center gap-1.5 py-2 text-xs text-primary hover:text-primary-dark font-medium transition-colors"
+              >
+                View Full Details
+                <ExternalLink className="w-3 h-3" />
               </button>
-            </div>
-          ))}
-        </div>
-      </div> */}
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Quick Actions */}
       <div>
