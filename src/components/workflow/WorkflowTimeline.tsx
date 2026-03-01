@@ -22,7 +22,13 @@ import {
   Stamp,
   XCircle,
   Ban,
-  Repeat2
+  Repeat2,
+  GitFork,
+  Merge,
+  Bell,
+  Mail,
+  FileInput,
+  Workflow
 } from 'lucide-react';
 import { WorkflowTimelineResponse } from '@/types/workflow';
 import { formatDate } from '@/lib/dateFormatter';
@@ -86,6 +92,12 @@ const getNodeTypeInfo = (nodeType: string) => {
     STAMP_DOCUMENT: { icon: <Stamp className="w-3.5 h-3.5" />, label: 'Stamp', className: 'bg-teal-100 text-teal-700 border-teal-200' },
     LOCK_DOCUMENT: { icon: <FileText className="w-3.5 h-3.5" />, label: 'Lock', className: 'bg-red-100 text-red-700 border-red-200' },
     UNLOCK_DOCUMENT: { icon: <FileText className="w-3.5 h-3.5" />, label: 'Unlock', className: 'bg-green-100 text-green-700 border-green-200' },
+    SPLIT: { icon: <GitFork className="w-3.5 h-3.5" />, label: 'Split', className: 'bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200' },
+    JOIN: { icon: <Merge className="w-3.5 h-3.5" />, label: 'Join', className: 'bg-pink-100 text-pink-700 border-pink-200' },
+    NOTIFICATION: { icon: <Bell className="w-3.5 h-3.5" />, label: 'Notification', className: 'bg-sky-100 text-sky-700 border-sky-200' },
+    EMAIL: { icon: <Mail className="w-3.5 h-3.5" />, label: 'Email', className: 'bg-rose-100 text-rose-700 border-rose-200' },
+    FORM_REQUEST: { icon: <FileInput className="w-3.5 h-3.5" />, label: 'Form Request', className: 'bg-lime-100 text-lime-700 border-lime-200' },
+    SUB_WORKFLOW: { icon: <Workflow className="w-3.5 h-3.5" />, label: 'Sub-Workflow', className: 'bg-slate-100 text-slate-700 border-slate-200' },
   };
   return types[nodeType] || { icon: <Circle className="w-3.5 h-3.5" />, label: nodeType, className: 'bg-gray-100 text-gray-700 border-gray-200' };
 };
@@ -276,7 +288,12 @@ export function WorkflowTimeline({ workflowInstanceId, documentId }: WorkflowTim
           const isConditionNode = node.nodeType === 'CONDITION';
           const conditionResult = node.resultEdge;
           const conditionSummary = node.resultData?.conditionSummary as string | undefined;
-          const hasDetails = node.description || (node.assignments && node.assignments.length > 0) || node.comment || conditionSummary;
+          const isSplitNode = node.nodeType === 'SPLIT';
+          const isJoinNode = node.nodeType === 'JOIN';
+          const splitBranches = isSplitNode ? (node.resultData?.branches || node.resultData?.branchCount) as number | undefined : undefined;
+          const joinArrived = isJoinNode && node.resultData ? (node.resultData as any)?.arrivedFrom?.length : undefined;
+          const joinRequired = isJoinNode && node.resultData ? (node.resultData as any)?.required : undefined;
+          const hasDetails = node.description || (node.assignments && node.assignments.length > 0) || node.comment || conditionSummary || isSplitNode || isJoinNode;
 
           // Loop iteration detection: count how many times this nodeId has appeared before this index
           const sameNodeOccurrences = nodes.filter((n, i) => i <= index && n.nodeId === node.nodeId);
@@ -340,6 +357,29 @@ export function WorkflowTimeline({ workflowInstanceId, documentId }: WorkflowTim
                               >
                                 <Repeat2 className="w-3 h-3 mr-0.5" />
                                 Iteration {iterationNumber}/{totalIterations}
+                              </Badge>
+                            )}
+                            {/* Split branch count badge */}
+                            {isSplitNode && splitBranches && (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] px-1.5 py-0 h-5 bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200"
+                              >
+                                <GitFork className="w-3 h-3 mr-0.5" />
+                                {splitBranches} branches
+                              </Badge>
+                            )}
+                            {/* Join progress badge */}
+                            {isJoinNode && joinRequired && (
+                              <Badge
+                                variant="outline"
+                                className={`text-[10px] px-1.5 py-0 h-5 ${joinArrived >= joinRequired
+                                    ? 'bg-green-50 text-green-700 border-green-200'
+                                    : 'bg-pink-50 text-pink-700 border-pink-200'
+                                  }`}
+                              >
+                                <Merge className="w-3 h-3 mr-0.5" />
+                                {joinArrived || 0}/{joinRequired} arrived
                               </Badge>
                             )}
                           </div>

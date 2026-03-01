@@ -290,11 +290,15 @@ export interface DocumentWorkflowInstanceDto {
   instanceId: number;
   workflowId: number;
   workflowName: string;
-  workflowStatus: string; // ACTIVE, COMPLETED, CANCELLED, etc.
+  workflowStatus: string; // ACTIVE, COMPLETED, CANCELLED, FAILED, etc.
   currentStepId?: number;
   currentStepName?: string;
   currentStepOrder?: number;
   currentStepStatus?: string; // ACTIVE, PENDING, COMPLETED, etc.
+  currentNodeType?: string;   // APPROVAL, REVIEW, MANUAL_TASK, FORM_REQUEST, etc.
+  totalNodes?: number;
+  completedNodes?: number;
+  progressPercentage?: number;
   workflowStartedAt?: string;
   workflowCompletedAt?: string;
   currentStepDueDate?: string;

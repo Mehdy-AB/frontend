@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { X, FileEdit, Plus, Trash2, Loader2 } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { X, FileEdit, Plus, Trash2, Loader2, Variable } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { filingCategoryService } from '@/api/services/filingCategoryService';
 import { FilingCategoryResponseDto, CategoryMetadataDefinitionDto } from '@/types/api';
 import { WorkflowNodeData } from '../nodes/types';
+import { Node } from '@xyflow/react';
 
 interface MetadataFieldUpdate {
     id: string;
@@ -17,24 +18,40 @@ interface MetadataFieldUpdate {
     fieldKey: string;
     fieldType: string;
     value: string;
-    valueType: 'static' | 'expression';
+    valueType: 'static' | 'expression' | 'variable';
+    variableKey?: string;
     listOptions?: string[];
     mandatory?: boolean;
 }
+
+// Type compatibility mapping: metadata dataType → compatible workflow variable types
+const TYPE_COMPATIBILITY: Record<string, string[]> = {
+    'STRING': ['STRING', 'TEXT', 'EMAIL'],
+    'TEXT': ['STRING', 'TEXT', 'EMAIL'],
+    'NUMBER': ['NUMBER', 'DECIMAL'],
+    'FLOAT': ['NUMBER', 'DECIMAL'],
+    'BOOLEAN': ['BOOLEAN'],
+    'DATE': ['DATE', 'DATETIME'],
+    'DATETIME': ['DATE', 'DATETIME'],
+    'LIST': ['STRING', 'TEXT', 'LIST'],
+};
 
 interface UpdateMetadataNodeModalProps {
     isOpen: boolean;
     onClose: () => void;
     nodeData: WorkflowNodeData;
     onSave: (updatedData: Partial<WorkflowNodeData>) => void;
+    allNodes?: Node[];
 }
 
 /**
- * UpdateMetadataNodeModal - Configuration for UPDATE_METADATA node
- * Backend: SetMetadataNodeHandler
- * - fields: Map<String, Object> - Key-value pairs
+ * UpdateMetadataNodeModal - Configuration for UPDATE_METADATA node.
+ * Supports three value sources:
+ *   - Static: user enters a fixed value
+ *   - Expression: template expression like ${document.name}
+ *   - Variable: picks a workflow variable key (runtime resolved, type-checked)
  */
-export default function UpdateMetadataNodeModal({ isOpen, onClose, nodeData, onSave }: UpdateMetadataNodeModalProps) {
+export default function UpdateMetadataNodeModal({ isOpen, onClose, nodeData, onSave, allNodes = [] }: UpdateMetadataNodeModalProps) {
     const [label, setLabel] = useState(nodeData.label || 'Update Metadata');
     const [fields, setFields] = useState<MetadataFieldUpdate[]>([]);
 
@@ -42,6 +59,49 @@ export default function UpdateMetadataNodeModal({ isOpen, onClose, nodeData, onS
     const [categories, setCategories] = useState<FilingCategoryResponseDto[]>([]);
     const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(nodeData.metadataCategoryId || null);
     const [loading, setLoading] = useState(false);
+
+    // Extract workflow variables from all SET_VARIABLE nodes in the designer
+    const workflowVariables = useMemo(() => {
+        const vars: { key: string; type: string; label: string }[] = [];
+        try {
+            for (const node of allNodes) {
+                if (node.type === 'setVariableNode' && node.data) {
+                    const d = node.data as any;
+                    if (d.variableKey && d.variableType) {
+                        vars.push({
+                            key: d.variableKey,
+                            type: d.variableType,
+                            label: d.label || d.variableKey,
+                        });
+                    }
+                }
+                // Also pick up variables from formRequest mapped fields
+                if (node.data && (node.data as any).formFields) {
+                    const formFields = (node.data as any).formFields;
+                    if (Array.isArray(formFields)) {
+                        for (const ff of formFields) {
+                            if (ff.mappedVariableKey) {
+                                vars.push({
+                                    key: ff.mappedVariableKey,
+                                    type: ff.type || 'STRING',
+                                    label: ff.label || ff.mappedVariableKey,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            // Fallback: no variables found
+        }
+        // Deduplicate by key
+        const seen = new Set<string>();
+        return vars.filter(v => {
+            if (seen.has(v.key)) return false;
+            seen.add(v.key);
+            return true;
+        });
+    }, [allNodes, isOpen]);
 
     // Load categories when modal opens
     useEffect(() => {
@@ -66,7 +126,6 @@ export default function UpdateMetadataNodeModal({ isOpen, onClose, nodeData, onS
             setLabel(nodeData.label || 'Update Metadata');
             setSelectedCategoryId(nodeData.metadataCategoryId || null);
 
-            // Convert old format to new format
             if (nodeData.metadataFields && nodeData.metadataFields.length > 0) {
                 const convertedFields = nodeData.metadataFields.map((f: any) => ({
                     id: f.id || Date.now().toString(),
@@ -75,6 +134,7 @@ export default function UpdateMetadataNodeModal({ isOpen, onClose, nodeData, onS
                     fieldType: f.fieldType || 'STRING',
                     value: f.value || '',
                     valueType: f.type || f.valueType || 'static',
+                    variableKey: f.variableKey || '',
                     listOptions: f.listOptions || [],
                     mandatory: f.mandatory || false,
                 }));
@@ -91,7 +151,7 @@ export default function UpdateMetadataNodeModal({ isOpen, onClose, nodeData, onS
     const handleCategoryChange = (categoryId: string) => {
         const numId = parseInt(categoryId);
         setSelectedCategoryId(numId);
-        setFields([]); // Reset fields when category changes
+        setFields([]);
     };
 
     const addField = () => {
@@ -102,6 +162,7 @@ export default function UpdateMetadataNodeModal({ isOpen, onClose, nodeData, onS
             fieldType: 'STRING',
             value: '',
             valueType: 'static',
+            variableKey: '',
             listOptions: [],
             mandatory: false,
         }]);
@@ -124,6 +185,7 @@ export default function UpdateMetadataNodeModal({ isOpen, onClose, nodeData, onS
                         fieldKey: metadataField.key,
                         fieldType: metadataField.dataType,
                         value: '',
+                        variableKey: '',
                         listOptions: metadataField.list?.option || [],
                         mandatory: metadataField.mandatory,
                     };
@@ -137,8 +199,18 @@ export default function UpdateMetadataNodeModal({ isOpen, onClose, nodeData, onS
         setFields(fields.map(f => f.id === id ? { ...f, value } : f));
     };
 
-    const updateFieldValueType = (id: string, valueType: 'static' | 'expression') => {
-        setFields(fields.map(f => f.id === id ? { ...f, valueType } : f));
+    const updateFieldValueType = (id: string, valueType: 'static' | 'expression' | 'variable') => {
+        setFields(fields.map(f => f.id === id ? { ...f, valueType, value: '', variableKey: '' } : f));
+    };
+
+    const updateFieldVariableKey = (id: string, variableKey: string) => {
+        setFields(fields.map(f => f.id === id ? { ...f, variableKey } : f));
+    };
+
+    // Get compatible variables for a metadata field type
+    const getCompatibleVariables = (fieldType: string) => {
+        const compatibleTypes = TYPE_COMPATIBILITY[fieldType] || [fieldType];
+        return workflowVariables.filter(v => compatibleTypes.includes(v.type));
     };
 
     const handleSave = () => {
@@ -150,8 +222,9 @@ export default function UpdateMetadataNodeModal({ isOpen, onClose, nodeData, onS
                 fieldId: f.fieldId,
                 key: f.fieldKey,
                 fieldType: f.fieldType,
-                value: f.value,
+                value: f.valueType === 'variable' ? '' : f.value,
                 type: f.valueType,
+                variableKey: f.valueType === 'variable' ? f.variableKey : undefined,
                 listOptions: f.listOptions,
                 mandatory: f.mandatory,
             })),
@@ -159,8 +232,56 @@ export default function UpdateMetadataNodeModal({ isOpen, onClose, nodeData, onS
         onClose();
     };
 
-    // Render value input based on field type
+    // Render value input based on field type and value type
     const renderValueInput = (field: MetadataFieldUpdate) => {
+        // Variable mode
+        if (field.valueType === 'variable') {
+            const compatibleVars = getCompatibleVariables(field.fieldType);
+            return (
+                <div className="space-y-2">
+                    {compatibleVars.length > 0 ? (
+                        <Select value={field.variableKey || ''} onValueChange={(v) => updateFieldVariableKey(field.id, v)}>
+                            <SelectTrigger className="text-sm">
+                                <SelectValue placeholder="Select workflow variable..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {compatibleVars.map((v) => (
+                                    <SelectItem key={v.key} value={v.key}>
+                                        <div className="flex items-center gap-2">
+                                            <Variable className="w-3 h-3 text-purple-500" />
+                                            <span>{v.key}</span>
+                                            <span className="text-xs text-gray-400 bg-gray-100 px-1 py-0.5 rounded">
+                                                {v.type}
+                                            </span>
+                                        </div>
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    ) : (
+                        <div className="space-y-2">
+                            <div className="text-xs text-amber-600 bg-amber-50 p-2 rounded border border-amber-100">
+                                No compatible variables found for type "{field.fieldType}".
+                                You can type a variable key manually.
+                            </div>
+                            <Input
+                                value={field.variableKey || ''}
+                                onChange={(e) => updateFieldVariableKey(field.id, e.target.value)}
+                                placeholder="Variable key (e.g. approverName)"
+                                className="text-sm font-mono"
+                            />
+                        </div>
+                    )}
+                    {field.variableKey && (
+                        <div className="text-xs text-purple-600 bg-purple-50 px-2 py-1 rounded flex items-center gap-1">
+                            <Variable className="w-3 h-3" />
+                            Will use value of <strong className="font-mono">${'{'}var.{field.variableKey}{'}'}</strong> at runtime
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
         // Expression mode
         if (field.valueType === 'expression') {
             return (
@@ -174,10 +295,9 @@ export default function UpdateMetadataNodeModal({ isOpen, onClose, nodeData, onS
             );
         }
 
-        // LIST type with options
+        // Static mode - LIST type with options
         if (field.fieldType === 'LIST' && field.listOptions && field.listOptions.length > 0) {
             if (!field.mandatory) {
-                // Allow custom values
                 return (
                     <div className="space-y-2">
                         <Select value={field.value} onValueChange={(v) => updateFieldValue(field.id, v)}>
@@ -199,7 +319,6 @@ export default function UpdateMetadataNodeModal({ isOpen, onClose, nodeData, onS
                     </div>
                 );
             }
-            // Strict dropdown
             return (
                 <Select value={field.value} onValueChange={(v) => updateFieldValue(field.id, v)}>
                     <SelectTrigger className="text-sm">
@@ -214,7 +333,7 @@ export default function UpdateMetadataNodeModal({ isOpen, onClose, nodeData, onS
             );
         }
 
-        // Other types
+        // Static mode - Other types
         switch (field.fieldType) {
             case 'BOOLEAN':
                 return (
@@ -356,7 +475,7 @@ export default function UpdateMetadataNodeModal({ isOpen, onClose, nodeData, onS
                             <div className="space-y-3">
                                 {fields.length === 0 && (
                                     <div className="text-center py-4 text-sm text-gray-400 bg-gray-50 rounded-lg border border-dashed">
-                                        No fields configured. Click "Add Field" to start.
+                                        No fields configured. Click &quot;Add Field&quot; to start.
                                     </div>
                                 )}
 
@@ -395,6 +514,7 @@ export default function UpdateMetadataNodeModal({ isOpen, onClose, nodeData, onS
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                     <SelectItem value="static">Static</SelectItem>
+                                                    <SelectItem value="variable">Variable</SelectItem>
                                                     <SelectItem value="expression">Expression</SelectItem>
                                                 </SelectContent>
                                             </Select>

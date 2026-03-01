@@ -10,8 +10,8 @@ interface ChangeStatusNodeProps {
 }
 
 /**
- * ChangeStatusNode - Changes document lifecycle state
- * Backend: CHANGE_STATUS type, ChangeLifecycleNodeHandler
+ * ChangeStatusNode - Sets informational status label on workflow instance
+ * Backend: CHANGE_STATUS type, ChangeStatusNodeHandler
  */
 const ChangeStatusNode = ({ data, selected, id }: ChangeStatusNodeProps) => {
     return (
@@ -51,7 +51,7 @@ const ChangeStatusNode = ({ data, selected, id }: ChangeStatusNodeProps) => {
                 </div>
                 <div>
                     <div className="font-bold text-sm text-gray-900">{data.label || 'Change Status'}</div>
-                    <div className="text-[10px] text-gray-400 uppercase tracking-wider">Lifecycle</div>
+                    <div className="text-[10px] text-gray-400 uppercase tracking-wider">Instance Status</div>
                 </div>
             </div>
 

@@ -27,6 +27,7 @@ interface DocumentContentProps {
   onUpdateDocument?: (updatedDocument: DocumentViewDto) => void;
   onRefreshMetadata?: () => Promise<void>;
   onRefreshDocument?: () => void;
+  onSwitchToWorkflowTab?: () => void;
 }
 
 export default function DocumentContent({
@@ -44,7 +45,8 @@ export default function DocumentContent({
   onUpdateMetadata,
   onUpdateDocument,
   onRefreshMetadata,
-  onRefreshDocument
+  onRefreshDocument,
+  onSwitchToWorkflowTab
 }: DocumentContentProps) {
   if (!document) {
     return (
@@ -67,6 +69,7 @@ export default function DocumentContent({
           onShare={onShare}
           onToggleFavorite={onToggleFavorite}
           isFavorite={isFavorite}
+          onSwitchToWorkflowTab={onSwitchToWorkflowTab}
         />
       )}
 

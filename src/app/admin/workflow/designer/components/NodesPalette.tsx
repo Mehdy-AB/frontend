@@ -24,6 +24,7 @@ import {
     XCircle,
     Eye,
     ClipboardCheck,
+    ClipboardList,
     GitFork,
     Merge,
     FileEdit,
@@ -36,6 +37,7 @@ import {
     Square,
     Stamp,
     List,
+    Paperclip,
 } from 'lucide-react';
 
 interface NodesPaletteProps {
@@ -224,7 +226,7 @@ export default function NodesPalette({ searchQuery, onSearchChange }: NodesPalet
             {/* Document Actions */}
             {(matchesNodeSearch('move') || matchesNodeSearch('metadata') || matchesNodeSearch('status') || matchesNodeSearch('version') ||
                 matchesNodeSearch('lock') || matchesNodeSearch('unlock') || matchesNodeSearch('archive') || matchesNodeSearch('delete') ||
-                matchesNodeSearch('stamp') || matchesNodeSearch('lifecycle')) && (
+                matchesNodeSearch('stamp') || matchesNodeSearch('lifecycle') || matchesNodeSearch('attach')) && (
                     <div className="mb-4">
                         <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Document Actions</h4>
                         <div className="grid grid-cols-2 gap-2">
@@ -309,9 +311,36 @@ export default function NodesPalette({ searchQuery, onSearchChange }: NodesPalet
                                     colorClass="bg-gradient-to-br from-red-50 to-red-100 border-2 border-red-200 text-red-900"
                                 />
                             )}
+                            {matchesNodeSearch('attach') && (
+                                <DraggableNodeCard
+                                    nodeType="attachDocumentNode"
+                                    label="Attach Document"
+                                    displayName="Attach"
+                                    icon={<Paperclip className="w-6 h-6 text-indigo-600" />}
+                                    colorClass="bg-gradient-to-br from-indigo-50 to-indigo-100 border-2 border-indigo-200 text-indigo-900"
+                                />
+                            )}
                         </div>
                     </div>
                 )}
+
+            {/* Data Collection */}
+            {(matchesNodeSearch('form') || matchesNodeSearch('request') || matchesNodeSearch('external')) && (
+                <div className="mb-4">
+                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Data Collection</h4>
+                    <div className="grid grid-cols-2 gap-2">
+                        {(matchesNodeSearch('form') || matchesNodeSearch('request') || matchesNodeSearch('external')) && (
+                            <DraggableNodeCard
+                                nodeType="formRequestNode"
+                                label="Form Request"
+                                displayName="Form Request"
+                                icon={<ClipboardList className="w-6 h-6 text-teal-600" />}
+                                colorClass="bg-gradient-to-br from-teal-50 to-emerald-100 border-2 border-teal-200 text-teal-900"
+                            />
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* Communication */}
             {(matchesNodeSearch('notify') || matchesNodeSearch('email') || matchesNodeSearch('notification')) && (

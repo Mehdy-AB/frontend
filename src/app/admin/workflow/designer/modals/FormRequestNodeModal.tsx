@@ -1,85 +1,82 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { X, List, Clock, Plus, Trash2, GripVertical, Settings, ChevronDown, ChevronUp, Bell, Mail, Paperclip, FileText, ClipboardList } from 'lucide-react';
+import { X, ClipboardList, Plus, Trash2, GripVertical, Clock, Mail, Settings, Bell, Paperclip, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { WorkflowNodeData } from '../nodes/types';
-import { TaskFormField } from '@/types/workflow';
-import AssigneeSelector, {
-    StepAssignment,
-    fromAssignmentEntities,
-    toAssignmentRequests,
-    toAssignmentEntities
-} from '@/components/workflow/AssigneeSelector';
-import NodeInstancesPanel from '../components/NodeInstancesPanel';
-import TaskFormFieldsEditor from '../components/TaskFormFieldsEditor';
+import AssigneeSelector, { StepAssignment, GranteeType } from '@/components/workflow/AssigneeSelector';
 import { VariableDefinition } from '../components/variables/types';
 import VariableInsertButton from '../components/VariableInsertButton';
 
-interface MultiChoiceNodeModalProps {
+interface FormRequestNodeModalProps {
     isOpen: boolean;
     onClose: () => void;
     nodeData: WorkflowNodeData;
     onSave: (updatedData: Partial<WorkflowNodeData>) => void;
-    workflowId?: number;
-    nodeId?: string;
     localVariables?: VariableDefinition[];
 }
 
-interface Choice {
-    id: number;
+interface FormField {
+    id: string;
     label: string;
-    formFields?: TaskFormField[];
+    type: 'TEXT' | 'EMAIL' | 'NUMBER' | 'DATE' | 'FILE';
+    variableKey: string;
+    required: boolean;
 }
 
-const TIMEOUT_ACTIONS = [
-    { value: 'REMIND', label: 'Send Reminder', description: 'Notify assignees and continue waiting' },
-    { value: 'AUTO_APPROVE', label: 'Auto-Select Default', description: 'Automatically select the first choice' },
-    { value: 'CANCEL_WORKFLOW', label: 'Cancel Workflow', description: 'Cancel the entire workflow' },
-    { value: 'FAIL', label: 'Fail Workflow', description: 'Mark workflow as failed' },
-    { value: 'FOLLOW_TIMEOUT_PATH', label: 'Follow Timeout Path', description: 'Exit via the TIMEOUT path for custom handling' },
+const FIELD_TYPES = [
+    { value: 'TEXT', label: 'Text' },
+    { value: 'EMAIL', label: 'Email' },
+    { value: 'NUMBER', label: 'Number' },
+    { value: 'DATE', label: 'Date' },
+    { value: 'FILE', label: 'File Upload' },
 ];
 
-const MAX_CHOICES = 10;
+function recipientsToAssignments(recipients: any[] | undefined): StepAssignment[] {
+    if (!recipients) return [];
+    return recipients.map((r: any) => ({
+        id: `${r.type?.toLowerCase()}-${r.id}`,
+        type: r.type?.toLowerCase() as GranteeType,
+        entity: r.entity!,
+        canEdit: true,
+    }));
+}
 
-export default function MultiChoiceNodeModal({ isOpen, onClose, nodeData, onSave, workflowId, nodeId, localVariables = [] }: MultiChoiceNodeModalProps) {
-    // Tab state
-    const [activeTab, setActiveTab] = useState<'config' | 'notifications' | 'instances'>('config');
-    const showInstancesTab = !!workflowId && !!nodeId;
+function assignmentsToRecipients(assignments: StepAssignment[]): any[] {
+    return assignments.map(a => {
+        const name = 'username' in a.entity
+            ? (a.entity as any).displayName || (a.entity as any).username
+            : (a.entity as any).name;
+        return {
+            id: a.entity.id,
+            type: a.type.toUpperCase(),
+            name,
+            entity: a.entity,
+        };
+    });
+}
 
-    // Basic settings
-    const [label, setLabel] = useState(nodeData.label || 'Multi-Choice');
-    const [description, setDescription] = useState(nodeData.description || '');
-
-    // Choices
-    const [choices, setChoices] = useState<Choice[]>(
-        nodeData.choices || [{ id: 1, label: 'Continue' }]
-    );
-
-    // Track which choice has its form fields expanded
-    const [expandedChoiceId, setExpandedChoiceId] = useState<number | null>(null);
-
-    // Timeout settings
-    const [timeoutEnabled, setTimeoutEnabled] = useState(nodeData.timeoutEnabled || false);
-    const [timeoutValue, setTimeoutValue] = useState(nodeData.timeoutValue || 48);
-    const [timeoutUnit, setTimeoutUnit] = useState<'HOURS' | 'DAYS'>(nodeData.timeoutUnit || 'HOURS');
-    const [timeoutAction, setTimeoutAction] = useState(nodeData.timeoutAction || 'REMIND');
-
-    // Assignments
+export default function FormRequestNodeModal({ isOpen, onClose, nodeData, onSave, localVariables = [] }: FormRequestNodeModalProps) {
+    const [activeTab, setActiveTab] = useState<'config' | 'notifications'>('config');
     const [assignments, setAssignments] = useState<StepAssignment[]>([]);
+    const [formFields, setFormFields] = useState<FormField[]>([]);
 
-    // Notification & Email state
+    // Recipient config
+    const [recipientEmail, setRecipientEmail] = useState('');
+    const [recipientEmailVarKey, setRecipientEmailVarKey] = useState('');
+
+    // Timeout config
+    const [timeoutEnabled, setTimeoutEnabled] = useState(false);
+    const [timeoutValue, setTimeoutValue] = useState(48);
+    const [timeoutUnit, setTimeoutUnit] = useState('HOURS');
+    const [timeoutAction, setTimeoutAction] = useState('FOLLOW_TIMEOUT_PATH');
+
+    // Notification settings
     const [notifyOnAssignInApp, setNotifyOnAssignInApp] = useState(true);
     const [notifyOnAssignEmail, setNotifyOnAssignEmail] = useState(false);
     const [assignNotifSubject, setAssignNotifSubject] = useState('');
@@ -93,26 +90,40 @@ export default function MultiChoiceNodeModal({ isOpen, onClose, nodeData, onSave
     const assignSubjectRef = useRef<HTMLInputElement>(null);
     const assignBodyRef = useRef<HTMLTextAreaElement>(null);
 
-    const fileVariables = localVariables.filter(v => v.type === 'FILE' || v.type === 'DOCUMENT');
     const emailVariables = localVariables.filter(v => v.type === 'EMAIL');
+    const fileVariables = localVariables.filter(v => v.type === 'FILE' || v.type === 'DOCUMENT');
 
     useEffect(() => {
         if (isOpen) {
-            setLabel(nodeData.label || 'Multi-Choice');
-            setDescription(nodeData.description || '');
-            setChoices(nodeData.choices || [{ id: 1, label: 'Continue' }]);
-            setExpandedChoiceId(null);
-            setTimeoutEnabled(nodeData.timeoutEnabled || false);
-            setTimeoutValue(nodeData.timeoutValue || 48);
-            setTimeoutUnit(nodeData.timeoutUnit || 'HOURS');
-            setTimeoutAction(nodeData.timeoutAction || 'REMIND');
-            setAssignments(fromAssignmentEntities(nodeData.assignmentEntities));
-
             const nd = nodeData as any;
+            setActiveTab('config');
+            setAssignments(recipientsToAssignments(nd.recipients));
+
+            // Form fields
+            const fields = (nd.formFields || []).map((f: any, idx: number) => ({
+                id: f.id || `field-${idx}`,
+                label: f.label || '',
+                type: f.type || 'TEXT',
+                variableKey: f.variableKey || '',
+                required: f.required ?? true,
+            }));
+            setFormFields(fields);
+
+            // Recipient
+            setRecipientEmail(nd.recipientEmail || '');
+            setRecipientEmailVarKey(nd.recipientEmailVarKey || '');
+
+            // Timeout
+            setTimeoutEnabled(nd.timeoutEnabled ?? false);
+            setTimeoutValue(nd.timeout?.value ?? 48);
+            setTimeoutUnit(nd.timeout?.unit ?? 'HOURS');
+            setTimeoutAction(nd.timeout?.action ?? 'FOLLOW_TIMEOUT_PATH');
+
+            // Notification settings
             setNotifyOnAssignInApp(nd.notifyOnAssignInApp ?? true);
             setNotifyOnAssignEmail(nd.notifyOnAssignEmail ?? false);
-            setAssignNotifSubject(nd.assignNotifSubject || nd.notificationSubject || '');
-            setAssignNotifBody(nd.assignNotifBody || nd.notificationBody || '');
+            setAssignNotifSubject(nd.assignNotifSubject || '');
+            setAssignNotifBody(nd.assignNotifBody || '');
             setAssignStaticEmails(nd.assignStaticEmails || []);
             setAssignEmailVarKeys(nd.assignEmailVarKeys || []);
             setNewStaticEmail('');
@@ -121,7 +132,28 @@ export default function MultiChoiceNodeModal({ isOpen, onClose, nodeData, onSave
         }
     }, [isOpen, nodeData]);
 
-    const useTimeoutExit = timeoutAction === 'FOLLOW_TIMEOUT_PATH';
+    const addField = () => {
+        setFormFields(prev => [
+            ...prev,
+            {
+                id: `field-${Date.now()}`,
+                label: '',
+                type: 'TEXT',
+                variableKey: '',
+                required: true,
+            },
+        ]);
+    };
+
+    const removeField = (id: string) => {
+        setFormFields(prev => prev.filter(f => f.id !== id));
+    };
+
+    const updateField = (id: string, key: keyof FormField, value: any) => {
+        setFormFields(prev =>
+            prev.map(f => (f.id === id ? { ...f, [key]: value } : f))
+        );
+    };
 
     const insertVariable = (expression: string, target: string) => {
         const refMap: Record<string, { ref: React.RefObject<any>; getter: string; setter: (v: string) => void }> = {
@@ -138,54 +170,29 @@ export default function MultiChoiceNodeModal({ isOpen, onClose, nodeData, onSave
         }
     };
 
-    // Add a new choice
-    const handleAddChoice = () => {
-        if (choices.length >= MAX_CHOICES) return;
-        const newId = Math.max(...choices.map(c => c.id), 0) + 1;
-        setChoices([...choices, { id: newId, label: `Option ${choices.length + 1}`, formFields: [] }]);
-    };
-
-    // Update form fields for a specific choice
-    const handleUpdateChoiceFormFields = (choiceId: number, fields: TaskFormField[]) => {
-        setChoices(choices.map(c => c.id === choiceId ? { ...c, formFields: fields } : c));
-    };
-
-    // Update choice label
-    const handleUpdateChoice = (id: number, newLabel: string) => {
-        setChoices(choices.map(c => c.id === id ? { ...c, label: newLabel } : c));
-    };
-
-    // Delete choice (cannot delete if only 1 left)
-    const handleDeleteChoice = (id: number) => {
-        if (choices.length <= 1) return;
-        setChoices(choices.filter(c => c.id !== id));
-    };
-
     const handleSave = () => {
-        // Normalize choice IDs to sequential 1..N
-        const normalizedChoices = choices.map((c, i) => ({ ...c, id: i + 1 }));
-
+        const label = (nodeData as any).label || 'Form Request';
         onSave({
-            label,
-            description,
-            choices: normalizedChoices,
+            recipients: assignmentsToRecipients(assignments),
+            formFields: formFields.map(f => ({
+                label: f.label,
+                type: f.type,
+                variableKey: f.variableKey,
+                required: f.required,
+            })),
+            recipientEmail,
+            recipientEmailVarKey,
             timeoutEnabled,
-            timeoutValue: timeoutEnabled ? timeoutValue : undefined,
-            timeoutUnit: timeoutEnabled ? timeoutUnit : undefined,
-            timeoutAction: timeoutEnabled ? timeoutAction : undefined,
-            useTimeoutExit: timeoutEnabled && useTimeoutExit,
-            assignments: toAssignmentRequests(assignments),
-            assignmentEntities: toAssignmentEntities(assignments),
-            // Backend config format
-            'timeout.value': timeoutValue,
-            'timeout.unit': timeoutUnit,
-            'timeout.action': timeoutAction,
-            'timeout.useTimeoutExit': timeoutEnabled && useTimeoutExit,
+            timeout: {
+                value: timeoutValue,
+                unit: timeoutUnit,
+                action: timeoutAction,
+            },
             // Notification settings
             notifyOnAssignInApp,
             notifyOnAssignEmail,
-            assignNotifSubject,
-            assignNotifBody,
+            assignNotifSubject: assignNotifSubject || `Form Request: ${label}`,
+            assignNotifBody: assignNotifBody || `You have been assigned a form request task: ${label}. Please review the document and select the missing fields.`,
             assignStaticEmails,
             assignEmailVarKeys,
             assignAttachDocument,
@@ -198,24 +205,27 @@ export default function MultiChoiceNodeModal({ isOpen, onClose, nodeData, onSave
 
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full h-[85vh] flex flex-col overflow-hidden">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full h-[90vh] flex flex-col overflow-hidden">
                 {/* Header */}
                 <div className="flex items-center justify-between p-6 border-b bg-teal-50">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-teal-500 rounded-lg flex items-center justify-center">
-                            <List className="w-5 h-5 text-white" />
+                            <ClipboardList className="w-5 h-5 text-white" />
                         </div>
                         <div>
-                            <h3 className="text-lg font-semibold text-gray-900">Configure Multi-Choice</h3>
-                            <p className="text-sm text-gray-500">Define choices and exit paths</p>
+                            <h3 className="text-lg font-semibold text-gray-900">Configure Form Request</h3>
+                            <p className="text-sm text-gray-500">Define fields, map to variables, and set recipient</p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="w-10 h-10 rounded-xl hover:bg-gray-200 flex items-center justify-center">
+                    <button
+                        onClick={onClose}
+                        className="w-10 h-10 rounded-xl hover:bg-gray-200 flex items-center justify-center transition-colors"
+                    >
                         <X className="w-5 h-5" />
                     </button>
                 </div>
 
-                {/* Tabs - always shown */}
+                {/* Tabs */}
                 <div className="flex border-b bg-gray-50">
                     <button
                         onClick={() => setActiveTab('config')}
@@ -237,26 +247,11 @@ export default function MultiChoiceNodeModal({ isOpen, onClose, nodeData, onSave
                         <Bell className="w-4 h-4" />
                         Notifications & Email
                     </button>
-                    {showInstancesTab && (
-                        <button
-                            onClick={() => setActiveTab('instances')}
-                            className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'instances'
-                                ? 'border-teal-500 text-teal-600 bg-white'
-                                : 'border-transparent text-gray-500 hover:text-gray-700'
-                                }`}
-                        >
-                            <List className="w-4 h-4" />
-                            Active Instances
-                        </button>
-                    )}
                 </div>
 
                 {/* Content */}
                 <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                    {activeTab === 'instances' && showInstancesTab ? (
-                        <NodeInstancesPanel workflowId={workflowId!} nodeId={nodeId!} nodeType="multiChoiceNode" />
-                    ) : activeTab === 'notifications' ? (
-                        /* ==================== NOTIFICATIONS & EMAIL TAB ==================== */
+                    {activeTab === 'notifications' ? (
                         <div className="space-y-6">
                             <div className="border rounded-xl overflow-hidden">
                                 <div className="bg-teal-50 px-4 py-3 border-b">
@@ -264,7 +259,7 @@ export default function MultiChoiceNodeModal({ isOpen, onClose, nodeData, onSave
                                         <Bell className="w-4 h-4" />
                                         On Assignment
                                     </h4>
-                                    <p className="text-xs text-teal-600 mt-0.5">Notify when a choice task is assigned</p>
+                                    <p className="text-xs text-teal-600 mt-0.5">Notify when the form request task is assigned</p>
                                 </div>
                                 <div className="p-4 space-y-4">
                                     <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
@@ -290,11 +285,11 @@ export default function MultiChoiceNodeModal({ isOpen, onClose, nodeData, onSave
                                                 </div>
                                                 <div>
                                                     <Label className="text-xs">Subject / Title</Label>
-                                                    <Input ref={assignSubjectRef} value={assignNotifSubject} onChange={(e) => setAssignNotifSubject(e.target.value)} placeholder="Choice required: ${doc.name}" className="mt-1 font-mono text-sm" />
+                                                    <Input ref={assignSubjectRef} value={assignNotifSubject} onChange={(e) => setAssignNotifSubject(e.target.value)} placeholder="Form Request: ${doc.name}" className="mt-1 font-mono text-sm" />
                                                 </div>
                                                 <div>
                                                     <Label className="text-xs">Message / Body</Label>
-                                                    <Textarea ref={assignBodyRef} value={assignNotifBody} onChange={(e) => setAssignNotifBody(e.target.value)} placeholder="Please select one of the available choices for ${doc.name}" rows={3} className="mt-1 font-mono text-sm" />
+                                                    <Textarea ref={assignBodyRef} value={assignNotifBody} onChange={(e) => setAssignNotifBody(e.target.value)} placeholder="Please review the document and select the missing fields." rows={3} className="mt-1 font-mono text-sm" />
                                                 </div>
                                             </div>
                                             {notifyOnAssignEmail && (
@@ -360,159 +355,184 @@ export default function MultiChoiceNodeModal({ isOpen, onClose, nodeData, onSave
                             </div>
                         </div>
                     ) : (
-                        /* ==================== CONFIGURATION TAB ==================== */
                         <>
-                            {/* Basic Settings */}
-                            <div className="space-y-4">
-                                <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Basic Settings</h4>
-                                <div className="grid gap-4">
-                                    <div>
-                                        <Label>Step Name</Label>
-                                        <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Multi-Choice Step" />
-                                    </div>
-                                    <div>
-                                        <Label>Description</Label>
-                                        <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Instructions for users..." rows={2} />
-                                    </div>
-                                </div>
+                            {/* Assignee - who reviews the document */}
+                            <div>
+                                <AssigneeSelector
+                                    assignments={assignments}
+                                    onChange={setAssignments}
+                                    label="Reviewer (selects missing fields)"
+                                    accentColor="teal"
+                                />
                             </div>
 
-                            {/* Choices Configuration */}
-                            <div className="space-y-4">
+                            {/* Form Fields Builder */}
+                            <div className="space-y-3">
                                 <div className="flex items-center justify-between">
-                                    <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-2">
-                                        <List className="w-4 h-4" />
-                                        Choices ({choices.length}/{MAX_CHOICES})
-                                    </h4>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={handleAddChoice}
-                                        disabled={choices.length >= MAX_CHOICES}
-                                        className="gap-1"
-                                    >
-                                        <Plus className="w-4 h-4" />
-                                        Add Choice
+                                    <Label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Form Fields</Label>
+                                    <Button variant="outline" size="sm" onClick={addField} className="text-xs gap-1">
+                                        <Plus className="w-3 h-3" />
+                                        Add Field
                                     </Button>
                                 </div>
-                                <div className="bg-teal-50 border border-teal-100 rounded-lg p-4 space-y-2">
-                                    {choices.map((choice, index) => (
-                                        <div key={choice.id} className="space-y-0">
-                                            <div className="flex items-center gap-2 bg-white rounded-lg p-2 border border-gray-200">
-                                                <GripVertical className="w-4 h-4 text-gray-400 cursor-grab" />
-                                                <div className="w-6 h-6 rounded-full bg-teal-500 text-white text-xs font-bold flex items-center justify-center">
-                                                    {index + 1}
-                                                </div>
-                                                <Input
-                                                    value={choice.label}
-                                                    onChange={(e) => handleUpdateChoice(choice.id, e.target.value)}
-                                                    placeholder={`Choice ${index + 1}`}
-                                                    className="flex-1"
-                                                />
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={() => setExpandedChoiceId(expandedChoiceId === choice.id ? null : choice.id)}
-                                                    className="text-gray-500 hover:text-teal-600"
-                                                    title="Configure form fields for this choice"
-                                                >
-                                                    <ClipboardList className="w-4 h-4" />
-                                                    {expandedChoiceId === choice.id ? <ChevronUp className="w-3 h-3 ml-0.5" /> : <ChevronDown className="w-3 h-3 ml-0.5" />}
-                                                </Button>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={() => handleDeleteChoice(choice.id)}
-                                                    disabled={choices.length <= 1}
-                                                    className="text-gray-400 hover:text-red-600"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </Button>
-                                            </div>
-                                            {/* Per-choice form fields editor */}
-                                            {expandedChoiceId === choice.id && (
-                                                <div className="ml-8 mt-1 mb-2 p-3 bg-white border border-teal-200 rounded-lg">
-                                                    <p className="text-xs font-medium text-teal-700 mb-2">Form fields for &quot;{choice.label}&quot;</p>
-                                                    <TaskFormFieldsEditor
-                                                        fields={choice.formFields || []}
-                                                        onChange={(fields) => handleUpdateChoiceFormFields(choice.id, fields)}
-                                                        workflowId={workflowId}
-                                                        localVariables={localVariables}
-                                                    />
-                                                </div>
-                                            )}
+
+                                {formFields.length === 0 && (
+                                    <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+                                        <ClipboardList className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                                        <p className="text-sm text-gray-400">No fields defined yet</p>
+                                        <Button variant="outline" size="sm" onClick={addField} className="mt-2 text-xs">
+                                            <Plus className="w-3 h-3 mr-1" />
+                                            Add your first field
+                                        </Button>
+                                    </div>
+                                )}
+
+                                {formFields.map((field, idx) => (
+                                    <div key={field.id} className="p-3 bg-white border rounded-lg space-y-2 shadow-sm">
+                                        <div className="flex items-center gap-2">
+                                            <GripVertical className="w-4 h-4 text-gray-300 shrink-0" />
+                                            <span className="text-xs font-bold text-gray-400 w-5 shrink-0">{idx + 1}</span>
+                                            <Input
+                                                placeholder="Field label (e.g. Email Address)"
+                                                value={field.label}
+                                                onChange={e => updateField(field.id, 'label', e.target.value)}
+                                                className="text-sm flex-1"
+                                            />
+                                            <button
+                                                onClick={() => removeField(field.id)}
+                                                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors shrink-0"
+                                            >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
                                         </div>
-                                    ))}
-                                    <p className="text-xs text-teal-600 mt-2">
-                                        Each choice creates a separate exit path. Click the form icon to add form fields per choice.
-                                    </p>
-                                </div>
+                                        <div className="flex items-center gap-2 pl-11">
+                                            <Select value={field.type} onValueChange={v => updateField(field.id, 'type', v)}>
+                                                <SelectTrigger className="w-32 text-xs">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {FIELD_TYPES.map(t => (
+                                                        <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                            <Select
+                                                value={field.variableKey}
+                                                onValueChange={v => updateField(field.id, 'variableKey', v)}
+                                            >
+                                                <SelectTrigger className="flex-1 text-xs">
+                                                    <SelectValue placeholder="Map to variable..." />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {localVariables.map(v => (
+                                                        <SelectItem key={v.variableKey} value={v.variableKey}>
+                                                            {v.label} ({v.type})
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                            <label className="flex items-center gap-1 text-xs text-gray-500 shrink-0 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={field.required}
+                                                    onChange={e => updateField(field.id, 'required', e.target.checked)}
+                                                    className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                                                />
+                                                Required
+                                            </label>
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
 
-                            {/* Timeout Settings */}
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-2">
-                                        <Clock className="w-4 h-4" />
-                                        Timeout / Expiration
-                                    </h4>
-                                    <Switch checked={timeoutEnabled} onCheckedChange={setTimeoutEnabled} />
+                            {/* Recipient Email */}
+                            <div className="space-y-3 border rounded-xl p-4">
+                                <h4 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                                    <Mail className="w-4 h-4 text-teal-500" />
+                                    Form Recipient
+                                </h4>
+                                <div className="space-y-2">
+                                    <Label className="text-xs text-gray-500">Static email address</Label>
+                                    <Input
+                                        type="email"
+                                        value={recipientEmail}
+                                        onChange={e => setRecipientEmail(e.target.value)}
+                                        placeholder="recipient@example.com"
+                                        className="text-sm"
+                                    />
                                 </div>
-
-                                {timeoutEnabled && (
-                                    <div className="bg-orange-50 border border-orange-100 rounded-lg p-4 space-y-4">
-                                        <div className="grid gap-4 sm:grid-cols-2">
-                                            <div>
-                                                <Label>Timeout After</Label>
-                                                <div className="flex gap-2">
-                                                    <Input
-                                                        type="number"
-                                                        min={1}
-                                                        value={timeoutValue}
-                                                        onChange={(e) => setTimeoutValue(parseInt(e.target.value) || 1)}
-                                                        className="w-24"
-                                                    />
-                                                    <Select value={timeoutUnit} onValueChange={(v) => setTimeoutUnit(v as 'HOURS' | 'DAYS')}>
-                                                        <SelectTrigger className="w-28">
-                                                            <SelectValue />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="HOURS">Hours</SelectItem>
-                                                            <SelectItem value="DAYS">Days</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <Label>On Timeout</Label>
-                                                <Select value={timeoutAction} onValueChange={setTimeoutAction}>
-                                                    <SelectTrigger>
-                                                        <SelectValue />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        {TIMEOUT_ACTIONS.map(a => (
-                                                            <SelectItem key={a.value} value={a.value}>
-                                                                {a.label}
-                                                            </SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
-                                            </div>
-                                        </div>
-                                        <div className="text-xs text-orange-700 bg-orange-100 px-3 py-2 rounded">
-                                            {TIMEOUT_ACTIONS.find(a => a.value === timeoutAction)?.description}
-                                        </div>
+                                {emailVariables.length > 0 && (
+                                    <div className="space-y-2">
+                                        <Label className="text-xs text-gray-500">Or from workflow variable (EMAIL type)</Label>
+                                        <Select value={recipientEmailVarKey || '__none__'} onValueChange={v => setRecipientEmailVarKey(v === '__none__' ? '' : v)}>
+                                            <SelectTrigger className="text-sm">
+                                                <SelectValue placeholder="Select email variable..." />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="__none__">None</SelectItem>
+                                                {emailVariables.map(v => (
+                                                    <SelectItem key={v.variableKey} value={v.variableKey}>
+                                                        {v.label} (${'${var.' + v.variableKey + '}'})
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
                                     </div>
                                 )}
                             </div>
 
-                            {/* Assignments Section */}
-                            <AssigneeSelector
-                                assignments={assignments}
-                                onChange={setAssignments}
-                                label="Decision Makers"
-                                accentColor="teal"
-                            />
+                            {/* Timeout Config */}
+                            <div className="space-y-3 border rounded-xl p-4">
+                                <div className="flex items-center justify-between">
+                                    <h4 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                                        <Clock className="w-4 h-4 text-amber-500" />
+                                        Timeout
+                                    </h4>
+                                    <Switch checked={timeoutEnabled} onCheckedChange={setTimeoutEnabled} />
+                                </div>
+                                {timeoutEnabled && (
+                                    <div className="space-y-3 pt-2">
+                                        <div className="flex gap-2">
+                                            <div className="flex-1">
+                                                <Label className="text-xs text-gray-500">Duration</Label>
+                                                <Input
+                                                    type="number"
+                                                    min={1}
+                                                    value={timeoutValue}
+                                                    onChange={e => setTimeoutValue(parseInt(e.target.value) || 1)}
+                                                    className="mt-1"
+                                                />
+                                            </div>
+                                            <div className="w-32">
+                                                <Label className="text-xs text-gray-500">Unit</Label>
+                                                <Select value={timeoutUnit} onValueChange={setTimeoutUnit}>
+                                                    <SelectTrigger className="mt-1">
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="MINUTES">Minutes</SelectItem>
+                                                        <SelectItem value="HOURS">Hours</SelectItem>
+                                                        <SelectItem value="DAYS">Days</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <Label className="text-xs text-gray-500">On Timeout</Label>
+                                            <Select value={timeoutAction} onValueChange={setTimeoutAction}>
+                                                <SelectTrigger className="mt-1">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="FOLLOW_TIMEOUT_PATH">Follow Timeout Path</SelectItem>
+                                                    <SelectItem value="REMIND">Send Reminder</SelectItem>
+                                                    <SelectItem value="FAIL">Fail Workflow</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </>
                     )}
                 </div>

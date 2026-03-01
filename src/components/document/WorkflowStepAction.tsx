@@ -13,12 +13,16 @@ import {
   Upload,
   FileIcon,
   X,
-  Loader2
+  Loader2,
+  Send,
+  SkipForward,
+  ClipboardList,
+  ExternalLink,
+  Mail
 } from 'lucide-react';
 import { WorkflowNodeInstanceResponse, CompleteStepRequest, RejectStepRequest, TaskFormField } from '@/types/workflow';
 import { workflowAdminService } from '@/api/services/workflowAdminService';
-import { documentService } from '@/api/services/documentService';
-import { linkRuleService } from '@/api/services/linkRuleService';
+import { apiClient } from '@/api/client';
 import { useNotifications } from '@/hooks/useNotifications';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -58,6 +62,8 @@ const getNodeTypeBadge = (nodeType?: string) => {
       return { label: 'Task', className: 'bg-amber-100 text-amber-700 border-amber-200' };
     case 'MULTI_CHOICE':
       return { label: 'Choice Required', className: 'bg-teal-100 text-teal-700 border-teal-200' };
+    case 'FORM_REQUEST':
+      return { label: 'Form Request', className: 'bg-teal-100 text-teal-700 border-teal-200' };
     default:
       return { label: 'Action Required', className: 'bg-gray-100 text-gray-700 border-gray-200' };
   }
@@ -100,6 +106,13 @@ export default function WorkflowStepAction({ stepInstance, onComplete }: Workflo
   const [fileUploads, setFileUploads] = useState<Record<string, File>>({});
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  // FORM_REQUEST specific state
+  const [selectedFieldKeys, setSelectedFieldKeys] = useState<string[]>([]);
+  const [formRequestEmail, setFormRequestEmail] = useState('');
+  const [formRequestSent, setFormRequestSent] = useState(false);
+  const [formRequestStatus, setFormRequestStatus] = useState<any>(null);
+  const [sendingFormRequest, setSendingFormRequest] = useState(false);
 
   // Get form fields from step instance (from node config)
   const formFields: TaskFormField[] = stepInstance.formFields || stepInstance.config?.formFields || [];
@@ -145,50 +158,33 @@ export default function WorkflowStepAction({ stepInstance, onComplete }: Workflo
     return Object.keys(errors).length === 0;
   };
 
-  // Upload file fields and link them as attachments to the origin document
+  // Upload file fields to workflow temp storage in MinIO
   const processFileUploads = async (fields: TaskFormField[]): Promise<Record<string, any>> => {
     const fileFields = fields.filter(f => f.type === 'FILE');
     if (fileFields.length === 0) return {};
 
-    const documentId = stepInstance.documentId;
-    // Get the origin document's folder
-    let folderId = 1; // fallback
-    if (stepInstance.document?.folderId) {
-      folderId = stepInstance.document.folderId;
-    }
-
-    const uploadedIds: Record<string, any> = {};
+    const uploadedKeys: Record<string, any> = {};
 
     for (const field of fileFields) {
       const file = fileUploads[field.fieldKey];
       if (!file) continue;
 
       try {
-        // Upload the file to the same folder as the origin document
-        const uploadResult = await documentService.uploadDocument(
-          file,
-          folderId,
-          file.name.replace(/\.[^/.]+$/, ''), // title = filename without extension
-          'ENG'
+        // Upload to workflow temp file storage (MinIO bucket)
+        const formData = new FormData();
+        formData.append('file', file);
+        const result = await apiClient.uploadFile<{ fileId: string; fileName: string; contentType: string; size: number }>(
+          '/api/v1/workflows/files/upload',
+          formData
         );
-
-        // Link the uploaded document as an attachment to the origin document
-        if (documentId && uploadResult?.documentId) {
-          await linkRuleService.createDocumentLink({
-            sourceDocumentId: documentId,
-            targetDocumentId: uploadResult.documentId,
-            relationType: 'ATTACHMENT' as any,
-            description: `Attached via workflow task: ${stepInstance.nodeName} - ${field.label}`,
-          });
-        }
-
-        uploadedIds[field.fieldKey] = uploadResult?.documentId;
+        // Store the MinIO key (fileId) as the variable value
+        uploadedKeys[field.fieldKey] = result.fileId;
       } catch (err: any) {
         throw new Error(`Failed to upload ${file.name}: ${err?.message || 'Unknown error'}`);
       }
     }
 
-    return uploadedIds;
+    return uploadedKeys;
   };
 
   const handleComplete = async (choiceId?: number) => {
@@ -456,6 +452,66 @@ export default function WorkflowStepAction({ stepInstance, onComplete }: Workflo
 
   const isApprovalNode = nodeType === 'APPROVAL';
   const isMultiChoiceNode = nodeType === 'MULTI_CHOICE';
+  const isFormRequestNode = nodeType === 'FORM_REQUEST';
+
+  // FORM_REQUEST: get config fields and recipient email
+  const formRequestFields: TaskFormField[] = stepInstance.config?.formFields || [];
+  const configRecipientEmail = stepInstance.config?.recipientEmail || '';
+
+  // Initialize form request email from config on first render
+  if (isFormRequestNode && !formRequestEmail && configRecipientEmail) {
+    setFormRequestEmail(configRecipientEmail);
+  }
+
+  const toggleFieldSelection = (fieldKey: string) => {
+    setSelectedFieldKeys(prev =>
+      prev.includes(fieldKey)
+        ? prev.filter(k => k !== fieldKey)
+        : [...prev, fieldKey]
+    );
+  };
+
+  const handleSendFormRequest = async () => {
+    if (selectedFieldKeys.length === 0) return;
+    if (!formRequestEmail.trim()) {
+      showError('Please enter a recipient email address');
+      return;
+    }
+    try {
+      setSendingFormRequest(true);
+      const result = await apiClient.post<any>(
+        `/api/v1/workflows/form-requests/${stepInstance.id}/send`,
+        {
+          selectedFieldKeys,
+          recipientEmail: formRequestEmail.trim(),
+          baseUrl: window.location.origin,
+        }
+      );
+      setFormRequestSent(true);
+      setFormRequestStatus(result);
+      showSuccess(`Form request sent to ${formRequestEmail}`);
+    } catch (error: any) {
+      showError('Failed to send form request', error?.message || 'Unknown error');
+    } finally {
+      setSendingFormRequest(false);
+    }
+  };
+
+  const handleSkipFormRequest = async () => {
+    try {
+      setLoading(true);
+      await workflowAdminService.completeNode(stepInstance.id, {
+        comment: 'No missing fields — skipped form request',
+      });
+      showSuccess('Step skipped — no fields missing');
+      resetState();
+      onComplete?.();
+    } catch (error: any) {
+      showError('Failed to skip step', error?.message || 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Get choices for multi-choice nodes
   const multiChoiceOptions: { id: number; label: string; formFields?: TaskFormField[] }[] =
@@ -639,7 +695,7 @@ export default function WorkflowStepAction({ stepInstance, onComplete }: Workflo
 
             {/* Right side: Action Buttons */}
             <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
-              {activeAction !== 'idle' && (
+              {activeAction !== 'idle' && !isFormRequestNode && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -650,7 +706,7 @@ export default function WorkflowStepAction({ stepInstance, onComplete }: Workflo
                 </Button>
               )}
 
-              {activeAction === 'idle' && (
+              {activeAction === 'idle' && !isFormRequestNode && (
                 <>
                   {isMultiChoiceNode ? (
                     <>
@@ -714,8 +770,151 @@ export default function WorkflowStepAction({ stepInstance, onComplete }: Workflo
           </div>
         </div>
 
-        {/* Inline Form Section */}
-        {showInlineForm && formExpanded && (
+        {/* FORM_REQUEST Node: Field Selection Panel */}
+        {isFormRequestNode && (
+          <div className="border-t border-teal-200 bg-white/80 rounded-b-lg">
+            <div className="px-4 py-4 space-y-4">
+              {formRequestSent ? (
+                /* Status after sending */
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-teal-700">
+                    <CheckCircle2 className="h-5 w-5" />
+                    <p className="text-sm font-medium">Form request sent!</p>
+                  </div>
+                  {formRequestStatus && (
+                    <div className="bg-teal-50 rounded-lg p-3 space-y-1.5 text-sm">
+                      <div className="flex items-center gap-2">
+                        <Mail className="h-3.5 w-3.5 text-teal-600" />
+                        <span className="text-gray-600">Sent to:</span>
+                        <span className="font-medium">{formRequestStatus.recipientEmail}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <ClipboardList className="h-3.5 w-3.5 text-teal-600" />
+                        <span className="text-gray-600">Fields:</span>
+                        <span className="font-medium">{formRequestStatus.fieldCount} field(s)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-3.5 w-3.5 text-teal-600" />
+                        <span className="text-gray-600">Expires:</span>
+                        <span className="font-medium">{new Date(formRequestStatus.expiresAt).toLocaleString()}</span>
+                      </div>
+                      {formRequestStatus.formUrl && (
+                        <div className="flex items-center gap-2 pt-1">
+                          <ExternalLink className="h-3.5 w-3.5 text-teal-600" />
+                          <a
+                            href={formRequestStatus.formUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-teal-600 hover:text-teal-800 underline text-xs"
+                          >
+                            Open form link
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-500">
+                    Waiting for the external recipient to submit the form. The workflow will continue automatically once submitted.
+                  </p>
+                </div>
+              ) : (
+                /* Field selection UI */
+                <>
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium text-teal-700 flex items-center gap-2">
+                      <ClipboardList className="h-4 w-4" />
+                      Select Missing Fields
+                    </p>
+                    <span className="text-xs text-gray-500">
+                      {selectedFieldKeys.length} of {formRequestFields.length} selected
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-gray-500">
+                    Check the fields that are missing or need to be filled by the external recipient.
+                    If no fields are missing, click &quot;Skip&quot; to proceed.
+                  </p>
+
+                  {/* Field Checkboxes */}
+                  <div className="space-y-1.5">
+                    {formRequestFields.map((field: any) => {
+                      const varKey = field.variableKey || field.fieldKey;
+                      const isSelected = selectedFieldKeys.includes(varKey);
+                      return (
+                        <label
+                          key={varKey}
+                          className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-all ${isSelected
+                              ? 'border-teal-400 bg-teal-50 shadow-sm'
+                              : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50/50'
+                            }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleFieldSelection(varKey)}
+                            className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <span className="text-sm font-medium text-gray-900">{field.label}</span>
+                          </div>
+                          <Badge variant="outline" className="text-xs shrink-0">
+                            {field.type}
+                          </Badge>
+                          {field.required && (
+                            <span className="text-xs text-red-500">Required</span>
+                          )}
+                        </label>
+                      );
+                    })}
+                  </div>
+
+                  {/* Recipient Email */}
+                  {selectedFieldKeys.length > 0 && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-gray-600 flex items-center gap-1.5">
+                        <Mail className="h-3.5 w-3.5" />
+                        Recipient Email
+                      </Label>
+                      <Input
+                        type="email"
+                        value={formRequestEmail}
+                        onChange={(e) => setFormRequestEmail(e.target.value)}
+                        placeholder="recipient@example.com"
+                        className="text-sm"
+                      />
+                    </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+                    <Button
+                      onClick={handleSkipFormRequest}
+                      variant="outline"
+                      size="sm"
+                      disabled={loading || sendingFormRequest}
+                      className="border-gray-300 text-gray-600"
+                    >
+                      {loading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <SkipForward className="h-4 w-4 mr-1" />}
+                      {loading ? 'Skipping...' : 'Skip — No Fields Missing'}
+                    </Button>
+                    <Button
+                      onClick={handleSendFormRequest}
+                      size="sm"
+                      disabled={selectedFieldKeys.length === 0 || sendingFormRequest || !formRequestEmail.trim()}
+                      className="bg-teal-600 hover:bg-teal-700 text-white"
+                    >
+                      {sendingFormRequest ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Send className="h-4 w-4 mr-1" />}
+                      {sendingFormRequest ? 'Sending...' : `Send Form Request (${selectedFieldKeys.length} field${selectedFieldKeys.length !== 1 ? 's' : ''})`}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Inline Form Section (non-FORM_REQUEST nodes) */}
+        {!isFormRequestNode && showInlineForm && formExpanded && (
           <div className={`border-t rounded-b-lg ${activeAction === 'reject'
             ? 'border-red-200 bg-red-50/50'
             : 'border-blue-200 bg-white/80'

@@ -30,12 +30,14 @@ export default function JoinNodeModal({ isOpen, onClose, nodeData, onSave }: Joi
     const [label, setLabel] = useState(nodeData.label || 'Join');
     const [joinMode, setJoinMode] = useState<'ALL' | 'ANY' | 'N_OF_M'>(nodeData.joinMode || 'ALL');
     const [requiredCount, setRequiredCount] = useState(nodeData.requiredCount || 2);
+    const [branches, setBranches] = useState(nodeData.branches || 2);
 
     useEffect(() => {
         if (isOpen) {
             setLabel(nodeData.label || 'Join');
             setJoinMode(nodeData.joinMode || 'ALL');
             setRequiredCount(nodeData.requiredCount || 2);
+            setBranches(nodeData.branches || 2);
         }
     }, [isOpen, nodeData]);
 
@@ -43,6 +45,7 @@ export default function JoinNodeModal({ isOpen, onClose, nodeData, onSave }: Joi
         onSave({
             label,
             joinMode,
+            branches: Math.max(2, Math.min(10, branches)),
             requiredCount: joinMode === 'N_OF_M' ? requiredCount : undefined,
         });
         onClose();
@@ -86,6 +89,29 @@ export default function JoinNodeModal({ isOpen, onClose, nodeData, onSave }: Joi
                     </div>
 
                     <div>
+                        <Label>Number of Incoming Branches</Label>
+                        <div className="flex items-center gap-4 mt-2">
+                            <button
+                                onClick={() => setBranches(Math.max(2, branches - 1))}
+                                className="w-10 h-10 rounded-lg border border-gray-200 hover:bg-gray-100 font-bold text-lg"
+                            >
+                                -
+                            </button>
+                            <div className="flex-1 text-center">
+                                <span className="text-4xl font-bold text-pink-600">{branches}</span>
+                                <p className="text-sm text-gray-500">inputs</p>
+                            </div>
+                            <button
+                                onClick={() => setBranches(Math.min(10, branches + 1))}
+                                className="w-10 h-10 rounded-lg border border-gray-200 hover:bg-gray-100 font-bold text-lg"
+                            >
+                                +
+                            </button>
+                        </div>
+                        <p className="text-xs text-gray-400 text-center mt-2">Min: 2, Max: 10 inputs</p>
+                    </div>
+
+                    <div>
                         <Label className="mb-2 block">Join Mode</Label>
                         <div className="space-y-2">
                             {JOIN_MODES.map((mode) => (
@@ -93,8 +119,8 @@ export default function JoinNodeModal({ isOpen, onClose, nodeData, onSave }: Joi
                                     key={mode.value}
                                     onClick={() => setJoinMode(mode.value as any)}
                                     className={`w-full p-3 rounded-lg border text-left transition-colors ${joinMode === mode.value
-                                            ? 'bg-pink-50 border-pink-300'
-                                            : 'bg-white border-gray-200 hover:border-pink-200'
+                                        ? 'bg-pink-50 border-pink-300'
+                                        : 'bg-white border-gray-200 hover:border-pink-200'
                                         }`}
                                 >
                                     <div className="font-medium text-sm">{mode.label}</div>
