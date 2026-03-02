@@ -363,14 +363,15 @@ export function useEmailCampaigns(): UseEmailCampaignsReturn {
   }, [allCampaigns]);
 
   const getCampaignActivities = useCallback((id: string): CampaignActivity[] => {
+    const campaign = allCampaigns.find(c => c.id === id);
     return mockCampaignActivities[id] || [
       {
         id: 'default-1',
         campaignId: id,
         type: 'CREATED',
         description: 'Campaign created',
-        timestamp: allCampaigns.find(c => c.id === id)?.createdAt || new Date().toISOString(),
-        userName: allCampaigns.find(c => c.id === id)?.createdBy || 'Unknown',
+        timestamp: campaign?.createdAt || new Date().toISOString(),
+        userName: campaign?.createdByName || 'Unknown',
       },
     ];
   }, [allCampaigns]);

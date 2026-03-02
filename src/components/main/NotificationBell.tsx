@@ -1,17 +1,47 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Bell, Check, CheckCheck, Send, Zap, AlertTriangle, Info, AlertCircle, Wifi, WifiOff } from 'lucide-react';
+import { Bell, Check, CheckCheck, AlertTriangle, Info, AlertCircle, Wifi, WifiOff } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useGlobalNotifications, resolveNotificationRoute } from '@/contexts/GlobalNotificationContext';
 import { NotificationDto } from '@/api/services/notificationSystemService';
 import { Button } from '@/components/ui/button';
 
 // ─── Time Ago Helper ────────────────────────────────────
-function timeAgo(dateStr: string): string {
+function timeAgo(dateInput: any): string {
+    if (dateInput == null || dateInput === '') return 'just now';
+
+    let dateMs: number;
+
+    if (typeof dateInput === 'number') {
+        // Numeric timestamp: if < 1 trillion, it's epoch seconds → convert to ms
+        dateMs = dateInput < 1e12 ? dateInput * 1000 : dateInput;
+    } else if (typeof dateInput === 'string') {
+        // Try parsing as date string (ISO-8601)
+        const parsed = new Date(dateInput).getTime();
+        if (!isNaN(parsed)) {
+            dateMs = parsed;
+        } else {
+            // Maybe it's a numeric string (epoch seconds)
+            const num = Number(dateInput);
+            if (!isNaN(num) && num > 0) {
+                dateMs = num < 1e12 ? num * 1000 : num;
+            } else {
+                return 'just now';
+            }
+        }
+    } else {
+        return 'just now';
+    }
+
+    // Safety: if dateMs is 0 or negative, show fallback
+    if (dateMs <= 0) return 'just now';
+
     const now = Date.now();
-    const date = new Date(dateStr).getTime();
-    const diff = now - date;
+    const diff = now - dateMs;
+
+    // If diff is negative (future date), show "just now"
+    if (diff < 0) return 'just now';
 
     const seconds = Math.floor(diff / 1000);
     const minutes = Math.floor(seconds / 60);
@@ -22,7 +52,7 @@ function timeAgo(dateStr: string): string {
     if (minutes < 60) return `${minutes}m ago`;
     if (hours < 24) return `${hours}h ago`;
     if (days < 7) return `${days}d ago`;
-    return new Date(dateStr).toLocaleDateString();
+    return new Date(dateMs).toLocaleDateString();
 }
 
 // ─── Severity Icon ──────────────────────────────────────
@@ -127,7 +157,6 @@ export default function NotificationBell() {
         isLoading,
         markAsRead,
         markAllAsRead,
-        emitTestNotification,
     } = useGlobalNotifications();
 
     // Close dropdown on outside click
@@ -238,16 +267,7 @@ export default function NotificationBell() {
                         )}
                     </div>
 
-                    {/* Footer — Test Button */}
-                    <div className="px-4 py-3 border-t border-border bg-muted/50">
-                        <button
-                            onClick={emitTestNotification}
-                            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium text-white bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 rounded-lg transition-all duration-200 hover:shadow-md active:scale-[0.98]"
-                        >
-                            <Zap className="h-3.5 w-3.5" />
-                            Send Test Notification
-                        </button>
-                    </div>
+
                 </div>
             )}
         </div>

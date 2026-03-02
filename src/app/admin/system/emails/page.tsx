@@ -40,6 +40,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useLanguage } from '../../../../contexts/LanguageContext';
+import { useNotifications } from '@/hooks/useNotifications';
 import { useEmailManagement } from './lib/hooks';
 import CampaignsTab from './components/CampaignsTab';
 import LogsTab from './components/LogsTab';
@@ -117,8 +118,8 @@ export default function EmailManagementPage() {
     return () => container.removeEventListener('scroll', handleTemplatesScroll);
   }, [handleTemplatesScroll]);
 
-  // Notification state
-  const [notification, setNotification] = useState<{ type: 'success' | 'error', title: string, message: string } | null>(null);
+  // Global notifications
+  const { showSuccess, showError } = useNotifications();
 
   // Send email form state
   const [sendDialogOpen, setSendDialogOpen] = useState(false);
@@ -185,13 +186,10 @@ export default function EmailManagementPage() {
       .catch(err => console.error('Failed to fetch variables:', err));
   }, []);
 
-  // Auto-dismiss notification
-  React.useEffect(() => {
-    if (notification) {
-      const timer = setTimeout(() => setNotification(null), 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [notification]);
+  // Email validation (same regex as campaigns)
+  const validateEmail = (email: string): boolean => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  };
 
   // Search system users with debounce
   React.useEffect(() => {
@@ -239,8 +237,17 @@ export default function EmailManagementPage() {
   // External recipient handlers
   const handleAddExternalRecipient = () => {
     if (!externalEmailInput.trim()) return;
-    const emails = externalEmailInput.split(',').map(e => e.trim()).filter(e => e && e.includes('@'));
-    const newEmails = emails.filter(e => !externalRecipients.includes(e));
+    const rawEmails = externalEmailInput.split(',').map(e => e.trim()).filter(Boolean);
+    const invalidEmails = rawEmails.filter(e => !validateEmail(e));
+    if (invalidEmails.length > 0) {
+      showError('Invalid Email', `Invalid email format: ${invalidEmails.join(', ')}`);
+      return;
+    }
+    const newEmails = rawEmails.filter(e => !externalRecipients.includes(e));
+    if (newEmails.length === 0 && rawEmails.length > 0) {
+      showError('Duplicate', 'Email(s) already added');
+      return;
+    }
     setExternalRecipients(prev => [...prev, ...newEmails]);
     setExternalEmailInput('');
   };
@@ -275,22 +282,18 @@ export default function EmailManagementPage() {
 
   const handleSendEmail = async () => {
     if (!sendForm.to?.length) {
-      setNotification({ type: 'error', title: 'Error', message: 'Please add at least one recipient' });
+      showError('Error', 'Please add at least one recipient');
       return;
     }
     if (!sendForm.subject || !sendForm.bodyHtml) {
-      setNotification({ type: 'error', title: 'Error', message: 'Please provide subject and body' });
+      showError('Error', 'Please provide subject and body');
       return;
     }
 
     setSending(true);
     try {
       const response = await emailManagementService.sendEmail(sendForm);
-      setNotification({
-        type: 'success',
-        title: 'Email Queued',
-        message: `Email queued for delivery. Log ID: ${response.logId}`
-      });
+      showSuccess('Email Queued', `Email queued for delivery. Log ID: ${response.logId}`);
       setSendDialogOpen(false);
       setSendForm({ to: [], subject: '', bodyHtml: '<p>Your message here...</p>', documentIds: [] });
       setSelectedTemplateId('none');
@@ -301,7 +304,7 @@ export default function EmailManagementPage() {
       setUserSearchQuery('');
       handleRefresh();
     } catch (error: any) {
-      setNotification({ type: 'error', title: 'Failed', message: error.message || 'Failed to send email' });
+      showError('Failed', error.message || 'Failed to send email');
     } finally {
       setSending(false);
     }
@@ -387,7 +390,7 @@ export default function EmailManagementPage() {
       });
       setTemplateDialogOpen(true);
     } catch (error: any) {
-      setNotification({ type: 'error', title: 'Error', message: 'Failed to load template' });
+      showError('Error', 'Failed to load template');
     }
   };
 
@@ -397,7 +400,7 @@ export default function EmailManagementPage() {
       setViewingTemplate(template);
       setViewDialogOpen(true);
     } catch (error: any) {
-      setNotification({ type: 'error', title: 'Error', message: 'Failed to load template' });
+      showError('Error', 'Failed to load template');
     }
   };
 
@@ -412,11 +415,11 @@ export default function EmailManagementPage() {
     setDeleting(true);
     try {
       await emailManagementService.deleteTemplate(Number(deletingTemplateId));
-      setNotification({ type: 'success', title: 'Deleted', message: 'Template deleted successfully' });
+      showSuccess('Deleted', 'Template deleted successfully');
       setDeleteDialogOpen(false);
       loadTemplates();
     } catch (error: any) {
-      setNotification({ type: 'error', title: 'Error', message: error.message || 'Failed to delete template' });
+      showError('Error', error.message || 'Failed to delete template');
     } finally {
       setDeleting(false);
       setDeletingTemplateId(null);
@@ -425,7 +428,7 @@ export default function EmailManagementPage() {
 
   const handleSaveTemplate = async () => {
     if (!templateForm.name || !templateForm.subject || !templateForm.bodyHtml) {
-      setNotification({ type: 'error', title: 'Error', message: 'Please fill in all required fields' });
+      showError('Error', 'Please fill in all required fields');
       return;
     }
 
@@ -438,15 +441,15 @@ export default function EmailManagementPage() {
 
       if (templateDialogMode === 'edit' && editingTemplateId) {
         await emailManagementService.updateTemplate(editingTemplateId, formWithVars);
-        setNotification({ type: 'success', title: 'Success', message: 'Template updated successfully' });
+        showSuccess('Success', 'Template updated successfully');
       } else {
         await emailManagementService.createTemplate(formWithVars);
-        setNotification({ type: 'success', title: 'Success', message: 'Template created successfully' });
+        showSuccess('Success', 'Template created successfully');
       }
       setTemplateDialogOpen(false);
       loadTemplates();
     } catch (error: any) {
-      setNotification({ type: 'error', title: 'Error', message: error.message || 'Failed to save template' });
+      showError('Error', error.message || 'Failed to save template');
     } finally {
       setTemplateSaving(false);
     }
@@ -465,31 +468,13 @@ export default function EmailManagementPage() {
       }));
       setSendDialogOpen(true);
     } else {
-      setNotification({ type: 'error', title: 'Error', message: 'Only active templates can be used' });
+      showError('Error', 'Only active templates can be used');
     }
   };
 
   return (
     <div className="space-y-6">
-      {/* Toast Notification */}
-      {notification && (
-        <div className={`
-          fixed bottom-6 right-6 z-50 flex items-center gap-3 p-4 rounded-lg border shadow-lg animate-in slide-in-from-right-2 duration-300 max-w-md
-          ${notification.type === 'success'
-            ? 'bg-green-50 dark:bg-green-950/50 border-green-200 dark:border-green-500/30 text-green-800 dark:text-green-200'
-            : 'bg-red-50 dark:bg-red-950/50 border-red-200 dark:border-red-500/30 text-red-800 dark:text-red-200'
-          }
-        `}>
-          {notification.type === 'success' ? <CheckCircle className="h-5 w-5" /> : <X className="h-5 w-5" />}
-          <div className="flex-1">
-            <p className="font-semibold">{notification.title}</p>
-            <p className="text-sm opacity-80">{notification.message}</p>
-          </div>
-          <Button variant="ghost" size="sm" onClick={() => setNotification(null)} className="h-8 w-8 p-0">
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-      )}
+
 
       {/* Header */}
       <div className="flex justify-between items-center">
