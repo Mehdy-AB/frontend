@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { X, Variable, ChevronDown, Search, Loader2 } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { X, Variable, Loader2, AlertTriangle, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -9,35 +9,68 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { filingCategoryService } from '@/api/services/filingCategoryService';
-import { FilingCategoryResponseDto, CategoryMetadataDefinitionDto, MetadataType } from '@/types/api';
+import { FilingCategoryResponseDto, CategoryMetadataDefinitionDto } from '@/types/api';
 import { WorkflowNodeData } from '../nodes/types';
+import { VariableDefinition } from '../components/variables/types';
+import { Node } from '@xyflow/react';
 
 interface SetVariableNodeModalProps {
     isOpen: boolean;
     onClose: () => void;
     nodeData: WorkflowNodeData;
     onSave: (updatedData: Partial<WorkflowNodeData>) => void;
+    workflowVariables?: VariableDefinition[];
+    allNodes?: Node[];
 }
 
-const VARIABLE_TYPES = [
-    { value: 'STRING', label: 'String' },
-    { value: 'NUMBER', label: 'Number' },
-    { value: 'BOOLEAN', label: 'Boolean' },
-    { value: 'DATE', label: 'Date' },
-    { value: 'EXPRESSION', label: 'Expression' },
-];
+// Type compatibility: which types can be cast to which target
+// key = target variable type, value = list of value types that can be assigned to it
+const TYPE_COMPATIBILITY: Record<string, string[]> = {
+    'STRING': ['STRING', 'TEXT', 'EMAIL', 'NUMBER', 'DECIMAL', 'BOOLEAN', 'DATE', 'TIME', 'DATETIME'],
+    'TEXT': ['STRING', 'TEXT', 'EMAIL', 'NUMBER', 'DECIMAL', 'BOOLEAN', 'DATE', 'TIME', 'DATETIME'],
+    'EMAIL': ['STRING', 'TEXT', 'EMAIL'],
+    'NUMBER': ['NUMBER', 'DECIMAL'],
+    'DECIMAL': ['NUMBER', 'DECIMAL'],
+    'BOOLEAN': ['BOOLEAN', 'STRING', 'TEXT'],
+    'DATE': ['DATE', 'DATETIME', 'STRING', 'TEXT'],
+    'TIME': ['TIME', 'STRING', 'TEXT'],
+    'DATETIME': ['DATE', 'DATETIME', 'STRING', 'TEXT'],
+    'FILE': ['FILE', 'STRING', 'NUMBER'],
+};
+
+// Type label for display
+const TYPE_LABELS: Record<string, string> = {
+    'STRING': 'Text',
+    'TEXT': 'Multi-line Text',
+    'EMAIL': 'Email',
+    'NUMBER': 'Number',
+    'DECIMAL': 'Decimal',
+    'BOOLEAN': 'Boolean',
+    'DATE': 'Date',
+    'TIME': 'Time',
+    'DATETIME': 'Date & Time',
+    'FILE': 'File',
+};
 
 const SCOPE_OPTIONS = [
     { value: 'WORKFLOW', label: 'Workflow Scope' },
     { value: 'DOCUMENT', label: 'Document Metadata' },
-    { value: 'GLOBAL', label: 'Global Variable' },
 ];
 
-export default function SetVariableNodeModal({ isOpen, onClose, nodeData, onSave }: SetVariableNodeModalProps) {
+export default function SetVariableNodeModal({
+    isOpen,
+    onClose,
+    nodeData,
+    onSave,
+    workflowVariables = [],
+    allNodes = [],
+}: SetVariableNodeModalProps) {
     const [variableName, setVariableName] = useState<string>(nodeData.variableName || '');
     const [variableValue, setVariableValue] = useState<string>(nodeData.variableValue || '');
     const [variableType, setVariableType] = useState<string>(nodeData.variableType || 'STRING');
     const [variableScope, setVariableScope] = useState<string>(nodeData.variableScope || 'WORKFLOW');
+    const [useExpression, setUseExpression] = useState<boolean>(nodeData.variableType === 'EXPRESSION' || false);
+    const [typeError, setTypeError] = useState<string>('');
 
     // Document metadata state
     const [categories, setCategories] = useState<FilingCategoryResponseDto[]>([]);
@@ -46,12 +79,110 @@ export default function SetVariableNodeModal({ isOpen, onClose, nodeData, onSave
     const [selectedMetadataFieldId, setSelectedMetadataFieldId] = useState<number | null>(nodeData.metadataFieldId || null);
     const [loading, setLoading] = useState(false);
     const [listOptions, setListOptions] = useState<string[]>([]);
-    const [allowCustomValue, setAllowCustomValue] = useState(false);
 
-    // Load categories when modal opens
+    // Merge all available workflow variables: from VariablesPanel + from nodes
+    const allWorkflowVariables = useMemo(() => {
+        const vars: { key: string; type: string; label: string; source: string }[] = [];
+
+        // Variables from VariablesPanel (passed via props)
+        for (const v of workflowVariables) {
+            vars.push({
+                key: v.variableKey,
+                type: v.type,
+                label: v.label || v.variableKey,
+                source: 'defined',
+            });
+        }
+
+        // Variables from form request nodes (mapped fields)
+        try {
+            for (const node of allNodes) {
+                if (node.data && (node.data as any).formFields) {
+                    const formFields = (node.data as any).formFields;
+                    if (Array.isArray(formFields)) {
+                        for (const ff of formFields) {
+                            if (ff.mappedVariableKey) {
+                                vars.push({
+                                    key: ff.mappedVariableKey,
+                                    type: ff.type || 'STRING',
+                                    label: ff.label || ff.mappedVariableKey,
+                                    source: 'form',
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        } catch {
+            // Fallback: no extra variables
+        }
+
+        // Deduplicate by key
+        const seen = new Set<string>();
+        return vars.filter(v => {
+            if (seen.has(v.key)) return false;
+            seen.add(v.key);
+            return true;
+        });
+    }, [workflowVariables, allNodes, isOpen]);
+
+    // Get compatible source variables for expression interpolation
+    const getCompatibleSourceVariables = (targetType: string) => {
+        const compatible = TYPE_COMPATIBILITY[targetType] || [targetType];
+        return allWorkflowVariables.filter(v => compatible.includes(v.type));
+    };
+
+    // Validate type compatibility for expression value
+    const validateExpression = (value: string, targetType: string): string => {
+        if (!value || !value.includes('{var.')) return '';
+
+        const varPattern = /\{var\.(\w+)\}/g;
+        let match;
+        const errors: string[] = [];
+
+        while ((match = varPattern.exec(value)) !== null) {
+            const refKey = match[1];
+            const refVar = allWorkflowVariables.find(v => v.key === refKey);
+            if (!refVar) {
+                errors.push(`Variable "${refKey}" not found`);
+            } else {
+                const compatible = TYPE_COMPATIBILITY[targetType] || [targetType];
+                if (!compatible.includes(refVar.type)) {
+                    errors.push(`"${refKey}" (${TYPE_LABELS[refVar.type] || refVar.type}) cannot be assigned to ${TYPE_LABELS[targetType] || targetType}`);
+                }
+            }
+        }
+
+        return errors.join('; ');
+    };
+
+    // Validate static value against target type
+    const validateStaticValue = (value: string, targetType: string): string => {
+        if (!value) return '';
+
+        switch (targetType) {
+            case 'NUMBER':
+                if (!/^-?\d+$/.test(value.trim())) return 'Must be a whole number';
+                break;
+            case 'DECIMAL':
+                if (!/^-?\d+(\.\d+)?$/.test(value.trim())) return 'Must be a valid number';
+                break;
+            case 'EMAIL':
+                if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim()) && !value.includes('{var.'))
+                    return 'Must be a valid email address';
+                break;
+            case 'BOOLEAN':
+                if (!['true', 'false'].includes(value.trim().toLowerCase()) && !value.includes('{var.'))
+                    return 'Must be true or false';
+                break;
+        }
+        return '';
+    };
+
+    // Load categories when in DOCUMENT scope
     useEffect(() => {
         const loadCategories = async () => {
-            if (!isOpen) return;
+            if (!isOpen || variableScope !== 'DOCUMENT') return;
             setLoading(true);
             try {
                 const response = await filingCategoryService.getAllFilingCategories({ page: 0, size: 100 });
@@ -63,7 +194,7 @@ export default function SetVariableNodeModal({ isOpen, onClose, nodeData, onSave
             }
         };
         loadCategories();
-    }, [isOpen]);
+    }, [isOpen, variableScope]);
 
     // Initialize form from nodeData
     useEffect(() => {
@@ -72,12 +203,14 @@ export default function SetVariableNodeModal({ isOpen, onClose, nodeData, onSave
             setVariableValue(nodeData.variableValue || '');
             setVariableType(nodeData.variableType || 'STRING');
             setVariableScope(nodeData.variableScope || 'WORKFLOW');
+            setUseExpression(nodeData.variableType === 'EXPRESSION' || false);
             setSelectedCategoryId(nodeData.metadataCategoryId || null);
             setSelectedMetadataFieldId(nodeData.metadataFieldId || null);
+            setTypeError('');
         }
     }, [isOpen, nodeData]);
 
-    // Find selected category and metadata field
+    // Find selected metadata field when category/field changes
     useEffect(() => {
         if (selectedCategoryId && categories.length > 0) {
             const cat = categories.find(c => c.id === selectedCategoryId);
@@ -86,16 +219,32 @@ export default function SetVariableNodeModal({ isOpen, onClose, nodeData, onSave
                 if (field) {
                     setSelectedMetadataField(field);
                     setVariableType(field.dataType);
-
-                    // If LIST type, set options
                     if (field.dataType === 'LIST' && field.list?.option) {
                         setListOptions(field.list.option);
-                        setAllowCustomValue(!field.mandatory);
                     }
                 }
             }
         }
     }, [selectedCategoryId, selectedMetadataFieldId, categories]);
+
+    // Validate on value change
+    useEffect(() => {
+        if (useExpression || variableValue.includes('{var.')) {
+            setTypeError(validateExpression(variableValue, variableType));
+        } else {
+            setTypeError(validateStaticValue(variableValue, variableType));
+        }
+    }, [variableValue, variableType, useExpression]);
+
+    const handleVariableSelect = (varKey: string) => {
+        const selected = allWorkflowVariables.find(v => v.key === varKey);
+        if (selected) {
+            setVariableName(selected.key);
+            setVariableType(selected.type);
+            setVariableValue('');
+            setTypeError('');
+        }
+    };
 
     const handleCategoryChange = (categoryId: string) => {
         const numId = parseInt(categoryId);
@@ -109,7 +258,6 @@ export default function SetVariableNodeModal({ isOpen, onClose, nodeData, onSave
     const handleMetadataFieldChange = (fieldId: string) => {
         const numId = parseInt(fieldId);
         setSelectedMetadataFieldId(numId);
-
         const cat = categories.find(c => c.id === selectedCategoryId);
         if (cat?.metadataDefinitions) {
             const field = cat.metadataDefinitions.find(f => f.id === numId);
@@ -118,14 +266,10 @@ export default function SetVariableNodeModal({ isOpen, onClose, nodeData, onSave
                 setVariableName(field.key);
                 setVariableType(field.dataType);
                 setVariableValue('');
-
-                // If LIST type, set options
                 if (field.dataType === 'LIST' && field.list?.option) {
                     setListOptions(field.list.option);
-                    setAllowCustomValue(!field.mandatory);
                 } else {
                     setListOptions([]);
-                    setAllowCustomValue(false);
                 }
             }
         }
@@ -138,7 +282,7 @@ export default function SetVariableNodeModal({ isOpen, onClose, nodeData, onSave
         onSave({
             variableName,
             variableValue,
-            variableType,
+            variableType: useExpression ? 'EXPRESSION' : variableType,
             variableScope,
             metadataCategoryId: variableScope === 'DOCUMENT' ? selectedCategoryId : undefined,
             metadataFieldId: variableScope === 'DOCUMENT' ? selectedMetadataFieldId : undefined,
@@ -148,109 +292,105 @@ export default function SetVariableNodeModal({ isOpen, onClose, nodeData, onSave
 
     // Render value input based on type
     const renderValueInput = () => {
-        // For LIST type with options
-        if (variableType === 'LIST' && listOptions.length > 0) {
-            if (allowCustomValue) {
-                // Editable combo - user can select from list or type custom
-                return (
-                    <div className="space-y-2">
-                        <Select value={variableValue} onValueChange={setVariableValue}>
-                            <SelectTrigger>
-                                <SelectValue placeholder="Select or type custom value..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {listOptions.map((opt) => (
-                                    <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        <Input
-                            value={variableValue}
-                            onChange={(e) => setVariableValue(e.target.value)}
-                            placeholder="Or enter custom value..."
-                            className="text-sm"
-                        />
-                        <p className="text-xs text-gray-400">Custom values allowed (field not mandatory)</p>
-                    </div>
-                );
-            } else {
-                // Strict dropdown
-                return (
-                    <Select value={variableValue} onValueChange={setVariableValue}>
-                        <SelectTrigger>
-                            <SelectValue placeholder="Select value..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {listOptions.map((opt) => (
-                                <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                );
-            }
-        }
-
-        // Other types
-        switch (variableType) {
-            case 'EXPRESSION':
-                return (
+        // Expression mode
+        if (useExpression) {
+            return (
+                <div className="space-y-2">
                     <Textarea
                         value={variableValue}
                         onChange={(e) => setVariableValue(e.target.value)}
-                        placeholder="${document.title} + '_processed'"
+                        placeholder="Hello {var.user_name}, your invoice #{var.invoice_number} is ready"
                         rows={3}
                         className="font-mono text-sm"
                     />
-                );
-            case 'BOOLEAN':
-                return (
-                    <Select value={variableValue || 'true'} onValueChange={setVariableValue}>
-                        <SelectTrigger>
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="true">True</SelectItem>
-                            <SelectItem value="false">False</SelectItem>
-                        </SelectContent>
-                    </Select>
-                );
-            case 'NUMBER':
-            case 'FLOAT':
-                return (
-                    <Input
-                        type="number"
-                        step={variableType === 'FLOAT' ? '0.01' : '1'}
-                        value={variableValue}
-                        onChange={(e) => setVariableValue(e.target.value)}
-                        placeholder="Enter number..."
-                    />
-                );
-            case 'DATE':
-                return (
-                    <Input
-                        type="date"
-                        value={variableValue}
-                        onChange={(e) => setVariableValue(e.target.value)}
-                    />
-                );
-            case 'DATETIME':
-                return (
-                    <Input
-                        type="datetime-local"
-                        value={variableValue}
-                        onChange={(e) => setVariableValue(e.target.value)}
-                    />
-                );
-            default: // STRING
-                return (
-                    <Input
-                        type="text"
-                        value={variableValue}
-                        onChange={(e) => setVariableValue(e.target.value)}
-                        placeholder="Enter value..."
-                    />
-                );
+                    {/* Quick insert variable buttons */}
+                    {getCompatibleSourceVariables(variableType).length > 0 && (
+                        <div className="space-y-1">
+                            <span className="text-[10px] text-gray-400 font-medium uppercase">Insert Variable:</span>
+                            <div className="flex flex-wrap gap-1">
+                                {getCompatibleSourceVariables(variableType).map((v) => (
+                                    <button
+                                        key={v.key}
+                                        type="button"
+                                        onClick={() => setVariableValue(prev => prev + `{var.${v.key}}`)}
+                                        className="px-2 py-1 text-[11px] bg-purple-50 text-purple-700 rounded border border-purple-200 hover:bg-purple-100 transition-colors flex items-center gap-1"
+                                    >
+                                        <Variable className="w-3 h-3" />
+                                        {v.key}
+                                        <span className="text-purple-400">({TYPE_LABELS[v.type] || v.type})</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
         }
+
+        // LIST type
+        if (variableType === 'LIST' && listOptions.length > 0) {
+            return (
+                <Select value={variableValue} onValueChange={setVariableValue}>
+                    <SelectTrigger>
+                        <SelectValue placeholder="Select value..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {listOptions.map((opt) => (
+                            <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            );
+        }
+
+        // Boolean
+        if (variableType === 'BOOLEAN') {
+            return (
+                <Select value={variableValue || 'true'} onValueChange={setVariableValue}>
+                    <SelectTrigger>
+                        <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="true">True</SelectItem>
+                        <SelectItem value="false">False</SelectItem>
+                    </SelectContent>
+                </Select>
+            );
+        }
+
+        // Number / Decimal
+        if (variableType === 'NUMBER' || variableType === 'DECIMAL') {
+            return (
+                <Input
+                    type="number"
+                    step={variableType === 'DECIMAL' ? '0.01' : '1'}
+                    value={variableValue}
+                    onChange={(e) => setVariableValue(e.target.value)}
+                    placeholder="Enter number..."
+                />
+            );
+        }
+
+        // Date / DateTime / Time
+        if (variableType === 'DATE') {
+            return <Input type="date" value={variableValue} onChange={(e) => setVariableValue(e.target.value)} />;
+        }
+        if (variableType === 'DATETIME') {
+            return <Input type="datetime-local" value={variableValue} onChange={(e) => setVariableValue(e.target.value)} />;
+        }
+        if (variableType === 'TIME') {
+            return <Input type="time" value={variableValue} onChange={(e) => setVariableValue(e.target.value)} />;
+        }
+
+        // Default: STRING / TEXT / EMAIL
+        return (
+            <Input
+                type={variableType === 'EMAIL' ? 'email' : 'text'}
+                value={variableValue}
+                onChange={(e) => setVariableValue(e.target.value)}
+                placeholder={variableType === 'EMAIL' ? 'user@example.com' : 'Enter value...'}
+            />
+        );
     };
 
     if (!isOpen) return null;
@@ -275,7 +415,7 @@ export default function SetVariableNodeModal({ isOpen, onClose, nodeData, onSave
                         </div>
                         <div>
                             <h3 className="text-lg font-semibold text-gray-900">Set Variable</h3>
-                            <p className="text-sm text-gray-500">Define workflow variable</p>
+                            <p className="text-sm text-gray-500">Assign a value to a workflow variable</p>
                         </div>
                     </div>
                     <button
@@ -293,6 +433,9 @@ export default function SetVariableNodeModal({ isOpen, onClose, nodeData, onSave
                         <Label className="text-sm font-medium text-gray-700 mb-2 block">Scope</Label>
                         <Select value={variableScope} onValueChange={(v) => {
                             setVariableScope(v);
+                            setVariableName('');
+                            setVariableValue('');
+                            setTypeError('');
                             if (v !== 'DOCUMENT') {
                                 setSelectedCategoryId(null);
                                 setSelectedMetadataFieldId(null);
@@ -311,7 +454,52 @@ export default function SetVariableNodeModal({ isOpen, onClose, nodeData, onSave
                         </Select>
                     </div>
 
-                    {/* Document Metadata Selection */}
+                    {/* WORKFLOW scope: Select from workflow variables */}
+                    {variableScope === 'WORKFLOW' && (
+                        <div>
+                            <Label className="text-sm font-medium text-gray-700 mb-2 block">Variable</Label>
+                            {allWorkflowVariables.length > 0 ? (
+                                <Select value={variableName} onValueChange={handleVariableSelect}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select a workflow variable..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {allWorkflowVariables.map((v) => (
+                                            <SelectItem key={v.key} value={v.key}>
+                                                <div className="flex items-center gap-2">
+                                                    <Variable className="w-3 h-3 text-teal-500" />
+                                                    <span className="font-mono text-sm">{v.key}</span>
+                                                    <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+                                                        {TYPE_LABELS[v.type] || v.type}
+                                                    </span>
+                                                    {v.source === 'form' && (
+                                                        <span className="text-[10px] text-blue-500 bg-blue-50 px-1 py-0.5 rounded">form</span>
+                                                    )}
+                                                </div>
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            ) : (
+                                <div className="text-sm text-amber-600 bg-amber-50 p-3 rounded-lg border border-amber-100 flex items-start gap-2">
+                                    <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                    <div>
+                                        <p className="font-medium">No workflow variables defined</p>
+                                        <p className="text-xs mt-1">Add variables in the Variables panel before using this node.</p>
+                                    </div>
+                                </div>
+                            )}
+                            {/* Show selected variable type */}
+                            {variableName && variableType && (
+                                <div className="mt-2 flex items-center gap-2 text-xs text-teal-600 bg-teal-50 px-3 py-2 rounded-lg">
+                                    <Info className="w-3 h-3" />
+                                    <span>Type: <strong>{TYPE_LABELS[variableType] || variableType}</strong></span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* DOCUMENT scope: Category + Field selection */}
                     {variableScope === 'DOCUMENT' && (
                         <>
                             {loading ? (
@@ -321,7 +509,6 @@ export default function SetVariableNodeModal({ isOpen, onClose, nodeData, onSave
                                 </div>
                             ) : (
                                 <>
-                                    {/* Category Selection */}
                                     <div>
                                         <Label className="text-sm font-medium text-gray-700 mb-2 block">Model (Filing Category)</Label>
                                         <Select
@@ -340,8 +527,6 @@ export default function SetVariableNodeModal({ isOpen, onClose, nodeData, onSave
                                             </SelectContent>
                                         </Select>
                                     </div>
-
-                                    {/* Metadata Field Selection */}
                                     {selectedCategoryId && (
                                         <div>
                                             <Label className="text-sm font-medium text-gray-700 mb-2 block">Metadata Field</Label>
@@ -360,9 +545,6 @@ export default function SetVariableNodeModal({ isOpen, onClose, nodeData, onSave
                                                                 <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
                                                                     {field.dataType}
                                                                 </span>
-                                                                {field.mandatory && (
-                                                                    <span className="text-xs text-red-500">*</span>
-                                                                )}
                                                             </div>
                                                         </SelectItem>
                                                     ))}
@@ -375,50 +557,50 @@ export default function SetVariableNodeModal({ isOpen, onClose, nodeData, onSave
                         </>
                     )}
 
-                    {/* Variable Name (for non-document scope) */}
-                    {variableScope !== 'DOCUMENT' && (
+                    {/* Value Section (only show when variable is selected) */}
+                    {variableName && (
                         <div>
-                            <Label className="text-sm font-medium text-gray-700 mb-2 block">Variable Name</Label>
-                            <Input
-                                value={variableName}
-                                onChange={(e) => setVariableName(e.target.value.replace(/\s/g, '_'))}
-                                placeholder="my_variable"
-                                className="font-mono"
-                            />
-                        </div>
-                    )}
-
-                    {/* Type (for non-document scope) */}
-                    {variableScope !== 'DOCUMENT' && (
-                        <div>
-                            <Label className="text-sm font-medium text-gray-700 mb-2 block">Type</Label>
-                            <Select value={variableType} onValueChange={setVariableType}>
-                                <SelectTrigger>
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {VARIABLE_TYPES.map((type) => (
-                                        <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    )}
-
-                    {/* Value */}
-                    {(variableScope !== 'DOCUMENT' || selectedMetadataField) && (
-                        <div>
-                            <Label className="text-sm font-medium text-gray-700 mb-2 block">
-                                {variableType === 'EXPRESSION' ? 'Expression' : 'Value'}
-                            </Label>
+                            {/* Expression toggle */}
+                            <div className="flex items-center justify-between mb-2">
+                                <Label className="text-sm font-medium text-gray-700">
+                                    {useExpression ? 'Expression' : 'Value'}
+                                </Label>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs text-gray-500">Expression</span>
+                                    <Switch
+                                        checked={useExpression}
+                                        onCheckedChange={(v) => {
+                                            setUseExpression(v);
+                                            setVariableValue('');
+                                            setTypeError('');
+                                        }}
+                                    />
+                                </div>
+                            </div>
                             {renderValueInput()}
+
+                            {/* Type error */}
+                            {typeError && (
+                                <div className="mt-2 flex items-start gap-2 text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-100">
+                                    <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                                    <span>{typeError}</span>
+                                </div>
+                            )}
+
+                            {/* Expression hint */}
+                            {useExpression && (
+                                <p className="mt-1.5 text-[11px] text-gray-400">
+                                    Use <code className="bg-gray-100 px-1 rounded">{'{var.name}'}</code> to reference other variables.
+                                    Arithmetic operators (+, -, *, /) work for numeric targets.
+                                </p>
+                            )}
                         </div>
                     )}
 
                     {/* Preview */}
                     {variableName && (
                         <div className="bg-teal-50 rounded-lg p-4 font-mono text-sm">
-                            <span className="text-teal-600">${'{'}${variableName}{'}'}</span>
+                            <span className="text-teal-600">${'{' + variableName + '}'}</span>
                             <span className="text-gray-500"> = </span>
                             <span className="text-teal-800">{variableValue || 'undefined'}</span>
                         </div>
@@ -433,7 +615,7 @@ export default function SetVariableNodeModal({ isOpen, onClose, nodeData, onSave
                     <Button
                         onClick={handleSave}
                         className="bg-teal-500 hover:bg-teal-600"
-                        disabled={!variableName}
+                        disabled={!variableName || !!typeError}
                     >
                         Save Configuration
                     </Button>

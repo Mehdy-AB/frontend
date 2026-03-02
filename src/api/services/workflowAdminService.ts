@@ -78,10 +78,12 @@ class WorkflowAdminService {
     page: number = 0,
     size: number = 20,
     search?: string,
-    isActive?: boolean
+    isActive?: boolean,
+    sort: string = 'updatedAt',
+    direction: string = 'desc'
   ): Promise<PageResponse<WorkflowResponse>> {
     return apiClient.get<PageResponse<WorkflowResponse>>(this.baseUrl, {
-      params: { page, size, search, isActive }
+      params: { page, size, search, isActive, sort, direction }
     });
   }
 

@@ -187,13 +187,37 @@ export interface WorkflowTriggerResponse {
 export interface WorkflowInstanceResponse {
   id: number;
   workflowId: number;
-  workflowName: string;
-  documentId: number;
-  documentName: string;
-  status: InstanceStatus;
+  workflow?: WorkflowResponse;
+  document?: {
+    documentId?: number;
+    id?: number;
+    name?: string;
+    title?: string;
+    description?: string;
+    folderName?: string;
+    folderId?: number;
+    mimeType?: string;
+    contentType?: string;
+    sizeBytes?: number;
+    fileSize?: number;
+    path?: string;
+    metadata?: any[];
+    createdBy?: {
+      id?: string;
+      username?: string;
+      displayName?: string;
+      firstName?: string;
+      lastName?: string;
+      email?: string;
+      imgUrl?: string;
+    };
+  };
+  status: InstanceStatus | string;
   startedAt: string;
   completedAt?: string;
   cancelledAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
   startedBy?: {
     id?: string;
     username?: string;
@@ -204,17 +228,31 @@ export interface WorkflowInstanceResponse {
     imgUrl?: string;
     imageUrl?: string;
   };
-  activeNodeNames: string[];
-  currentNodeName?: string;
-  currentNodeLabel?: string;
+  cancelledBy?: {
+    id?: string;
+    username?: string;
+    firstName?: string;
+    lastName?: string;
+    imgUrl?: string;
+  };
+  cancellationReason?: string;
+  customStatus?: string;
+  notes?: string;
   currentNodeId?: string;
-  progress: number; // 0-100
+  currentNodeLabel?: string;
+  currentNodeType?: string;
+  currentNodeInstanceId?: number;
   completedNodesCount?: number;
   totalNodesCount?: number;
-  document?: {
-    name?: string;
-    folderName?: string;
-  };
+  nodeInstances?: WorkflowNodeInstanceResponse[];
+
+  // Legacy fields (for backward compat)
+  workflowName?: string;
+  documentId?: number;
+  documentName?: string;
+  activeNodeNames?: string[];
+  currentNodeName?: string;
+  progress?: number;
   variables?: Record<string, any>;
 }
 
@@ -296,9 +334,11 @@ export interface WorkflowNodeInstanceResponse {
 
 export interface WorkflowInstanceAssignmentResponse {
   id: number;
-  assigneeType: 'USER' | 'ROLE' | 'GROUP';
+  assigneeType: 'USER' | 'ROLE' | 'GROUP' | 'ORG_UNIT' | 'ORG_UNIT_HEAD' | 'CREATOR_RESPONSIBLE';
   userId?: string; // UUID (matches backend field name)
   assigneeName?: string; // Display name
+  orgUnitId?: string;
+  orgUnitName?: string;
   user?: {
     id: string;
     username?: string;

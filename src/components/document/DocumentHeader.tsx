@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeft, FileText, Clock } from 'lucide-react';
+import { ArrowLeft, FileText, Clock, GitBranch, PlayCircle, CheckCircle2, XCircle } from 'lucide-react';
 import { DocumentViewDto } from '../../types/documentView';
 import { formatFileSize, formatDate } from '../../utils/documentUtils';
 import DocumentActions from './DocumentActions';
@@ -22,6 +22,8 @@ interface DocumentHeaderProps {
   onDelete?: () => void;
   onRename?: () => void;
   onUploadVersion?: () => void;
+  workflowInstances?: { id: number; status: string; workflowName?: string }[];
+  onShowWorkflows?: () => void;
 }
 
 export default function DocumentHeader({
@@ -40,7 +42,9 @@ export default function DocumentHeader({
   onCopyLink,
   onDelete,
   onRename,
-  onUploadVersion
+  onUploadVersion,
+  workflowInstances,
+  onShowWorkflows
 }: DocumentHeaderProps) {
   const getFileNameWithoutExtension = (filename: string) => {
     const lastDotIndex = filename.lastIndexOf('.');
@@ -120,6 +124,35 @@ export default function DocumentHeader({
                 >
                   <span>Version History</span>
                 </button>
+
+                {/* Workflow Status Button */}
+                {workflowInstances && workflowInstances.length > 0 && onShowWorkflows && (() => {
+                  const activeCount = workflowInstances.filter(i => i.status === 'ACTIVE').length;
+                  const hasActive = activeCount > 0;
+                  const hasCompleted = workflowInstances.some(i => i.status === 'COMPLETED');
+                  const hasFailed = workflowInstances.some(i => i.status === 'FAILED' || i.status === 'CANCELLED');
+
+                  return (
+                    <button
+                      onClick={onShowWorkflows}
+                      className="flex items-center gap-1.5 px-2 py-0.5 rounded-full border transition-colors hover:shadow-sm cursor-pointer"
+                      style={{
+                        borderColor: hasActive ? '#10b981' : hasCompleted ? '#3b82f6' : hasFailed ? '#ef4444' : '#9ca3af',
+                        backgroundColor: hasActive ? '#ecfdf5' : hasCompleted ? '#eff6ff' : hasFailed ? '#fef2f2' : '#f9fafb',
+                      }}
+                      title={`${workflowInstances.length} workflow instance(s)`}
+                    >
+                      <GitBranch className="h-3 w-3" style={{ color: hasActive ? '#10b981' : hasCompleted ? '#3b82f6' : hasFailed ? '#ef4444' : '#6b7280' }} />
+                      {hasActive && <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />}
+                      <span className="text-[11px] font-medium" style={{ color: hasActive ? '#059669' : hasCompleted ? '#2563eb' : hasFailed ? '#dc2626' : '#6b7280' }}>
+                        {hasActive ? `${activeCount} active` : hasCompleted ? 'Completed' : 'Workflow'}
+                      </span>
+                      {workflowInstances.length > 1 && (
+                        <span className="text-[10px] bg-white/80 px-1 rounded text-gray-500">{workflowInstances.length}</span>
+                      )}
+                    </button>
+                  );
+                })()}
               </div>
             </div>
           </div>

@@ -506,13 +506,30 @@ export default function InstanceDetailView({
                                             ? (a.assigneeName || a.user?.firstName || 'Unknown User')
                                             : a.assigneeType === 'ROLE'
                                                 ? (a.role?.name || a.assigneeName || 'Unknown Role')
-                                                : (a.group?.name || a.assigneeName || 'Unknown Group');
+                                                : a.assigneeType === 'ORG_UNIT'
+                                                    ? (a.orgUnitName || a.assigneeName || 'Org Unit Members')
+                                                    : a.assigneeType === 'ORG_UNIT_HEAD'
+                                                        ? (a.orgUnitName || a.assigneeName || 'Org Unit Head')
+                                                        : a.assigneeType === 'CREATOR_RESPONSIBLE'
+                                                            ? "Creator's Responsible"
+                                                            : (a.group?.name || a.assigneeName || 'Unknown Group');
 
                                         const bgColor = a.assigneeType === 'USER'
                                             ? 'bg-blue-100 text-blue-600'
                                             : a.assigneeType === 'ROLE'
                                                 ? 'bg-purple-100 text-purple-600'
-                                                : 'bg-green-100 text-green-600';
+                                                : a.assigneeType === 'ORG_UNIT'
+                                                    ? 'bg-orange-100 text-orange-600'
+                                                    : a.assigneeType === 'ORG_UNIT_HEAD'
+                                                        ? 'bg-amber-100 text-amber-600'
+                                                        : a.assigneeType === 'CREATOR_RESPONSIBLE'
+                                                            ? 'bg-teal-100 text-teal-600'
+                                                            : 'bg-green-100 text-green-600';
+
+                                        const typeLabel = a.assigneeType === 'ORG_UNIT' ? 'org unit (members)'
+                                            : a.assigneeType === 'ORG_UNIT_HEAD' ? 'org unit head'
+                                                : a.assigneeType === 'CREATOR_RESPONSIBLE' ? "creator's responsible"
+                                                    : a.assigneeType.toLowerCase();
 
                                         return (
                                             <div key={i} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
@@ -525,7 +542,7 @@ export default function InstanceDetailView({
                                                 )}
                                                 <div className="flex-1 min-w-0">
                                                     <p className="text-sm font-medium truncate">{displayName}</p>
-                                                    <p className="text-xs text-gray-500 capitalize">{a.assigneeType.toLowerCase()}</p>
+                                                    <p className="text-xs text-gray-500 capitalize">{typeLabel}</p>
                                                 </div>
                                             </div>
                                         );

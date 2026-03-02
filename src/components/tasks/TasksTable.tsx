@@ -244,6 +244,7 @@ export function TasksTable() {
                             <SelectItem value="APPROVAL">Approval</SelectItem>
                             <SelectItem value="REVIEW">Review</SelectItem>
                             <SelectItem value="MANUAL_TASK">Task</SelectItem>
+                            <SelectItem value="MULTI_CHOICE">Decision</SelectItem>
                         </SelectContent>
                     </Select>
                     <Select value={workflowFilter} onValueChange={setWorkflowFilter}>

@@ -1,6 +1,6 @@
 import React, { memo, useEffect } from 'react';
 import { Handle, Position, useUpdateNodeInternals } from '@xyflow/react';
-import { CheckCircle, Edit, Trash2, Clock, Users, User, Shield, UserCheck, AlertTriangle } from 'lucide-react';
+import { CheckCircle, Edit, Trash2, Clock, Users, User, Shield, UserCheck, AlertTriangle, Building2, Crown, UserCog } from 'lucide-react';
 import { WorkflowNodeData } from './types';
 
 interface ApprovalNodeProps {
@@ -22,6 +22,9 @@ const ApprovalNode = ({ data, selected, id }: ApprovalNodeProps) => {
     const userCount = data.assignmentEntities?.filter((a: any) => a.assigneeType === 'USER').length || 0;
     const groupCount = data.assignmentEntities?.filter((a: any) => a.assigneeType === 'GROUP').length || 0;
     const roleCount = data.assignmentEntities?.filter((a: any) => a.assigneeType === 'ROLE').length || 0;
+    const orgUnitCount = data.assignmentEntities?.filter((a: any) => a.assigneeType === 'ORG_UNIT').length || 0;
+    const orgUnitHeadCount = data.assignmentEntities?.filter((a: any) => a.assigneeType === 'ORG_UNIT_HEAD').length || 0;
+    const creatorResponsibleCount = data.assignmentEntities?.filter((a: any) => a.assigneeType === 'CREATOR_RESPONSIBLE').length || 0;
 
     // Check for validation issues
     const hasWarning = assigneeCount === 0 || (data.validationErrors && data.validationErrors.length > 0);
@@ -99,7 +102,7 @@ const ApprovalNode = ({ data, selected, id }: ApprovalNodeProps) => {
             {/* Description */}
             {data.description && (
                 <div className="text-xs text-gray-500 line-clamp-2 mb-2 bg-gray-50 p-2 rounded-md border border-gray-100 italic">
-                    "{data.description}"
+                    &quot;{data.description}&quot;
                 </div>
             )}
 
@@ -122,6 +125,24 @@ const ApprovalNode = ({ data, selected, id }: ApprovalNodeProps) => {
                         <div className="text-[10px] font-medium text-purple-700 bg-purple-50 border border-purple-100 px-1.5 py-0.5 rounded-full flex items-center gap-1">
                             <Shield className="w-2.5 h-2.5" />
                             {roleCount}
+                        </div>
+                    )}
+                    {orgUnitCount > 0 && (
+                        <div className="text-[10px] font-medium text-orange-700 bg-orange-50 border border-orange-100 px-1.5 py-0.5 rounded-full flex items-center gap-1">
+                            <Building2 className="w-2.5 h-2.5" />
+                            {orgUnitCount}
+                        </div>
+                    )}
+                    {orgUnitHeadCount > 0 && (
+                        <div className="text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded-full flex items-center gap-1">
+                            <Crown className="w-2.5 h-2.5" />
+                            {orgUnitHeadCount}
+                        </div>
+                    )}
+                    {creatorResponsibleCount > 0 && (
+                        <div className="text-[10px] font-medium text-teal-700 bg-teal-50 border border-teal-100 px-1.5 py-0.5 rounded-full flex items-center gap-1">
+                            <UserCog className="w-2.5 h-2.5" />
+                            1
                         </div>
                     )}
                 </div>

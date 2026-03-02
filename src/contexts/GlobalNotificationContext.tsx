@@ -22,9 +22,10 @@ const NOTIFICATION_ROUTES: Record<string, RouteResolver> = {
     // ── Folders (all users) ──────────────────────────────
     FOLDER_SHARED: (d) => d.folderId ? `/folders/${d.folderId}` : null,
 
-    // ── Workflows (admin panel) ─────────────────────────
-    WORKFLOW_ASSIGNED: (d) => d.workflowId ? `/admin/workflow/${d.workflowId}` : null,
-    WORKFLOW_COMPLETED: (d) => d.workflowId ? `/admin/workflow/${d.workflowId}` : null,
+    // ── Workflows (navigate to document view) ──────────
+    WORKFLOW_NOTIFICATION: (d) => d.documentId ? `/documents/${d.documentId}` : null,
+    WORKFLOW_ASSIGNED: (d) => d.documentId ? `/documents/${d.documentId}` : (d.workflowId ? `/admin/workflow/${d.workflowId}` : null),
+    WORKFLOW_COMPLETED: (d) => d.documentId ? `/documents/${d.documentId}` : (d.workflowId ? `/admin/workflow/${d.workflowId}` : null),
 
     // ── Tasks (all users — sidebar) ─────────────────────
     TASK_ASSIGNED: () => `/admin/tasks`,

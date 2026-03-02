@@ -1586,10 +1586,12 @@ export interface StepAssignmentResponse {
 export interface WorkflowInstanceAssignmentResponse {
   id: number;
   stepInstanceId: number;
-  assigneeType: 'USER' | 'ROLE' | 'GROUP';
+  assigneeType: 'USER' | 'ROLE' | 'GROUP' | 'ORG_UNIT' | 'ORG_UNIT_HEAD' | 'CREATOR_RESPONSIBLE';
   user?: UserDto;
   role?: RoleDto;
   group?: GroupDto;
+  orgUnitId?: string;
+  orgUnitName?: string;
   canEdit: boolean;
   assignedBy?: UserDto;
   assignedAt: string;
@@ -1691,8 +1693,8 @@ export interface CreateWorkflowStepRequest {
 }
 
 export interface CreateStepAssignmentRequest {
-  assigneeType: 'USER' | 'ROLE' | 'GROUP';
-  assigneeId: string;
+  assigneeType: 'USER' | 'ROLE' | 'GROUP' | 'ORG_UNIT' | 'ORG_UNIT_HEAD' | 'CREATOR_RESPONSIBLE';
+  assigneeId?: string;
   canEdit?: boolean;
 }
 

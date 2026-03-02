@@ -684,10 +684,13 @@ export default function WorkflowDesignerPage() {
         // Process assignments
         const assignmentsWithEntities = (step.assignments || []).map((a: any) => {
           let entity = null;
-          let assigneeType: 'USER' | 'ROLE' | 'GROUP' = 'USER';
+          let assigneeType: 'USER' | 'ROLE' | 'GROUP' | 'ORG_UNIT' | 'ORG_UNIT_HEAD' | 'CREATOR_RESPONSIBLE' = 'USER';
           if (a.user) { assigneeType = 'USER'; entity = a.user; }
           else if (a.role) { assigneeType = 'ROLE'; entity = a.role; }
           else if (a.group) { assigneeType = 'GROUP'; entity = a.group; }
+          else if (a.assigneeType === 'ORG_UNIT') { assigneeType = 'ORG_UNIT'; entity = { id: a.orgUnitId, name: a.orgUnitName || 'Org Unit' }; }
+          else if (a.assigneeType === 'ORG_UNIT_HEAD') { assigneeType = 'ORG_UNIT_HEAD'; entity = { id: a.orgUnitId, name: a.orgUnitName || 'Org Unit' }; }
+          else if (a.assigneeType === 'CREATOR_RESPONSIBLE') { assigneeType = 'CREATOR_RESPONSIBLE'; entity = { id: 'dynamic', name: "Creator's Responsible" }; }
 
           return {
             assigneeType,
@@ -1705,7 +1708,7 @@ export default function WorkflowDesignerPage() {
           }));
         }
         const assignments: CreateStepAssignmentRequest[] = rawAssignments.map((a: any) => ({
-          assigneeType: a.assigneeType as 'USER' | 'ROLE' | 'GROUP',
+          assigneeType: a.assigneeType as 'USER' | 'ROLE' | 'GROUP' | 'ORG_UNIT' | 'ORG_UNIT_HEAD' | 'CREATOR_RESPONSIBLE',
           assigneeId: a.assigneeId as string,
           canEdit: (a.canEdit as boolean) ?? true,
         }));
@@ -3149,6 +3152,8 @@ export default function WorkflowDesignerPage() {
                     setEditingNodeData(null);
                   }}
                   nodeData={editingNodeData.data}
+                  workflowVariables={localVariables}
+                  allNodes={nodes}
                   onSave={(updatedData) => {
                     setNodes((nds) =>
                       nds.map((n) =>
@@ -3288,6 +3293,7 @@ export default function WorkflowDesignerPage() {
                   onClose={() => { setShowUpdateMetadataModal(false); setEditingNodeData(null); }}
                   nodeData={editingNodeData.data}
                   allNodes={nodes}
+                  localVariables={localVariables}
                   onSave={(updatedData) => {
                     setNodes((nds) => nds.map((n) => n.id === editingNodeData.id ? { ...n, data: { ...n.data, ...updatedData } } : n));
                     setShowUpdateMetadataModal(false);
@@ -3416,6 +3422,7 @@ export default function WorkflowDesignerPage() {
                     setEditingNodeData(null);
                   }}
                   allNodes={nodes}
+                  localVariables={localVariables}
                 />
               </>
             )

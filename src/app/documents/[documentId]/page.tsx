@@ -19,11 +19,12 @@ import {
   DocumentViewSkeleton
 } from '../../../components/document';
 import WorkflowStepAction from '../../../components/document/WorkflowStepAction';
+import DocumentWorkflowPanel from '../../../components/document/DocumentWorkflowPanel';
 import ConfirmationModal from '../../../components/modals/ConfirmationModal';
 import RenameModal from '@/components/modals/RenameModal';
 import { documentService, stampService } from '../../../api/services';
 import { workflowAdminService } from '@/api/services/workflowAdminService';
-import { WorkflowNodeInstanceResponse } from '@/types/workflow';
+import { WorkflowNodeInstanceResponse, WorkflowInstanceResponse } from '@/types/workflow';
 import { StampResponse } from '../../../types/api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -62,6 +63,8 @@ export default function DocumentViewPage() {
   const [pendingStep, setPendingStep] = useState<WorkflowNodeInstanceResponse | null>(null);
   const [refreshingAfterAction, setRefreshingAfterAction] = useState(false);
   const [showComposedChildren, setShowComposedChildren] = useState(false);
+  const [workflowInstances, setWorkflowInstances] = useState<WorkflowInstanceResponse[]>([]);
+  const [showWorkflowPanel, setShowWorkflowPanel] = useState(false);
   const { showSuccess, showError } = useNotifications();
 
   // Use custom hook for document operations
@@ -100,6 +103,11 @@ export default function DocumentViewPage() {
 
     if (documentId) {
       fetchPendingSteps();
+
+      // Also fetch all workflow instances for this document
+      workflowAdminService.getAllWorkflowInstancesForDocument(parseInt(documentId))
+        .then(instances => setWorkflowInstances(instances))
+        .catch(() => setWorkflowInstances([]));
     }
   }, [documentId]);
 
@@ -518,7 +526,7 @@ export default function DocumentViewPage() {
   return (
     <div className="flex h-full bg-neutral-background">
       {/* Main Document Viewer */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
         {/* Header */}
         <DocumentHeader
           document={document}
@@ -537,60 +545,11 @@ export default function DocumentViewPage() {
           onDelete={() => setShowDeleteConfirm(true)}
           onRename={handleRenameDocument}
           onUploadVersion={handleUploadVersion}
+          workflowInstances={workflowInstances}
+          onShowWorkflows={() => setShowWorkflowPanel(true)}
         />
 
-        {/* Composed Documents Dropdown */}
-        {document.composedChildren && document.composedChildren.length > 0 && (
-          <div className="border-b border-ui">
-            <button
-              onClick={() => setShowComposedChildren(!showComposedChildren)}
-              className="w-full flex items-center gap-2 px-4 py-2 text-sm font-medium text-neutral-text-dark hover:bg-neutral-background/60 transition-colors"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className={`h-4 w-4 text-primary transition-transform ${showComposedChildren ? 'rotate-90' : ''}`}
-                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-              </svg>
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-              </svg>
-              <span>{t('composedDocuments') || 'Composed Documents'}</span>
-              <span className="ml-1 text-xs text-neutral-text-light bg-neutral-background px-1.5 py-0.5 rounded-full">
-                {document.composedChildren.length}
-              </span>
-            </button>
-            {showComposedChildren && (
-              <div className="px-4 pb-3 space-y-1">
-                {document.composedChildren.map((child) => (
-                  <button
-                    key={child.documentId}
-                    onClick={() => router.push(`/documents/${child.documentId}`)}
-                    className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-primary/5 transition-colors text-left group"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0 text-neutral-text-light group-hover:text-primary transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                    </svg>
-                    <span className="flex-1 text-sm text-neutral-text-dark truncate group-hover:text-primary transition-colors">
-                      {child.name}
-                    </span>
-                    {child.relationType && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-background text-neutral-text-light uppercase tracking-wide">
-                        {child.relationType === 'PARENT_DOCUMENT' ? 'Child Document'
-                          : child.relationType === 'CHILD_DOCUMENT' ? 'Parent Document'
-                            : child.relationType.replace(/_/g, ' ')}
-                      </span>
-                    )}
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 shrink-0 text-neutral-text-light opacity-0 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-                    </svg>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+
 
         {/* Workflow Step Action - Banner under title */}
         {refreshingAfterAction && (
@@ -606,7 +565,7 @@ export default function DocumentViewPage() {
         )}
 
         {pendingStep && !refreshingAfterAction && (
-          <div className="px-4 py-2 max-h-[40vh] overflow-y-auto flex-shrink-0">
+          <div className="px-4 py-2 flex-shrink-0">
             <WorkflowStepAction
               stepInstance={pendingStep}
               onComplete={async () => {
@@ -646,7 +605,7 @@ export default function DocumentViewPage() {
         )}
 
         {/* Document Content Area */}
-        <div className="flex-1 overflow-hidden min-h-0">
+        <div className="min-h-[70vh] flex-shrink-0">
           <FileViewer
             key={`${document.documentId}-${currentVersion || 'latest'}-${fileViewerKey}`}
             document={document}
@@ -879,6 +838,13 @@ export default function DocumentViewPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Workflow Instances Panel */}
+      <DocumentWorkflowPanel
+        isOpen={showWorkflowPanel}
+        onClose={() => setShowWorkflowPanel(false)}
+        workflowInstances={workflowInstances}
+      />
 
     </div>
   );

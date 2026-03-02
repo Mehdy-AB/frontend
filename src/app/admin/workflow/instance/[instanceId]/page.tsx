@@ -29,9 +29,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Label } from '@/components/ui/label';
-import { workflowService } from '@/api/services/workflowService';
 import { workflowAdminService } from '@/api/services/workflowAdminService';
-import { WorkflowInstanceResponse } from '@/types/api';
+import { WorkflowInstanceResponse } from '@/types/workflow';
 import { formatDate } from '@/lib/dateFormatter';
 import { WorkflowTimeline } from '@/components/workflow/WorkflowTimeline';
 import { WorkflowHistory } from '@/components/workflow/WorkflowHistory';
@@ -82,15 +81,7 @@ export default function WorkflowInstanceDetailPage() {
   const loadInstance = async () => {
     try {
       setLoading(true);
-      const response = await workflowService.getUserInstances(0, 1000);
-      const foundInstance = response.content.find(inst => inst.id === Number(instanceId));
-
-      if (!foundInstance) {
-        showError('Workflow instance not found');
-        router.back();
-        return;
-      }
-
+      const foundInstance = await workflowAdminService.getWorkflowInstance(Number(instanceId));
       setInstance(foundInstance);
     } catch (error: any) {
       console.error('Error loading workflow instance:', error);
@@ -110,7 +101,7 @@ export default function WorkflowInstanceDetailPage() {
     if (!instance || !selectedStepInstanceId) return;
 
     try {
-      await workflowService.reassignStep(
+      await workflowAdminService.reassignNode(
         instance.id,
         selectedStepInstanceId,
         { assignments, reason }
@@ -134,7 +125,7 @@ export default function WorkflowInstanceDetailPage() {
     if (!instance || !cancellationReason.trim()) return;
 
     try {
-      await workflowService.cancelWorkflowInstance(instance.id, cancellationReason);
+      await workflowAdminService.cancelWorkflowInstance(instance.id, { cancellationReason });
       showSuccess('Workflow instance cancelled');
       setShowCancelDialog(false);
       setCancellationReason('');
@@ -153,7 +144,7 @@ export default function WorkflowInstanceDetailPage() {
     if (!instance) return;
 
     try {
-      await workflowService.forceCompleteWorkflowInstance(instance.id, completionComment);
+      await workflowAdminService.forceCompleteWorkflowInstance(instance.id, { comment: completionComment });
       showSuccess('Workflow instance completed');
       setShowCompleteDialog(false);
       setCompletionComment('');
@@ -182,7 +173,7 @@ export default function WorkflowInstanceDetailPage() {
     if (!instance || !instance.currentNodeInstanceId || !newDueDate) return;
 
     try {
-      await workflowAdminService.updateDueDate(instance.id, instance.currentNodeInstanceId, {
+      await workflowAdminService.updateNodeDueDate(instance.id, instance.currentNodeInstanceId!, {
         dueDate: newDueDate
       });
       showSuccess('Due date updated');
@@ -461,7 +452,7 @@ export default function WorkflowInstanceDetailPage() {
           </Card>
 
           <WorkflowInstanceStepsTab
-            instance={instance}
+            instance={instance as any}
             onReassign={handleReassignStep}
             onActionComplete={loadInstance}
           />
