@@ -23,7 +23,7 @@ export const authOptions: NextAuthOptions = {
           };
 
           const response = await authService.login(loginData);
-          
+
           if (response.accessToken) {
             return {
               id: response.user.id,
@@ -42,7 +42,7 @@ export const authOptions: NextAuthOptions = {
               } as any
             };
           }
-          
+
           return null;
         } catch (error) {
           console.error('Authentication error:', error);
@@ -79,7 +79,7 @@ export const authOptions: NextAuthOptions = {
       // Access token has expired, try to update it
       return await refreshAccessToken(token);
     },
-    
+
     async session({ session, token }) {
       // Pass tokens to session
       session.accessToken = token.accessToken;
@@ -90,7 +90,7 @@ export const authOptions: NextAuthOptions = {
           permissions: (token as any).permissions || []
         } as any;
       }
-      
+
       return session;
     }
   },

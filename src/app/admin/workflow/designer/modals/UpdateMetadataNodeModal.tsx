@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { filingCategoryService } from '@/api/services/filingCategoryService';
 import { FilingCategoryResponseDto, CategoryMetadataDefinitionDto } from '@/types/api';
 import { WorkflowNodeData } from '../nodes/types';
+import { VariableDefinition } from '../components/variables/types';
 import { Node } from '@xyflow/react';
 
 interface MetadataFieldUpdate {
@@ -42,6 +43,7 @@ interface UpdateMetadataNodeModalProps {
     nodeData: WorkflowNodeData;
     onSave: (updatedData: Partial<WorkflowNodeData>) => void;
     allNodes?: Node[];
+    localVariables?: VariableDefinition[];
 }
 
 /**
@@ -51,7 +53,7 @@ interface UpdateMetadataNodeModalProps {
  *   - Expression: template expression like ${document.name}
  *   - Variable: picks a workflow variable key (runtime resolved, type-checked)
  */
-export default function UpdateMetadataNodeModal({ isOpen, onClose, nodeData, onSave, allNodes = [] }: UpdateMetadataNodeModalProps) {
+export default function UpdateMetadataNodeModal({ isOpen, onClose, nodeData, onSave, allNodes = [], localVariables = [] }: UpdateMetadataNodeModalProps) {
     const [label, setLabel] = useState(nodeData.label || 'Update Metadata');
     const [fields, setFields] = useState<MetadataFieldUpdate[]>([]);
 
@@ -60,22 +62,22 @@ export default function UpdateMetadataNodeModal({ isOpen, onClose, nodeData, onS
     const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(nodeData.metadataCategoryId || null);
     const [loading, setLoading] = useState(false);
 
-    // Extract workflow variables from all SET_VARIABLE nodes in the designer
+    // Merge workflow variables from VariablesPanel definitions + node-extracted sources
     const workflowVariables = useMemo(() => {
         const vars: { key: string; type: string; label: string }[] = [];
+
+        // Variables from VariablesPanel (workflow definitions)
+        for (const v of localVariables) {
+            vars.push({
+                key: v.variableKey,
+                type: v.type,
+                label: v.label || v.variableKey,
+            });
+        }
+
+        // Variables from formRequest mapped fields in nodes
         try {
             for (const node of allNodes) {
-                if (node.type === 'setVariableNode' && node.data) {
-                    const d = node.data as any;
-                    if (d.variableKey && d.variableType) {
-                        vars.push({
-                            key: d.variableKey,
-                            type: d.variableType,
-                            label: d.label || d.variableKey,
-                        });
-                    }
-                }
-                // Also pick up variables from formRequest mapped fields
                 if (node.data && (node.data as any).formFields) {
                     const formFields = (node.data as any).formFields;
                     if (Array.isArray(formFields)) {
@@ -92,8 +94,9 @@ export default function UpdateMetadataNodeModal({ isOpen, onClose, nodeData, onS
                 }
             }
         } catch (e) {
-            // Fallback: no variables found
+            // Fallback: no extra variables
         }
+
         // Deduplicate by key
         const seen = new Set<string>();
         return vars.filter(v => {
@@ -101,7 +104,7 @@ export default function UpdateMetadataNodeModal({ isOpen, onClose, nodeData, onS
             seen.add(v.key);
             return true;
         });
-    }, [allNodes, isOpen]);
+    }, [localVariables, allNodes, isOpen]);
 
     // Load categories when modal opens
     useEffect(() => {

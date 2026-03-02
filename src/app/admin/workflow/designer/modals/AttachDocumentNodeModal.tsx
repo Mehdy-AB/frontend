@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { WorkflowNodeData } from '../nodes/types';
+import { VariableDefinition } from '../components/variables/types';
 import { Node } from '@xyflow/react';
 
 interface AttachDocumentNodeModalProps {
@@ -16,32 +17,35 @@ interface AttachDocumentNodeModalProps {
     nodeData: WorkflowNodeData;
     onSave: (updatedData: Partial<WorkflowNodeData>) => void;
     allNodes?: Node[];
+    localVariables?: VariableDefinition[];
 }
 
-export default function AttachDocumentNodeModal({ isOpen, onClose, nodeData, onSave, allNodes = [] }: AttachDocumentNodeModalProps) {
+export default function AttachDocumentNodeModal({ isOpen, onClose, nodeData, onSave, allNodes = [], localVariables = [] }: AttachDocumentNodeModalProps) {
     const [label, setLabel] = useState(nodeData.label || 'Attach Document');
     const [fileVariableKey, setFileVariableKey] = useState<string>((nodeData as any).fileVariableKey || '');
     const [attachmentName, setAttachmentName] = useState<string>((nodeData as any).attachmentName || '');
     const [description, setDescription] = useState<string>((nodeData as any).description || '');
     const [resultVariableKey, setResultVariableKey] = useState<string>((nodeData as any).resultVariableKey || '');
 
-    // Extract FILE-type workflow variables from all nodes
+    // Extract FILE-type variables from VariablesPanel definitions + nodes
     const fileVariables = useMemo(() => {
         const vars: { key: string; label: string; source: string }[] = [];
+
+        // Variables from VariablesPanel (workflow definitions)
+        for (const v of localVariables) {
+            if (v.type === 'FILE' || v.type === 'DOCUMENT') {
+                vars.push({
+                    key: v.variableKey,
+                    label: v.label || v.variableKey,
+                    source: 'Defined',
+                });
+            }
+        }
+
+        // Variables from formRequest/formFields with type FILE
         try {
             for (const node of allNodes) {
                 const d = node.data as any;
-                // From SET_VARIABLE nodes with FILE type
-                if (node.type === 'setVariableNode' && d) {
-                    if (d.variableKey && (d.variableType === 'FILE' || d.variableType === 'file')) {
-                        vars.push({
-                            key: d.variableKey,
-                            label: d.label || d.variableKey,
-                            source: 'Set Variable',
-                        });
-                    }
-                }
-                // From formRequest/formFields with type FILE
                 if (d?.formFields && Array.isArray(d.formFields)) {
                     for (const ff of d.formFields) {
                         const varKey = ff.variableKey || ff.mappedVariableKey;
@@ -65,7 +69,7 @@ export default function AttachDocumentNodeModal({ isOpen, onClose, nodeData, onS
             seen.add(v.key);
             return true;
         });
-    }, [allNodes, isOpen]);
+    }, [localVariables, allNodes, isOpen]);
 
     // Initialize form from nodeData
     useEffect(() => {
