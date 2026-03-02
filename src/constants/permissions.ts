@@ -175,6 +175,9 @@ export const AdminPagePermissions: Record<string, {
   '/admin/system/transactions': {
     view: Permissions.AUDIT_READ,
   },
+  '/admin/system/logs': {
+    view: Permissions.SERVER_MANAGE_LOGS,
+  },
 
   // User management pages
   '/admin/users': {

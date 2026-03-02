@@ -29,6 +29,7 @@ import {
   PenTool,
   CheckSquare,
   Clock,
+  ScrollText,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -100,6 +101,12 @@ const SECTIONS: Section[] = [
         href: '/admin/system/transactions',
         description: 'Review system transactions and their metrics.',
         Icon: BarChart3,
+      },
+      {
+        label: 'Live Logs',
+        href: '/admin/system/logs',
+        description: 'Real-time application log viewer and stream.',
+        Icon: ScrollText,
       },
     ],
   },
