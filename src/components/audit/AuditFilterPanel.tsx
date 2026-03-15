@@ -10,7 +10,7 @@ import type { AuditLogFilterRequest, FilterUserOption } from '../../api/services
 import { auditLogService } from '../../api/services/auditLogService';
 import { roleManagementService } from '../../api/services/roleManagementService';
 import { groupManagementService } from '../../api/services/groupManagementService';
-import { orgUnitService, OrgUnitTreeResponse } from '../../api/services/orgUnitService';
+import { orgUnitService, OrgUnitTreeResponse, getTypeColorClass } from '../../api/services/orgUnitService';
 import type { RoleDto, GroupDto, UserDto } from '../../types/api';
 import { apiClient } from '../../api/client';
 import UserAvatar from '../main/UserAvatar';
@@ -298,9 +298,8 @@ function OrgTreeNode({ node, depth, selectedIds, matchedIds, onToggle }: OrgTree
 
                 {/* Type indicator */}
                 <span
-                    className="audit-org-tree__type-dot"
-                    style={{ background: OU_TYPE_COLORS[node.type] || '#888' }}
-                    title={node.type}
+                    className={`audit-org-tree__type-dot ${getTypeColorClass(node.typeColor)}`}
+                    title={node.typeName || 'Organizational Unit'}
                 />
 
                 {/* Name */}

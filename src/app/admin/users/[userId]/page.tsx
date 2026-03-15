@@ -4,6 +4,9 @@ import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft,
+  Loader2,
+  Pencil,
+  Trash2,
   User,
   Shield,
   Users as UsersIcon,
@@ -17,7 +20,6 @@ import {
   CheckCircle,
   XCircle,
   Edit,
-  Trash2,
   Monitor,
   Smartphone,
   Tablet,
@@ -26,7 +28,17 @@ import {
   Camera,
   Save,
   Folder,
-  ExternalLink
+  ExternalLink,
+  Building2,
+  Briefcase,
+  Hash,
+  DollarSign,
+  CalendarIcon,
+  ChevronsUpDown,
+  Check,
+  Network,
+  UserCheck,
+  MapPin
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -35,13 +47,18 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { cn } from '@/lib/utils';
 import { notificationApiClient } from '@/api/notificationClient';
 import { roleManagementService } from '@/api/services/roleManagementService';
 import { apiClient } from '@/api/client';
 import { auditLogService, AuditLog } from '@/api/services/auditLogService';
 import { adminUserService } from '@/api/services/adminUserService';
+import { organizationService, ReferenceDataItem, ManagerAssignmentResponse, ReferenceDataCategory } from '@/api/services/organizationService';
+import { userManagementService } from '@/api/services/userManagementService';
 import { UserDto, RoleDto, GroupDto } from '@/types/api';
-import { formatDate } from '@/lib/dateFormatter';
+import { formatDate, formatDateOnly } from '@/lib/dateFormatter';
 import ConfirmationModal from '@/components/modals/ConfirmationModal';
 import AssignUserRolesModal from '@/components/modals/AssignUserRolesModal';
 import AssignUserGroupsModal from '@/components/modals/AssignUserGroupsModal';
@@ -50,6 +67,7 @@ import { Permissions } from '@/constants/permissions';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useNotification } from '@/contexts/NotificationContext';
 import { ImageCropDialog } from '@/components/ui/image-crop-dialog';
+import CreateReferenceDataModal from '@/components/modals/CreateReferenceDataModal';
 import RepositoryBrowser from '@/components/main/RepositoryBrowser';
 
 interface UserStatistics {
@@ -90,6 +108,8 @@ export default function UserDetailPage() {
   const params = useParams();
   const userId = params.userId as string;
   const { hasPermission } = usePermissions();
+  const canManageRefData = hasPermission(Permissions.ORG_MANAGE_REFERENCE_DATA);
+  const canAssignManager = hasPermission(Permissions.ORG_ASSIGN_MANAGER);
   const { addNotification } = useNotification();
 
   const [user, setUser] = useState<UserDto | null>(null);
@@ -134,6 +154,52 @@ export default function UserDetailPage() {
   const [profilePhotoPreview, setProfilePhotoPreview] = useState<string | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
 
+  // HR edit states
+  const [editEmployeeNumber, setEditEmployeeNumber] = useState('');
+  const [editCostCenterId, setEditCostCenterId] = useState<string | undefined>(undefined);
+  const [editCostCenterName, setEditCostCenterName] = useState('');
+  const [editHireDate, setEditHireDate] = useState('');
+  const [editJobFamilyId, setEditJobFamilyId] = useState<string | undefined>(undefined);
+  const [editEmploymentTypeId, setEditEmploymentTypeId] = useState<string | undefined>(undefined);
+  const [editClearanceLevelId, setEditClearanceLevelId] = useState<string | undefined>(undefined);
+
+  // Selected ref data display names
+  const [selectedJfName, setSelectedJfName] = useState('');
+  const [selectedEtName, setSelectedEtName] = useState('');
+  const [selectedClName, setSelectedClName] = useState('');
+
+  // Reference data — server-side search results
+  const [jobFamilies, setJobFamilies] = useState<ReferenceDataItem[]>([]);
+  const [employmentTypes, setEmploymentTypes] = useState<ReferenceDataItem[]>([]);
+  const [clearanceLevels, setClearanceLevels] = useState<ReferenceDataItem[]>([]);
+  const [costCenters, setCostCenters] = useState<ReferenceDataItem[]>([]);
+  const [jfOpen, setJfOpen] = useState(false);
+  const [etOpen, setEtOpen] = useState(false);
+  const [clOpen, setClOpen] = useState(false);
+  const [ccOpen, setCcOpen] = useState(false);
+  const [jfLoading, setJfLoading] = useState(false);
+  const [etLoading, setEtLoading] = useState(false);
+  const [clLoading, setClLoading] = useState(false);
+  const [ccLoading, setCcLoading] = useState(false);
+
+  // Server-side search queries
+  const [jfSearchQ, setJfSearchQ] = useState('');
+  const [etSearchQ, setEtSearchQ] = useState('');
+  const [clSearchQ, setClSearchQ] = useState('');
+  const [ccSearchQ, setCcSearchQ] = useState('');
+
+  // Manager state
+  const [currentManager, setCurrentManager] = useState<ManagerAssignmentResponse | null>(null);
+  const [managerSearchQuery, setManagerSearchQuery] = useState('');
+  const [managerSearchResults, setManagerSearchResults] = useState<UserDto[]>([]);
+  const [managerPickerOpen, setManagerPickerOpen] = useState(false);
+  const [assigningManager, setAssigningManager] = useState(false);
+
+  // Create/Edit ref data modal
+  const [createRefCategory, setCreateRefCategory] = useState<ReferenceDataCategory | null>(null);
+  const [editRefItem, setEditRefItem] = useState<ReferenceDataItem | null>(null);
+  const [deleteRefItem, setDeleteRefItem] = useState<{ item: ReferenceDataItem; category: ReferenceDataCategory } | null>(null);
+
   // Crop dialog state
   const [cropDialogOpen, setCropDialogOpen] = useState(false);
   const [imageToCrop, setImageToCrop] = useState<string | null>(null);
@@ -141,6 +207,112 @@ export default function UserDetailPage() {
   useEffect(() => {
     fetchUserData();
   }, [userId]);
+
+  // Load manager on mount
+  useEffect(() => {
+    loadCurrentManager();
+  }, [userId]);
+
+  // Server-side search effects for ref data
+  useEffect(() => {
+    if (jfSearchQ.length >= 1) {
+      setJfLoading(true);
+      organizationService.searchReferenceData('job-families', jfSearchQ)
+        .then(setJobFamilies).catch(() => { }).finally(() => setJfLoading(false));
+    } else { setJobFamilies([]); }
+  }, [jfSearchQ]);
+
+  useEffect(() => {
+    if (etSearchQ.length >= 1) {
+      setEtLoading(true);
+      organizationService.searchReferenceData('employment-types', etSearchQ)
+        .then(setEmploymentTypes).catch(() => { }).finally(() => setEtLoading(false));
+    } else { setEmploymentTypes([]); }
+  }, [etSearchQ]);
+
+  useEffect(() => {
+    if (clSearchQ.length >= 1) {
+      setClLoading(true);
+      organizationService.searchReferenceData('clearance-levels', clSearchQ)
+        .then(setClearanceLevels).catch(() => { }).finally(() => setClLoading(false));
+    } else { setClearanceLevels([]); }
+  }, [clSearchQ]);
+
+  useEffect(() => {
+    if (ccSearchQ.length >= 1) {
+      setCcLoading(true);
+      organizationService.searchReferenceData('cost-centers', ccSearchQ)
+        .then(setCostCenters).catch(() => { }).finally(() => setCcLoading(false));
+    } else { setCostCenters([]); }
+  }, [ccSearchQ]);
+
+  // Delete ref data handler
+  const handleDeleteRefData = async () => {
+    if (!deleteRefItem) return;
+    try {
+      await organizationService.deleteReferenceData(deleteRefItem.category, deleteRefItem.item.id);
+      // Clear selection if the deleted item was selected
+      if (deleteRefItem.category === 'job-families' && editJobFamilyId === deleteRefItem.item.id) { setEditJobFamilyId(undefined); setSelectedJfName(''); }
+      else if (deleteRefItem.category === 'employment-types' && editEmploymentTypeId === deleteRefItem.item.id) { setEditEmploymentTypeId(undefined); setSelectedEtName(''); }
+      else if (deleteRefItem.category === 'clearance-levels' && editClearanceLevelId === deleteRefItem.item.id) { setEditClearanceLevelId(undefined); setSelectedClName(''); }
+      else if (deleteRefItem.category === 'cost-centers' && editCostCenterId === deleteRefItem.item.id) { setEditCostCenterId(undefined); setEditCostCenterName(''); }
+      // Remove deleted item from the dropdown list
+      const deletedId = deleteRefItem.item.id;
+      if (deleteRefItem.category === 'job-families') setJobFamilies(prev => prev.filter(i => i.id !== deletedId));
+      else if (deleteRefItem.category === 'employment-types') setEmploymentTypes(prev => prev.filter(i => i.id !== deletedId));
+      else if (deleteRefItem.category === 'clearance-levels') setClearanceLevels(prev => prev.filter(i => i.id !== deletedId));
+      else if (deleteRefItem.category === 'cost-centers') setCostCenters(prev => prev.filter(i => i.id !== deletedId));
+      addNotification({ type: 'success', title: 'Deleted', message: `${deleteRefItem.item.name} deleted successfully` });
+    } catch (err: any) {
+      addNotification({ type: 'error', title: 'Error', message: err.message || 'Failed to delete' });
+    }
+    setDeleteRefItem(null);
+  };
+
+  const loadCurrentManager = async () => {
+    try {
+      const mgr = await organizationService.getCurrentManager(userId);
+      setCurrentManager(mgr);
+    } catch {
+      setCurrentManager(null);
+    }
+  };
+
+  const handleSearchManagers = async (query: string) => {
+    setManagerSearchQuery(query);
+    if (query.length < 2) { setManagerSearchResults([]); return; }
+    try {
+      const results = await userManagementService.quickSearchUsers(query);
+      setManagerSearchResults((results || []).filter((u: UserDto) => u.id !== userId));
+    } catch { setManagerSearchResults([]); }
+  };
+
+  const handleAssignManager = async (managerUserId: string) => {
+    setAssigningManager(true);
+    try {
+      await organizationService.assignManager(userId, { managerUserId });
+      // Reload fresh manager data from backend to ensure correct IDs
+      const fresh = await organizationService.getCurrentManager(userId);
+      setCurrentManager(fresh);
+      setManagerPickerOpen(false);
+      setManagerSearchQuery('');
+      setManagerSearchResults([]);
+      addNotification({ type: 'success', title: 'Manager Updated', message: 'Manager assigned successfully' });
+    } catch (err: any) {
+      addNotification({ type: 'error', title: 'Error', message: err.message || 'Failed to assign manager' });
+    } finally { setAssigningManager(false); }
+  };
+
+  const handleRemoveManager = async () => {
+    setAssigningManager(true);
+    try {
+      await organizationService.removeManager(userId);
+      setCurrentManager(null);
+      addNotification({ type: 'success', title: 'Manager Removed', message: 'Manager removed successfully' });
+    } catch (err: any) {
+      addNotification({ type: 'error', title: 'Error', message: err.message || 'Failed to remove manager' });
+    } finally { setAssigningManager(false); }
+  };
 
   // Populate edit form fields when user data is loaded
   useEffect(() => {
@@ -152,6 +324,17 @@ export default function UserDetailPage() {
       setEditJobTitle(user.jobTitle || '');
       setEditUsername(user.username || '');
       setProfilePhotoPreview(user.imgUrl || null);
+      // HR fields
+      setEditEmployeeNumber(user.employeeNumber || '');
+      setEditCostCenterId(user.costCenterId || undefined);
+      setEditCostCenterName(user.costCenterName || '');
+      setEditHireDate(user.hireDate || '');
+      setEditJobFamilyId(user.jobFamilyId || undefined);
+      setEditEmploymentTypeId(user.employmentTypeId || undefined);
+      setEditClearanceLevelId(user.clearanceLevelId || undefined);
+      setSelectedJfName(user.jobFamilyName || '');
+      setSelectedEtName(user.employmentTypeName || '');
+      setSelectedClName(user.clearanceLevelName || '');
     }
   }, [user]);
 
@@ -430,6 +613,13 @@ export default function UserDetailPage() {
       if (editFirstName !== user.firstName) updateRequest.firstName = editFirstName;
       if (editLastName !== user.lastName) updateRequest.lastName = editLastName;
       if (editJobTitle !== user.jobTitle) updateRequest.jobTitle = editJobTitle;
+      // HR fields
+      if (editEmployeeNumber !== (user.employeeNumber || '')) updateRequest.employeeNumber = editEmployeeNumber;
+      if (editCostCenterId !== (user.costCenterId || undefined)) updateRequest.costCenterId = editCostCenterId || null;
+      if (editHireDate !== (user.hireDate || '')) updateRequest.hireDate = editHireDate;
+      if (editJobFamilyId !== (user.jobFamilyId || undefined)) updateRequest.jobFamilyId = editJobFamilyId || null;
+      if (editEmploymentTypeId !== (user.employmentTypeId || undefined)) updateRequest.employmentTypeId = editEmploymentTypeId || null;
+      if (editClearanceLevelId !== (user.clearanceLevelId || undefined)) updateRequest.clearanceLevelId = editClearanceLevelId || null;
 
       // Only make API call if there are changes
       if (Object.keys(updateRequest).length === 0) {
@@ -710,7 +900,7 @@ export default function UserDetailPage() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-7">
+        <TabsList className="grid w-full grid-cols-8">
           <TabsTrigger value="overview">
             <User className="h-4 w-4 mr-2" />
             Overview
@@ -772,6 +962,10 @@ export default function UserDetailPage() {
               </TooltipContent>
             )}
           </Tooltip>
+          <TabsTrigger value="organization">
+            <Building2 className="h-4 w-4 mr-2" />
+            Organization
+          </TabsTrigger>
           <Tooltip>
             <TooltipTrigger asChild>
               <div>
@@ -833,80 +1027,139 @@ export default function UserDetailPage() {
 
         {/* Overview Tab */}
         <TabsContent value="overview">
-          <Card>
-            <CardHeader>
-              <CardTitle>User Information</CardTitle>
-              <CardDescription>Detailed information about this user</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <h3 className="font-semibold mb-4">Personal Information</h3>
-                  <dl className="space-y-3">
-                    <div>
-                      <dt className="text-sm text-muted-foreground">First Name</dt>
-                      <dd className="font-medium">{user.firstName || 'N/A'}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-sm text-muted-foreground">Last Name</dt>
-                      <dd className="font-medium">{user.lastName || 'N/A'}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-sm text-muted-foreground">Email</dt>
-                      <dd className="font-medium">{user.email}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-sm text-muted-foreground">Job Title</dt>
-                      <dd className="font-medium">{user.jobTitle || 'N/A'}</dd>
-                    </div>
-                  </dl>
-                </div>
-                <div>
-                  <h3 className="font-semibold mb-4">Account Information</h3>
-                  <dl className="space-y-3">
-                    <div>
-                      <dt className="text-sm text-muted-foreground">Username</dt>
-                      <dd className="font-medium">@{user.username}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-sm text-muted-foreground">User ID</dt>
-                      <dd className="font-mono text-sm">{user.id}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-sm text-muted-foreground">Status</dt>
-                      <dd>
-                        {user.status === 'ACTIVE' || user.enabled ? (
-                          <Badge variant="default" className="bg-green-500">Active</Badge>
-                        ) : (
-                          <Badge variant="destructive">Disabled</Badge>
-                        )}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-sm text-muted-foreground">Email Verified</dt>
-                      <dd>
-                        {user.emailVerified ? (
-                          <Badge variant="default" className="bg-green-500">Verified</Badge>
-                        ) : (
-                          <Badge variant="outline">Not Verified</Badge>
-                        )}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-sm text-muted-foreground">Created At</dt>
-                      <dd className="text-sm">{formatDate(user.createdAt || user.createdTimestamp)}</dd>
-                    </div>
-                    {user.updatedAt && (
+          <div className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>User Information</CardTitle>
+                <CardDescription>Detailed information about this user</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-6">
+                  <div>
+                    <h3 className="font-semibold mb-4">Personal Information</h3>
+                    <dl className="space-y-3">
                       <div>
-                        <dt className="text-sm text-muted-foreground">Last Updated</dt>
-                        <dd className="text-sm">{formatDate(user.updatedAt)}</dd>
+                        <dt className="text-sm text-muted-foreground">First Name</dt>
+                        <dd className="font-medium">{user.firstName || 'N/A'}</dd>
                       </div>
-                    )}
-                  </dl>
+                      <div>
+                        <dt className="text-sm text-muted-foreground">Last Name</dt>
+                        <dd className="font-medium">{user.lastName || 'N/A'}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-sm text-muted-foreground">Email</dt>
+                        <dd className="font-medium">{user.email}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-sm text-muted-foreground">Job Title</dt>
+                        <dd className="font-medium">{user.jobTitle || 'N/A'}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-sm text-muted-foreground">Reports To</dt>
+                        <dd className="font-medium">
+                          {currentManager ? (
+                            <button
+                              onClick={() => router.push(`/admin/users/${currentManager.managerUserId}`)}
+                              className="flex items-center gap-2 text-primary hover:underline"
+                            >
+                              <Avatar className="h-6 w-6">
+                                <AvatarImage src={currentManager.managerImageUrl} />
+                                <AvatarFallback className="text-xs">{currentManager.managerDisplayName?.[0] || '?'}</AvatarFallback>
+                              </Avatar>
+                              {currentManager.managerDisplayName}
+                            </button>
+                          ) : (
+                            <span className="text-muted-foreground">No manager assigned</span>
+                          )}
+                        </dd>
+                      </div>
+                    </dl>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold mb-4">Account Information</h3>
+                    <dl className="space-y-3">
+                      <div>
+                        <dt className="text-sm text-muted-foreground">Username</dt>
+                        <dd className="font-medium">@{user.username}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-sm text-muted-foreground">User ID</dt>
+                        <dd className="font-mono text-sm">{user.id}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-sm text-muted-foreground">Status</dt>
+                        <dd>
+                          {user.status === 'ACTIVE' || user.enabled ? (
+                            <Badge variant="default" className="bg-green-500">Active</Badge>
+                          ) : (
+                            <Badge variant="destructive">Disabled</Badge>
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-sm text-muted-foreground">Email Verified</dt>
+                        <dd>
+                          {user.emailVerified ? (
+                            <Badge variant="default" className="bg-green-500">Verified</Badge>
+                          ) : (
+                            <Badge variant="outline">Not Verified</Badge>
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-sm text-muted-foreground">Created At</dt>
+                        <dd className="text-sm">{formatDate(user.createdAt || user.createdTimestamp)}</dd>
+                      </div>
+                      {user.updatedAt && (
+                        <div>
+                          <dt className="text-sm text-muted-foreground">Last Updated</dt>
+                          <dd className="text-sm">{formatDate(user.updatedAt)}</dd>
+                        </div>
+                      )}
+                    </dl>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+
+            {/* HR Attributes Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Building2 className="h-5 w-5" />
+                  HR Information
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+                  <div>
+                    <dt className="text-sm text-muted-foreground">Employee Number</dt>
+                    <dd className="font-medium">{user.employeeNumber || 'N/A'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-sm text-muted-foreground">Cost Center</dt>
+                    <dd className="font-medium">{user.costCenterName || 'N/A'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-sm text-muted-foreground">Hire Date</dt>
+                    <dd className="font-medium">{user.hireDate ? formatDateOnly(user.hireDate) : 'N/A'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-sm text-muted-foreground">Job Family</dt>
+                    <dd className="font-medium">{user.jobFamilyName || 'N/A'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-sm text-muted-foreground">Employment Type</dt>
+                    <dd className="font-medium">{user.employmentTypeName || 'N/A'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-sm text-muted-foreground">Clearance Level</dt>
+                    <dd className="font-medium">{user.clearanceLevelName || 'N/A'}</dd>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* Edit Profile Tab */}
@@ -1025,6 +1278,343 @@ export default function UserDetailPage() {
                     disabled={savingProfile}
                   />
                 </div>
+
+                {/* Manager Picker */}
+                <div className="pt-4 border-t">
+                  <h4 className="font-semibold mb-3 flex items-center gap-2">
+                    <UserCheck className="h-4 w-4 text-primary" />
+                    Manager
+                  </h4>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1">
+                      {currentManager ? (
+                        <div className="flex items-center gap-3 p-3 border rounded-lg">
+                          <Avatar className="h-8 w-8">
+                            <AvatarImage src={currentManager.managerImageUrl} />
+                            <AvatarFallback>{currentManager.managerDisplayName?.[0] || '?'}</AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1">
+                            <p className="font-medium text-sm">{currentManager.managerDisplayName}</p>
+                            <p className="text-xs text-muted-foreground">Since {formatDateOnly(currentManager.effectiveFrom)}</p>
+                          </div>
+                          {canAssignManager && (
+                            <Button size="sm" variant="ghost" onClick={handleRemoveManager} disabled={assigningManager}>
+                              <X className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground p-3 border rounded-lg">No manager assigned</p>
+                      )}
+                    </div>
+                    {canAssignManager && (
+                      <Popover open={managerPickerOpen} onOpenChange={setManagerPickerOpen}>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" size="sm" type="button">
+                            {currentManager ? 'Change' : 'Assign'}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[300px] p-0" align="end">
+                          <Command shouldFilter={false}>
+                            <CommandInput
+                              placeholder="Search users..."
+                              value={managerSearchQuery}
+                              onValueChange={handleSearchManagers}
+                            />
+                            <CommandList>
+                              <CommandEmpty>No users found.</CommandEmpty>
+                              <CommandGroup>
+                                {managerSearchResults.map((u) => (
+                                  <CommandItem
+                                    key={u.id}
+                                    value={u.id}
+                                    onSelect={() => handleAssignManager(u.id)}
+                                  >
+                                    <Avatar className="h-6 w-6 mr-2">
+                                      <AvatarImage src={u.imgUrl || u.imageUrl} />
+                                      <AvatarFallback className="text-xs">{u.displayName?.[0]}</AvatarFallback>
+                                    </Avatar>
+                                    <div>
+                                      <p className="text-sm">{u.displayName}</p>
+                                      <p className="text-xs text-muted-foreground">{u.email}</p>
+                                    </div>
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    )}
+                  </div>
+                </div>
+
+                {/* HR Details Section */}
+                <div className="pt-4 border-t">
+                  <h4 className="font-semibold mb-3 flex items-center gap-2">
+                    <Building2 className="h-4 w-4 text-primary" />
+                    HR Details
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="editEmployeeNumber" className="flex items-center gap-1">
+                        <Hash className="h-3 w-3" /> Employee Number
+                      </Label>
+                      <Input
+                        id="editEmployeeNumber"
+                        value={editEmployeeNumber}
+                        onChange={(e) => setEditEmployeeNumber(e.target.value)}
+                        placeholder="EMP-001"
+                        disabled={savingProfile}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="flex items-center gap-1 text-sm">
+                        <DollarSign className="h-3 w-3" /> Cost Center
+                      </Label>
+                      <Popover open={ccOpen} onOpenChange={setCcOpen}>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" className="w-full justify-between font-normal h-9 text-sm" type="button" disabled={savingProfile}>
+                            {editCostCenterName || <span className="text-muted-foreground">Search cost center...</span>}
+                            <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[300px] p-0" align="start">
+                          <Command shouldFilter={false}>
+                            <CommandInput placeholder="Search by name or code..." value={ccSearchQ} onValueChange={setCcSearchQ} />
+                            <CommandList>
+                              {ccLoading ? (
+                                <div className="flex items-center justify-center py-6"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /><span className="ml-2 text-sm text-muted-foreground">Searching...</span></div>
+                              ) : ccSearchQ.length < 1 ? (
+                                <div className="py-6 text-center text-sm text-muted-foreground">Type to search...</div>
+                              ) : costCenters.length === 0 ? (
+                                <CommandEmpty>No results found.</CommandEmpty>
+                              ) : (
+                                <CommandGroup>
+                                  {editCostCenterId && (
+                                    <CommandItem value="__clear__" onSelect={() => { setEditCostCenterId(undefined); setEditCostCenterName(''); setCcOpen(false); }}>
+                                      <X className="mr-2 h-3.5 w-3.5 text-muted-foreground" /> Clear selection
+                                    </CommandItem>
+                                  )}
+                                  {costCenters.map(item => (
+                                    <CommandItem key={item.id} value={item.id} onSelect={() => { setEditCostCenterId(item.id); setEditCostCenterName(item.name); setCcOpen(false); }}
+                                      className="flex items-center justify-between group">
+                                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                                        <Check className={cn('h-3.5 w-3.5 shrink-0', editCostCenterId === item.id ? 'opacity-100' : 'opacity-0')} />
+                                        <div className="min-w-0">
+                                          <span className="text-sm">{item.name}</span>
+                                          <span className="text-xs text-muted-foreground ml-1">({item.code})</span>
+                                          {item.description && <p className="text-xs text-muted-foreground truncate">{item.description}</p>}
+                                        </div>
+                                      </div>
+                                      {canManageRefData && (
+                                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                          <button type="button" onClick={(e) => { e.stopPropagation(); setEditRefItem(item); setCreateRefCategory('cost-centers'); setCcOpen(false); }}
+                                            className="p-1 hover:bg-muted rounded" title="Edit"><Pencil className="h-3 w-3 text-muted-foreground" /></button>
+                                          <button type="button" onClick={(e) => { e.stopPropagation(); setDeleteRefItem({ item, category: 'cost-centers' }); setCcOpen(false); }}
+                                            className="p-1 hover:bg-destructive/10 rounded" title="Delete"><Trash2 className="h-3 w-3 text-destructive" /></button>
+                                        </div>
+                                      )}
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              )}
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                      {canManageRefData && (<p className="text-xs text-muted-foreground">Can&apos;t find what you need?{' '}<button type="button" onClick={() => { setEditRefItem(null); setCreateRefCategory('cost-centers'); }} className="text-primary hover:underline font-medium">Create new</button></p>)}
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="editHireDate" className="flex items-center gap-1">
+                        <CalendarIcon className="h-3 w-3" /> Hire Date
+                      </Label>
+                      <Input
+                        id="editHireDate"
+                        type="date"
+                        value={editHireDate}
+                        onChange={(e) => setEditHireDate(e.target.value)}
+                        disabled={savingProfile}
+                      />
+                    </div>
+                    {/* Job Family */}
+                    <div className="space-y-1">
+                      <Label className="flex items-center gap-1 text-sm">
+                        <Briefcase className="h-3 w-3" /> Job Family
+                      </Label>
+                      <Popover open={jfOpen} onOpenChange={setJfOpen}>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" className="w-full justify-between font-normal h-9 text-sm" type="button" disabled={savingProfile}>
+                            {selectedJfName || <span className="text-muted-foreground">Search job family...</span>}
+                            <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[300px] p-0" align="start">
+                          <Command shouldFilter={false}>
+                            <CommandInput placeholder="Search by name or code..." value={jfSearchQ} onValueChange={setJfSearchQ} />
+                            <CommandList>
+                              {jfLoading ? (
+                                <div className="flex items-center justify-center py-6"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /><span className="ml-2 text-sm text-muted-foreground">Searching...</span></div>
+                              ) : jfSearchQ.length < 1 ? (
+                                <div className="py-6 text-center text-sm text-muted-foreground">Type to search...</div>
+                              ) : jobFamilies.length === 0 ? (
+                                <CommandEmpty>No results found.</CommandEmpty>
+                              ) : (
+                                <CommandGroup>
+                                  {editJobFamilyId && (
+                                    <CommandItem value="__clear__" onSelect={() => { setEditJobFamilyId(undefined); setSelectedJfName(''); setJfOpen(false); }}>
+                                      <X className="mr-2 h-3.5 w-3.5 text-muted-foreground" /> Clear selection
+                                    </CommandItem>
+                                  )}
+                                  {jobFamilies.map(item => (
+                                    <CommandItem key={item.id} value={item.id} onSelect={() => { setEditJobFamilyId(item.id); setSelectedJfName(item.name); setJfOpen(false); }}
+                                      className="flex items-center justify-between group">
+                                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                                        <Check className={cn('h-3.5 w-3.5 shrink-0', editJobFamilyId === item.id ? 'opacity-100' : 'opacity-0')} />
+                                        <div className="min-w-0">
+                                          <span className="text-sm">{item.name}</span>
+                                          <span className="text-xs text-muted-foreground ml-1">({item.code})</span>
+                                          {item.description && <p className="text-xs text-muted-foreground truncate">{item.description}</p>}
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                        {canManageRefData && (<>
+                                          <button type="button" onClick={(e) => { e.stopPropagation(); setEditRefItem(item); setCreateRefCategory('job-families'); setJfOpen(false); }}
+                                            className="p-1 hover:bg-muted rounded" title="Edit"><Pencil className="h-3 w-3 text-muted-foreground" /></button>
+                                          <button type="button" onClick={(e) => { e.stopPropagation(); setDeleteRefItem({ item, category: 'job-families' }); setJfOpen(false); }}
+                                            className="p-1 hover:bg-destructive/10 rounded" title="Delete"><Trash2 className="h-3 w-3 text-destructive" /></button>
+                                        </>)}
+                                      </div>
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              )}
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                      {canManageRefData && (<p className="text-xs text-muted-foreground">Can&apos;t find what you need?{' '}<button type="button" onClick={() => { setEditRefItem(null); setCreateRefCategory('job-families'); }} className="text-primary hover:underline font-medium">Create new</button></p>)}
+                    </div>
+                    {/* Employment Type */}
+                    <div className="space-y-1">
+                      <Label className="flex items-center gap-1 text-sm">
+                        <Briefcase className="h-3 w-3" /> Employment Type
+                      </Label>
+                      <Popover open={etOpen} onOpenChange={setEtOpen}>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" className="w-full justify-between font-normal h-9 text-sm" type="button" disabled={savingProfile}>
+                            {selectedEtName || <span className="text-muted-foreground">Search employment type...</span>}
+                            <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[300px] p-0" align="start">
+                          <Command shouldFilter={false}>
+                            <CommandInput placeholder="Search by name or code..." value={etSearchQ} onValueChange={setEtSearchQ} />
+                            <CommandList>
+                              {etLoading ? (
+                                <div className="flex items-center justify-center py-6"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /><span className="ml-2 text-sm text-muted-foreground">Searching...</span></div>
+                              ) : etSearchQ.length < 1 ? (
+                                <div className="py-6 text-center text-sm text-muted-foreground">Type to search...</div>
+                              ) : employmentTypes.length === 0 ? (
+                                <CommandEmpty>No results found.</CommandEmpty>
+                              ) : (
+                                <CommandGroup>
+                                  {editEmploymentTypeId && (
+                                    <CommandItem value="__clear__" onSelect={() => { setEditEmploymentTypeId(undefined); setSelectedEtName(''); setEtOpen(false); }}>
+                                      <X className="mr-2 h-3.5 w-3.5 text-muted-foreground" /> Clear selection
+                                    </CommandItem>
+                                  )}
+                                  {employmentTypes.map(item => (
+                                    <CommandItem key={item.id} value={item.id} onSelect={() => { setEditEmploymentTypeId(item.id); setSelectedEtName(item.name); setEtOpen(false); }}
+                                      className="flex items-center justify-between group">
+                                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                                        <Check className={cn('h-3.5 w-3.5 shrink-0', editEmploymentTypeId === item.id ? 'opacity-100' : 'opacity-0')} />
+                                        <div className="min-w-0">
+                                          <span className="text-sm">{item.name}</span>
+                                          <span className="text-xs text-muted-foreground ml-1">({item.code})</span>
+                                          {item.description && <p className="text-xs text-muted-foreground truncate">{item.description}</p>}
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                        {canManageRefData && (<>
+                                          <button type="button" onClick={(e) => { e.stopPropagation(); setEditRefItem(item); setCreateRefCategory('employment-types'); setEtOpen(false); }}
+                                            className="p-1 hover:bg-muted rounded" title="Edit"><Pencil className="h-3 w-3 text-muted-foreground" /></button>
+                                          <button type="button" onClick={(e) => { e.stopPropagation(); setDeleteRefItem({ item, category: 'employment-types' }); setEtOpen(false); }}
+                                            className="p-1 hover:bg-destructive/10 rounded" title="Delete"><Trash2 className="h-3 w-3 text-destructive" /></button>
+                                        </>)}
+                                      </div>
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              )}
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                      {canManageRefData && (<p className="text-xs text-muted-foreground">Can&apos;t find what you need?{' '}<button type="button" onClick={() => { setEditRefItem(null); setCreateRefCategory('employment-types'); }} className="text-primary hover:underline font-medium">Create new</button></p>)}
+                    </div>
+                    {/* Clearance Level */}
+                    <div className="space-y-1">
+                      <Label className="flex items-center gap-1 text-sm">
+                        <Shield className="h-3 w-3" /> Clearance Level
+                      </Label>
+                      <Popover open={clOpen} onOpenChange={setClOpen}>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" className="w-full justify-between font-normal h-9 text-sm" type="button" disabled={savingProfile}>
+                            {selectedClName || <span className="text-muted-foreground">Search clearance level...</span>}
+                            <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[300px] p-0" align="start">
+                          <Command shouldFilter={false}>
+                            <CommandInput placeholder="Search by name or code..." value={clSearchQ} onValueChange={setClSearchQ} />
+                            <CommandList>
+                              {clLoading ? (
+                                <div className="flex items-center justify-center py-6"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /><span className="ml-2 text-sm text-muted-foreground">Searching...</span></div>
+                              ) : clSearchQ.length < 1 ? (
+                                <div className="py-6 text-center text-sm text-muted-foreground">Type to search...</div>
+                              ) : clearanceLevels.length === 0 ? (
+                                <CommandEmpty>No results found.</CommandEmpty>
+                              ) : (
+                                <CommandGroup>
+                                  {editClearanceLevelId && (
+                                    <CommandItem value="__clear__" onSelect={() => { setEditClearanceLevelId(undefined); setSelectedClName(''); setClOpen(false); }}>
+                                      <X className="mr-2 h-3.5 w-3.5 text-muted-foreground" /> Clear selection
+                                    </CommandItem>
+                                  )}
+                                  {clearanceLevels.map(item => (
+                                    <CommandItem key={item.id} value={item.id} onSelect={() => { setEditClearanceLevelId(item.id); setSelectedClName(item.name); setClOpen(false); }}
+                                      className="flex items-center justify-between group">
+                                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                                        <Check className={cn('h-3.5 w-3.5 shrink-0', editClearanceLevelId === item.id ? 'opacity-100' : 'opacity-0')} />
+                                        {item.color && <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />}
+                                        <div className="min-w-0">
+                                          <span className="text-sm">{item.name}</span>
+                                          <span className="text-xs text-muted-foreground ml-1">({item.code})</span>
+                                          {item.description && <p className="text-xs text-muted-foreground truncate">{item.description}</p>}
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                        {canManageRefData && (<>
+                                          <button type="button" onClick={(e) => { e.stopPropagation(); setEditRefItem(item); setCreateRefCategory('clearance-levels'); setClOpen(false); }}
+                                            className="p-1 hover:bg-muted rounded" title="Edit"><Pencil className="h-3 w-3 text-muted-foreground" /></button>
+                                          <button type="button" onClick={(e) => { e.stopPropagation(); setDeleteRefItem({ item, category: 'clearance-levels' }); setClOpen(false); }}
+                                            className="p-1 hover:bg-destructive/10 rounded" title="Delete"><Trash2 className="h-3 w-3 text-destructive" /></button>
+                                        </>)}
+                                      </div>
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              )}
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                      {canManageRefData && (<p className="text-xs text-muted-foreground">Can&apos;t find what you need?{' '}<button type="button" onClick={() => { setEditRefItem(null); setCreateRefCategory('clearance-levels'); }} className="text-primary hover:underline font-medium">Create new</button></p>)}
+                    </div>
+                  </div>
+                </div>
+
                 <Button type="submit" disabled={savingProfile} className="w-full">
                   <Save className="h-4 w-4 mr-2" />
                   {savingProfile ? 'Saving...' : 'Save Changes'}
@@ -1170,6 +1760,77 @@ export default function UserDetailPage() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Organization Tab - UI Shell */}
+        <TabsContent value="organization">
+          <div className="space-y-4">
+            {/* Org Unit Memberships */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Building2 className="h-5 w-5" />
+                      Org Unit Memberships
+                    </CardTitle>
+                    <CardDescription>Organizational units this user belongs to</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-center py-8">
+                  <Building2 className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
+                  <p className="text-muted-foreground">Org unit memberships will be displayed here</p>
+                  <p className="text-xs text-muted-foreground mt-1">Shows departments, teams, and units this user is assigned to</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Position Assignments */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <MapPin className="h-5 w-5" />
+                      Position Assignments
+                    </CardTitle>
+                    <CardDescription>Positions this user holds across the organization</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-center py-8">
+                  <MapPin className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
+                  <p className="text-muted-foreground">Position assignments will be displayed here</p>
+                  <p className="text-xs text-muted-foreground mt-1">Shows seat codes, titles, FTE%, and assignment types</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Operational Groups */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Network className="h-5 w-5" />
+                      Operational Groups
+                    </CardTitle>
+                    <CardDescription>Project teams, committees, and task forces</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-center py-8">
+                  <Network className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
+                  <p className="text-muted-foreground">Operational group memberships will be displayed here</p>
+                  <p className="text-xs text-muted-foreground mt-1">Shows group name, role, and leader information</p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* Sessions Tab */}
@@ -1486,6 +2147,47 @@ export default function UserDetailPage() {
           onClose={handleCropCancel}
           imageSrc={imageToCrop}
           onCropComplete={handleCropComplete}
+        />
+      )}
+
+      {/* Create/Edit Reference Data Modal */}
+      <CreateReferenceDataModal
+        isOpen={!!createRefCategory}
+        category={createRefCategory || 'job-families'}
+        editItem={editRefItem}
+        onClose={() => { setCreateRefCategory(null); setEditRefItem(null); }}
+        onCreated={(item) => {
+          const isEditing = !!editRefItem;
+          if (createRefCategory === 'job-families') {
+            setEditJobFamilyId(item.id); setSelectedJfName(item.name);
+            setJobFamilies(prev => isEditing ? prev.map(i => i.id === item.id ? item : i) : [...prev, item]);
+          } else if (createRefCategory === 'employment-types') {
+            setEditEmploymentTypeId(item.id); setSelectedEtName(item.name);
+            setEmploymentTypes(prev => isEditing ? prev.map(i => i.id === item.id ? item : i) : [...prev, item]);
+          } else if (createRefCategory === 'clearance-levels') {
+            setEditClearanceLevelId(item.id); setSelectedClName(item.name);
+            setClearanceLevels(prev => isEditing ? prev.map(i => i.id === item.id ? item : i) : [...prev, item]);
+          } else if (createRefCategory === 'cost-centers') {
+            setEditCostCenterId(item.id); setEditCostCenterName(item.name);
+            setCostCenters(prev => isEditing ? prev.map(i => i.id === item.id ? item : i) : [...prev, item]);
+          }
+          addNotification({
+            type: 'success',
+            title: isEditing ? 'Updated' : 'Created',
+            message: `${item.name} ${isEditing ? 'updated' : 'created'} successfully`,
+          });
+        }}
+      />
+
+      {/* Delete Reference Data Confirmation */}
+      {deleteRefItem && (
+        <ConfirmationModal
+          isOpen={!!deleteRefItem}
+          onClose={() => setDeleteRefItem(null)}
+          onConfirm={handleDeleteRefData}
+          title={`Delete ${deleteRefItem.item.name}?`}
+          message={`Are you sure you want to delete "${deleteRefItem.item.name}" (${deleteRefItem.item.code})? This action cannot be undone.`}
+          variant="destructive"
         />
       )}
     </div>

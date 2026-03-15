@@ -139,6 +139,17 @@ export const Permissions = {
   ORG_ASSIGN_USER: 'org:assign-user',
   ORG_ASSIGN_HEAD: 'org:assign-head',
   ORG_VIEW_MEMBERS: 'org:view-members',
+  ORG_ASSIGN_MANAGER: 'org:assign-manager',
+  ORG_MANAGE_REFERENCE_DATA: 'org:manage-reference-data',
+  ORG_MANAGE_GROUPS: 'org:manage-groups',
+  ORG_MANAGE_CONFIG: 'org:manage-config',
+
+  // Position Management
+  POSITION_READ: 'position:read',
+  POSITION_CREATE: 'position:create',
+  POSITION_UPDATE: 'position:update',
+  POSITION_DELETE: 'position:delete',
+  POSITION_ASSIGN: 'position:assign',
 } as const;
 
 /**
@@ -220,6 +231,26 @@ export const AdminPagePermissions: Record<string, {
 
   // Organization management
   '/admin/organization': {
+    view: Permissions.ORG_READ,
+    create: Permissions.ORG_CREATE,
+    update: Permissions.ORG_UPDATE,
+    delete: Permissions.ORG_DELETE,
+    assign: Permissions.ORG_ASSIGN_USER,
+  },
+  // Organization Configuration
+  '/admin/organization/config': {
+    view: Permissions.ORG_READ,
+    update: Permissions.ORG_MANAGE_CONFIG,
+  },
+  // Position Catalog
+  '/admin/organization/positions': {
+    view: Permissions.POSITION_READ,
+    create: Permissions.POSITION_CREATE,
+    update: Permissions.POSITION_UPDATE,
+    delete: Permissions.POSITION_DELETE,
+  },
+  // OU Detail page (dynamic route)
+  '/admin/organization/detail': {
     view: Permissions.ORG_READ,
     create: Permissions.ORG_CREATE,
     update: Permissions.ORG_UPDATE,

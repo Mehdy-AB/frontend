@@ -189,6 +189,20 @@ export interface UserDto {
   attributes?: Record<string, any>;
   roles: string[];
   groups: GroupDto[];
+  // Governed HR attributes
+  employeeNumber?: string;
+  costCenterId?: string;
+  costCenterName?: string;
+  hireDate?: string;
+  terminationDate?: string;
+  jobFamilyId?: string;
+  jobFamilyName?: string;
+  employmentTypeId?: string;
+  employmentTypeName?: string;
+  clearanceLevelId?: string;
+  clearanceLevelName?: string;
+  currentManagerUserId?: string;
+  currentManagerDisplayName?: string;
 }
 
 export type UserStatus = 'ACTIVE' | 'INACTIVE';
@@ -201,6 +215,14 @@ export interface CreateUserRequest {
   lastName?: string;
   jobTitle?: string;
   imageUrl?: string;
+  // Governed HR attributes (optional at creation)
+  employeeNumber?: string;
+  costCenterId?: string;
+  hireDate?: string;
+  jobFamilyId?: string;
+  employmentTypeId?: string;
+  clearanceLevelId?: string;
+  managerId?: string;
 }
 
 export interface UpdateUserRequest {
@@ -211,6 +233,13 @@ export interface UpdateUserRequest {
   lastName?: string;
   jobTitle?: string;
   imageUrl?: string;
+  // Governed HR attributes
+  employeeNumber?: string;
+  costCenterId?: string | null;
+  hireDate?: string;
+  jobFamilyId?: string;
+  employmentTypeId?: string;
+  clearanceLevelId?: string;
 }
 
 // ==================== ROLE TYPES ====================

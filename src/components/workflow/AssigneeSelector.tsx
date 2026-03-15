@@ -369,7 +369,7 @@ export default function AssigneeSelector({
                                                 <div className="flex-1 min-w-0">
                                                     <div className="text-sm font-medium text-gray-900 truncate">{orgUnit.name}</div>
                                                     <div className="flex items-center gap-2 text-xs text-gray-500">
-                                                        <span className="px-1.5 py-0 bg-gray-100 rounded text-[10px] font-medium">{orgUnit.type}</span>
+                                                        <span className="px-1.5 py-0 bg-gray-100 rounded text-[10px] font-medium">{orgUnit.typeName || orgUnit.typeId}</span>
                                                         <span>{orgUnit.memberCount} members</span>
                                                         {orgUnit.headUserDisplayName && (
                                                             <span className="text-amber-600">Head: {orgUnit.headUserDisplayName}</span>
