@@ -149,9 +149,9 @@ export default function DocumentViewPage() {
 
       // If no version param, just fetch without version (backend returns active version automatically)
       // If version param exists, fetch that specific version
-      const [docData, downloadUrl] = await Promise.all([
+      const [docData, contentUrl] = await Promise.all([
         notificationApiClient.getDocument(parseInt(documentId), { silent: true }),
-        notificationApiClient.downloadDocument(
+        notificationApiClient.getContentUrl(
           parseInt(documentId),
           versionToFetch || undefined,
           { silent: true }
@@ -164,7 +164,7 @@ export default function DocumentViewPage() {
       // Extend the document with viewing-specific data
       const documentView: DocumentViewDto = {
         ...docData,
-        contentUrl: downloadUrl,
+        contentUrl: contentUrl,
         thumbnailUrl: `${(typeof window !== 'undefined' && (window as any).ENV?.API_URL) || 'http://localhost:8080'}/api/v1/document/${docData.documentId}/thumbnail`,
         modelConfigurations: [
           {
@@ -363,9 +363,7 @@ export default function DocumentViewPage() {
     if (!document) return;
 
     try {
-      // Download the current version (use versionId if available, otherwise latest)
-      // Pass versionId directly as second parameter (not as object)
-      const downloadUrl = await notificationApiClient.downloadDocument(
+      await notificationApiClient.downloadDocument(
         document.documentId,
         currentVersion || undefined
       );
@@ -379,15 +377,6 @@ export default function DocumentViewPage() {
       } catch (logError) {
         console.warn('Failed to log download operation:', logError);
       }
-
-      // Create download link that starts in browser download section
-      const link = window.document.createElement('a');
-      link.href = downloadUrl;
-      link.download = document.name;
-      link.target = '_blank';
-      window.document.body.appendChild(link);
-      link.click();
-      window.document.body.removeChild(link);
     } catch (error) {
       console.error('Download failed:', error);
       setError('Failed to download document');
@@ -446,8 +435,8 @@ export default function DocumentViewPage() {
       // Call API to set the version as active (this sets it in the backend)
       await notificationApiClient.setActiveVersion(document.documentId, versionId);
 
-      // Fetch the specific version content with version parameter
-      const newDownloadUrl = await notificationApiClient.downloadDocument(
+      // Fetch the specific version content URL for the viewer
+      const newContentUrl = await notificationApiClient.getContentUrl(
         document.documentId,
         versionId, // Explicitly fetch the restored version
         { silent: true }
@@ -468,7 +457,7 @@ export default function DocumentViewPage() {
         sizeBytes: version?.sizeBytes || prev.sizeBytes,
         mimeType: version?.mimeType || prev.mimeType,
         updatedAt: new Date().toISOString(),
-        contentUrl: newDownloadUrl
+        contentUrl: newContentUrl
       } : null);
 
       // Force FileViewer to re-render with new content
@@ -671,16 +660,16 @@ export default function DocumentViewPage() {
         onVersionUploadSuccess={async () => {
           // Fetch the updated document data first
           try {
-            const [docData, downloadUrl] = await Promise.all([
+            const [docData, contentUrl] = await Promise.all([
               notificationApiClient.getDocument(parseInt(documentId), { silent: true }),
-              notificationApiClient.downloadDocument(parseInt(documentId), undefined, { silent: true })
+              notificationApiClient.getContentUrl(parseInt(documentId), undefined, { silent: true })
             ]);
 
             // Update document with new data
             setDocument(prev => prev ? {
               ...prev,
               ...docData,
-              contentUrl: downloadUrl,
+              contentUrl: contentUrl,
               thumbnailUrl: `${(typeof window !== 'undefined' && (window as any).ENV?.API_URL) || 'http://localhost:8080'}/api/v1/document/${docData.documentId}/thumbnail`
             } : null);
 

@@ -10,12 +10,14 @@ import { SearchSelect } from '@/components/main/SearchSelect';
 import { filingCategoryService } from '@/api/services/filingCategoryService';
 import { FilingCategoryResponseDto, CategoryMetadataDefinitionDto } from '@/types/api';
 import { WorkflowNodeData, WorkflowCondition, ConditionGroup, ConditionProperty, ConditionOperator } from '../nodes/types';
+import { VariableDefinition } from '../components/variables/types';
 
 interface ConditionNodeModalProps {
     isOpen: boolean;
     onClose: () => void;
     nodeData: WorkflowNodeData;
     onSave: (updatedData: Partial<WorkflowNodeData>) => void;
+    workflowVariables?: VariableDefinition[];
 }
 
 // Property options with icons/colors for visual distinction
@@ -26,6 +28,7 @@ const PROPERTY_OPTIONS: { value: ConditionProperty; label: string; color: string
     { value: 'filingCategory', label: 'Model', color: 'purple' },
     { value: 'metadata', label: 'Metadata Field', color: 'indigo' },
     { value: 'createdDate', label: 'Created Date', color: 'rose' },
+    { value: 'variable', label: 'Workflow Variable', color: 'teal' },
 ];
 
 // Operators organized by data type
@@ -84,6 +87,23 @@ function getOperatorsForProperty(property: ConditionProperty): { value: string; 
         case 'filingCategory': return OPERATORS.select;
         case 'createdDate': return OPERATORS.date;
         case 'metadata': return OPERATORS.text; // Default, will be overridden by metadata type
+        case 'variable': return OPERATORS.text; // Default, will be overridden by variable type
+        default: return OPERATORS.text;
+    }
+}
+
+// Get operators based on workflow variable type
+function getOperatorsForVariableType(varType: string): { value: string; label: string }[] {
+    switch (varType) {
+        case 'STRING':
+        case 'TEXT':
+        case 'EMAIL': return OPERATORS.text;
+        case 'NUMBER':
+        case 'DECIMAL': return OPERATORS.number;
+        case 'DATE':
+        case 'TIME':
+        case 'DATETIME': return OPERATORS.date;
+        case 'BOOLEAN': return OPERATORS.boolean;
         default: return OPERATORS.text;
     }
 }
@@ -102,7 +122,7 @@ function getOperatorsForMetadataType(dataType: string): { value: string; label: 
     }
 }
 
-export default function ConditionNodeModal({ isOpen, onClose, nodeData, onSave }: ConditionNodeModalProps) {
+export default function ConditionNodeModal({ isOpen, onClose, nodeData, onSave, workflowVariables = [] }: ConditionNodeModalProps) {
     const [conditionGroups, setConditionGroups] = useState<ConditionGroup[]>([]);
     const [categories, setCategories] = useState<FilingCategoryResponseDto[]>([]);
     const [loading, setLoading] = useState(false);
@@ -175,6 +195,8 @@ export default function ConditionNodeModal({ isOpen, onClose, nodeData, onSave }
                 metadataFieldId: undefined,
                 metadataFieldName: undefined,
                 metadataDataType: undefined,
+                variableKey: undefined,
+                variableType: undefined,
             });
         } else {
             // When operator changes away from 'between', clear secondaryValue
@@ -199,6 +221,10 @@ export default function ConditionNodeModal({ isOpen, onClose, nodeData, onSave }
                 let propName = c.property === 'filingCategory' ? 'Model' : c.property;
                 if (c.property === 'metadata' && c.metadataFieldName) {
                     propName = `metadata.${c.metadataFieldName}`;
+                }
+                if (c.property === 'variable' && c.variableKey) {
+                    const varDef = workflowVariables.find(v => v.variableKey === c.variableKey);
+                    propName = `var.${varDef?.label || c.variableKey}`;
                 }
                 let displayValue = c.value;
                 if (c.property === 'filingCategory') {
@@ -227,6 +253,9 @@ export default function ConditionNodeModal({ isOpen, onClose, nodeData, onSave }
             if (field) {
                 return getOperatorsForMetadataType(field.dataType);
             }
+        }
+        if (condition.property === 'variable' && condition.variableType) {
+            return getOperatorsForVariableType(condition.variableType);
         }
         return getOperatorsForProperty(condition.property);
     }
@@ -324,6 +353,57 @@ export default function ConditionNodeModal({ isOpen, onClose, nodeData, onSave }
                         <div>
                             <Label className="text-xs text-gray-500 mb-1 block">Value</Label>
                             {renderMetadataValueInput(selectedField, condition, groupIndex, conditionIndex)}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // Workflow Variable
+        if (property === 'variable') {
+            return (
+                <div className="space-y-3">
+                    {/* Variable Selection */}
+                    <div>
+                        <Label className="text-xs text-gray-500 mb-1 block">Variable</Label>
+                        <Select
+                            value={condition.variableKey || ''}
+                            onValueChange={(v) => {
+                                const varDef = workflowVariables.find(wv => wv.variableKey === v);
+                                const varType = varDef?.type || 'STRING';
+                                const ops = getOperatorsForVariableType(varType);
+                                updateCondition(groupIndex, conditionIndex, {
+                                    variableKey: v,
+                                    variableType: varType,
+                                    value: '',
+                                    secondaryValue: undefined,
+                                    operator: ops[0].value as ConditionOperator,
+                                });
+                            }}
+                        >
+                            <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select variable..." />
+                            </SelectTrigger>
+                            <SelectContent className="z-[200]">
+                                {workflowVariables.length === 0 ? (
+                                    <div className="px-3 py-2 text-sm text-gray-400">No variables defined</div>
+                                ) : (
+                                    workflowVariables.map(v => (
+                                        <SelectItem key={v.variableKey} value={v.variableKey}>
+                                            <span className="font-medium">{v.label}</span>
+                                            <span className="text-gray-400 text-xs ml-2">({v.type})</span>
+                                        </SelectItem>
+                                    ))
+                                )}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {/* Value input based on variable type */}
+                    {condition.variableKey && condition.variableType && (
+                        <div>
+                            <Label className="text-xs text-gray-500 mb-1 block">Value</Label>
+                            {renderVariableValueInput(condition, groupIndex, conditionIndex)}
                         </div>
                     )}
                 </div>
@@ -589,6 +669,139 @@ export default function ConditionNodeModal({ isOpen, onClose, nodeData, onSave }
         }
     }
 
+    // Render value input for workflow variable based on its type
+    function renderVariableValueInput(
+        condition: WorkflowCondition,
+        groupIndex: number,
+        conditionIndex: number
+    ) {
+        const varType = condition.variableType || 'STRING';
+
+        switch (varType) {
+            case 'BOOLEAN':
+                return (
+                    <Select
+                        value={String(condition.value || '')}
+                        onValueChange={(v) => updateCondition(groupIndex, conditionIndex, { value: v })}
+                    >
+                        <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select..." />
+                        </SelectTrigger>
+                        <SelectContent className="z-[200]">
+                            <SelectItem value="true">True</SelectItem>
+                            <SelectItem value="false">False</SelectItem>
+                        </SelectContent>
+                    </Select>
+                );
+            case 'NUMBER':
+            case 'DECIMAL':
+                if (condition.operator === 'between') {
+                    return (
+                        <div className="flex items-center gap-2">
+                            <Input
+                                type="number"
+                                value={String(condition.value || '')}
+                                onChange={(e) => updateCondition(groupIndex, conditionIndex, { value: e.target.value })}
+                                placeholder="Min..."
+                                className="flex-1"
+                            />
+                            <span className="text-xs text-gray-500 font-medium">to</span>
+                            <Input
+                                type="number"
+                                value={String(condition.secondaryValue || '')}
+                                onChange={(e) => updateCondition(groupIndex, conditionIndex, { secondaryValue: e.target.value })}
+                                placeholder="Max..."
+                                className="flex-1"
+                            />
+                        </div>
+                    );
+                }
+                return (
+                    <Input
+                        type="number"
+                        value={String(condition.value || '')}
+                        onChange={(e) => updateCondition(groupIndex, conditionIndex, { value: e.target.value })}
+                        placeholder="Enter number..."
+                        className="w-full"
+                    />
+                );
+            case 'DATE':
+                if (condition.operator === 'between') {
+                    return (
+                        <div className="flex items-center gap-2">
+                            <Input
+                                type="date"
+                                value={String(condition.value || '')}
+                                onChange={(e) => updateCondition(groupIndex, conditionIndex, { value: e.target.value })}
+                                className="flex-1"
+                            />
+                            <span className="text-xs text-gray-500 font-medium">to</span>
+                            <Input
+                                type="date"
+                                value={String(condition.secondaryValue || '')}
+                                onChange={(e) => updateCondition(groupIndex, conditionIndex, { secondaryValue: e.target.value })}
+                                className="flex-1"
+                            />
+                        </div>
+                    );
+                }
+                return (
+                    <Input
+                        type="date"
+                        value={String(condition.value || '')}
+                        onChange={(e) => updateCondition(groupIndex, conditionIndex, { value: e.target.value })}
+                        className="w-full"
+                    />
+                );
+            case 'TIME':
+                return (
+                    <Input
+                        type="time"
+                        value={String(condition.value || '')}
+                        onChange={(e) => updateCondition(groupIndex, conditionIndex, { value: e.target.value })}
+                        className="w-full"
+                    />
+                );
+            case 'DATETIME':
+                if (condition.operator === 'between') {
+                    return (
+                        <div className="flex items-center gap-2">
+                            <Input
+                                type="datetime-local"
+                                value={String(condition.value || '')}
+                                onChange={(e) => updateCondition(groupIndex, conditionIndex, { value: e.target.value })}
+                                className="flex-1"
+                            />
+                            <span className="text-xs text-gray-500 font-medium">to</span>
+                            <Input
+                                type="datetime-local"
+                                value={String(condition.secondaryValue || '')}
+                                onChange={(e) => updateCondition(groupIndex, conditionIndex, { secondaryValue: e.target.value })}
+                                className="flex-1"
+                            />
+                        </div>
+                    );
+                }
+                return (
+                    <Input
+                        type="datetime-local"
+                        value={String(condition.value || '')}
+                        onChange={(e) => updateCondition(groupIndex, conditionIndex, { value: e.target.value })}
+                        className="w-full"
+                    />
+                );
+            default: // STRING, TEXT, EMAIL, FILE
+                return (
+                    <Input
+                        value={String(condition.value || '')}
+                        onChange={(e) => updateCondition(groupIndex, conditionIndex, { value: e.target.value })}
+                        placeholder="Enter value..."
+                        className="w-full"
+                    />
+                );
+        }
+    }
+
     if (!isOpen) return null;
 
     return (
@@ -685,8 +898,8 @@ export default function ConditionNodeModal({ isOpen, onClose, nodeData, onSave }
                                                     </button>
                                                 </div>
 
-                                                {/* Operator + Value row (except for metadata which has its own layout) */}
-                                                {condition.property !== 'metadata' && (
+                                                {/* Operator + Value row (except for metadata/variable which have their own layout) */}
+                                                {condition.property !== 'metadata' && condition.property !== 'variable' && (
                                                     <div className="grid grid-cols-2 gap-3">
                                                         <div>
                                                             <Label className="text-xs text-gray-500 mb-1 block">Operator</Label>
@@ -720,6 +933,35 @@ export default function ConditionNodeModal({ isOpen, onClose, nodeData, onSave }
 
                                                         {/* Operator for metadata (show after field is selected) */}
                                                         {condition.metadataFieldId && (
+                                                            <div>
+                                                                <Label className="text-xs text-gray-500 mb-1 block">Operator</Label>
+                                                                <Select
+                                                                    value={condition.operator}
+                                                                    onValueChange={(v) => updateCondition(groupIndex, conditionIndex, { operator: v as ConditionOperator })}
+                                                                >
+                                                                    <SelectTrigger className="w-full">
+                                                                        <SelectValue />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent className="z-[200]">
+                                                                        {getOperatorsForCondition(condition).map(opt => (
+                                                                            <SelectItem key={opt.value} value={opt.value}>
+                                                                                {opt.label}
+                                                                            </SelectItem>
+                                                                        ))}
+                                                                    </SelectContent>
+                                                                </Select>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {/* Variable has a special layout with variable picker → operator → value */}
+                                                {condition.property === 'variable' && (
+                                                    <div className="space-y-3">
+                                                        {renderValueInput(condition, groupIndex, conditionIndex)}
+
+                                                        {/* Operator for variable (show after variable is selected) */}
+                                                        {condition.variableKey && (
                                                             <div>
                                                                 <Label className="text-xs text-gray-500 mb-1 block">Operator</Label>
                                                                 <Select

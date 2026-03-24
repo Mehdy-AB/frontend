@@ -523,15 +523,8 @@ export default function SharedPage() {
   const handleDownload = async (item: TableItem) => {
     if (item.type === 'document') {
       try {
-        const downloadUrl = await notificationApiClient.downloadDocument(item.documentId);
+        await notificationApiClient.downloadDocument(item.documentId);
         await notificationApiClient.fileDownloaded(item.documentId);
-        const link = window.document.createElement('a');
-        link.href = downloadUrl;
-        link.download = item.name;
-        link.target = '_blank';
-        window.document.body.appendChild(link);
-        link.click();
-        window.document.body.removeChild(link);
       } catch (error) {
         console.error('Error downloading document:', error);
       }

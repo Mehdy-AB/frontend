@@ -155,9 +155,8 @@ export default function RelatedDocumentsSection({
 
   const handleDownloadDocument = async (docId: number) => {
     try {
-      const downloadUrl = await documentService.downloadDocument(docId);
+      await documentService.downloadDocument(docId);
       await documentService.fileDownloaded(docId);
-      window.open(downloadUrl, '_blank');
     } catch (error) {
       console.error('Error downloading document:', error);
       setError('Failed to download document');

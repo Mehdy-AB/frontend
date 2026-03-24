@@ -91,11 +91,13 @@ export default function AdvancedSearchModal({
 
   const dropdownRef = useRef<HTMLDivElement | null>(null);
 
+  // Track whether data has been fetched (to avoid re-fetching on every dropdown open)
+  const [usersFetched, setUsersFetched] = useState(false);
+  const [categoriesFetched, setCategoriesFetched] = useState(false);
+
   useEffect(() => {
     if (open) {
-      fetchCategories();
-      fetchUsers();
-      // Initialize with provided configuration
+      // Don't eagerly fetch users/categories — they will lazy-load on dropdown open
       if (initialQuery) {
         setQuery(initialQuery);
       }
@@ -104,7 +106,6 @@ export default function AdvancedSearchModal({
           setContentType(initialConfiguration.filters.contentType);
         }
         if (initialConfiguration.filters?.searchScope) {
-          // Map old search scope to new structure
           const oldScope = initialConfiguration.filters.searchScope as any;
           setSearchScope({
             lookUpNames: oldScope.searchInName || oldScope.lookUpNames || true,
@@ -126,14 +127,31 @@ export default function AdvancedSearchModal({
             setEnableDateFilter(true);
           }
         }
-        // Load selected category if provided
-        if (initialConfiguration.filters?.selectedCategories && initialConfiguration.filters.selectedCategories.length > 0) {
-          // This would need to be implemented based on your category loading logic
-          // For now, we'll just set the query
-        }
       }
+    } else {
+      // Reset fetch tracking when modal closes
+      setUsersFetched(false);
+      setCategoriesFetched(false);
     }
   }, [open, initialQuery, initialConfiguration]);
+
+  // Lazy-load users when dropdown opens
+  const handleUserDropdownOpen = () => {
+    setShowUserDropdown(true);
+    if (!usersFetched && users.length === 0) {
+      fetchUsers();
+      setUsersFetched(true);
+    }
+  };
+
+  // Lazy-load categories when dropdown opens
+  const handleCategoryDropdownOpen = () => {
+    setShowCategoryDropdown(true);
+    if (!categoriesFetched && categories.length === 0) {
+      fetchCategories();
+      setCategoriesFetched(true);
+    }
+  };
 
   // Handle escape key to close modal
   useEffect(() => {
@@ -214,26 +232,31 @@ export default function AdvancedSearchModal({
     );
   }, [categorySearchQuery, categories]);
 
-  // Debounced API fetch for users
+  // Debounced API fetch for users (only when dropdown is open)
   useEffect(() => {
+    if (!showUserDropdown) return;
     if (!userSearchQuery.trim()) {
+      if (usersFetched) return; // already loaded initial data
       fetchUsers();
+      setUsersFetched(true);
       return;
     }
     const timer = setTimeout(() => fetchUsers(userSearchQuery), 500);
     return () => clearTimeout(timer);
-  }, [userSearchQuery]);
+  }, [userSearchQuery, showUserDropdown]);
 
-  // Debounced API fetch for categories
+  // Debounced API fetch for categories (only when dropdown is open)
   useEffect(() => {
+    if (!showCategoryDropdown) return;
     if (!categorySearchQuery.trim()) {
-      // When clearing search query, refetch all categories
+      if (categoriesFetched) return; // already loaded initial data
       fetchCategories();
+      setCategoriesFetched(true);
       return;
     }
     const timer = setTimeout(() => fetchCategories(categorySearchQuery), 500);
     return () => clearTimeout(timer);
-  }, [categorySearchQuery]);
+  }, [categorySearchQuery, showCategoryDropdown]);
 
   // Click outside to close dropdown
   useEffect(() => {
@@ -273,6 +296,62 @@ export default function AdvancedSearchModal({
         return FilterOperator.EQUALS;
       default:
         return FilterOperator.EQUALS;
+    }
+  };
+
+  // Get operators available for a given field type
+  const getOperatorsForType = (fieldType: string): { value: string; label: string }[] => {
+    switch ((fieldType || '').toUpperCase()) {
+      case "STRING":
+        return [
+          { value: 'EQUALS', label: 'Equals' },
+          { value: 'NOT_EQUALS', label: 'Not Equals' },
+          { value: 'CONTAINS', label: 'Contains' },
+          { value: 'STARTS_WITH', label: 'Starts With' },
+          { value: 'ENDS_WITH', label: 'Ends With' },
+          { value: 'IS_NULL', label: 'Is Empty' },
+          { value: 'IS_NOT_NULL', label: 'Is Not Empty' },
+        ];
+      case "NUMBER":
+      case "FLOAT":
+        return [
+          { value: 'EQUALS', label: 'Equals' },
+          { value: 'NOT_EQUALS', label: 'Not Equals' },
+          { value: 'GT', label: 'Greater Than' },
+          { value: 'GTE', label: 'Greater or Equal' },
+          { value: 'LT', label: 'Less Than' },
+          { value: 'LTE', label: 'Less or Equal' },
+          { value: 'RANGE', label: 'Between' },
+          { value: 'IS_NULL', label: 'Is Empty' },
+        ];
+      case "DATE":
+      case "DATETIME":
+        return [
+          { value: 'EQUALS', label: 'Equals' },
+          { value: 'GT', label: 'After' },
+          { value: 'GTE', label: 'On or After' },
+          { value: 'LT', label: 'Before' },
+          { value: 'LTE', label: 'On or Before' },
+          { value: 'RANGE', label: 'Between' },
+          { value: 'IS_NULL', label: 'Is Empty' },
+        ];
+      case "BOOLEAN":
+        return [
+          { value: 'EQUALS', label: 'Equals' },
+          { value: 'IS_NULL', label: 'Is Empty' },
+        ];
+      case "LIST":
+        return [
+          { value: 'EQUALS', label: 'Equals' },
+          { value: 'IN', label: 'In (Any Of)' },
+          { value: 'NOT_IN', label: 'Not In' },
+          { value: 'IS_NULL', label: 'Is Empty' },
+        ];
+      default:
+        return [
+          { value: 'EQUALS', label: 'Equals' },
+          { value: 'CONTAINS', label: 'Contains' },
+        ];
     }
   };
 
@@ -734,7 +813,7 @@ export default function AdvancedSearchModal({
                       type="text" 
                       value={userSearchQuery} 
                       onChange={(e) => { setUserSearchQuery(e.target.value); setShowUserDropdown(true); }} 
-                      onFocus={() => setShowUserDropdown(true)} 
+                      onFocus={handleUserDropdownOpen} 
                       placeholder={selectedUser ? `${selectedUser.firstName} ${selectedUser.lastName}` : "Search users..."} 
                       className="w-full px-3 py-2 pr-10 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" 
                     />
@@ -853,7 +932,7 @@ export default function AdvancedSearchModal({
                     type="text" 
                     value={categorySearchQuery} 
                     onChange={(e) => { setCategorySearchQuery(e.target.value); setShowCategoryDropdown(true); }} 
-                    onFocus={() => setShowCategoryDropdown(true)} 
+                    onFocus={handleCategoryDropdownOpen} 
                     placeholder={selectedCategory ? selectedCategory.name : "Search or select a model..."} 
                     className="w-full px-4 py-2 pr-10 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" 
                   />
@@ -951,18 +1030,13 @@ export default function AdvancedSearchModal({
                             value={filter.operator}
                             onValueChange={(value) => updateFilter(index, { operator: value as FilterOperator })}
                           >
-                            <SelectTrigger className="w-32">
+                            <SelectTrigger className="w-36">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="EQUALS">Equals</SelectItem>
-                              <SelectItem value="CONTAINS">Contains</SelectItem>
-                              <SelectItem value="STARTS_WITH">Starts With</SelectItem>
-                              <SelectItem value="ENDS_WITH">Ends With</SelectItem>
-                              <SelectItem value="GT">Greater Than</SelectItem>
-                              <SelectItem value="LT">Less Than</SelectItem>
-                              <SelectItem value="GTE">Greater or Equal</SelectItem>
-                              <SelectItem value="LTE">Less or Equal</SelectItem>
+                              {getOperatorsForType(filter.fieldType).map(op => (
+                                <SelectItem key={op.value} value={op.value}>{op.label}</SelectItem>
+                              ))}
                             </SelectContent>
                           </Select>
                           <div className="flex-1">

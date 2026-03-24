@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { 
-  X, 
-  FileText, 
+import {
+  X,
+  FileText,
   Eye,
   Download,
   Unlink,
@@ -49,22 +49,22 @@ const LINK_TYPES = [
   { value: 'alternative', label: 'Alternative Version' }
 ];
 
-export default function ViewRelatedDocumentsModal({ 
-  isOpen, 
-  onClose, 
+export default function ViewRelatedDocumentsModal({
+  isOpen,
+  onClose,
   onLinkDeleted,
   sourceDocumentId,
   sourceDocumentName,
   canEdit
 }: ViewRelatedDocumentsModalProps) {
   const pageSize = 15;
-  
+
   // Filters
   const [linkTypeFilter, setLinkTypeFilter] = useState('all');
   const [isManualFilter, setIsManualFilter] = useState<boolean | undefined>(undefined);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
-  
+
   const [error, setError] = useState<string | null>(null);
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   const [linkToDelete, setLinkToDelete] = useState<{ linkId: number; documentName: string; isManual: boolean } | null>(null);
@@ -88,7 +88,7 @@ export default function ViewRelatedDocumentsModal({
       // Format dates to ISO format if provided
       const formattedFromDate = fromDate ? new Date(fromDate).toISOString() : undefined;
       const formattedToDate = toDate ? new Date(toDate + 'T23:59:59').toISOString() : undefined;
-      
+
       const response = await linkRuleService.getRelatedDocuments(
         sourceDocumentId,
         {
@@ -136,21 +136,21 @@ export default function ViewRelatedDocumentsModal({
 
   const confirmDeleteLink = async () => {
     if (!linkToDelete) return;
-    
+
     try {
       setIsDeleting(true);
       await linkRuleService.deleteDocumentLink(linkToDelete.linkId);
-      
+
       // Remove from list optimistically
       removeDocumentFromList(linkToDelete.linkId, (doc) => doc.linkId || 0);
-      
+
       // Notify parent
       onLinkDeleted?.();
-      
+
       // Close confirmation modal
       setShowDeleteConfirmation(false);
       setLinkToDelete(null);
-      
+
       // Refresh to sync with server
       fetchRelatedDocuments(false);
     } catch (error) {
@@ -172,9 +172,8 @@ export default function ViewRelatedDocumentsModal({
 
   const handleDownloadDocument = async (docId: number) => {
     try {
-      const downloadUrl = await notificationApiClient.downloadDocument(docId);
+      await notificationApiClient.downloadDocument(docId);
       await notificationApiClient.fileDownloaded(docId);
-      window.open(downloadUrl, '_blank');
     } catch (error) {
       console.error('Error downloading document:', error);
       setError('Failed to download document');
@@ -248,8 +247,8 @@ export default function ViewRelatedDocumentsModal({
 
             {/* Manual/Auto */}
             <div>
-              <Select 
-                value={isManualFilter === undefined ? 'all' : isManualFilter ? 'manual' : 'auto'} 
+              <Select
+                value={isManualFilter === undefined ? 'all' : isManualFilter ? 'manual' : 'auto'}
                 onValueChange={(v) => setIsManualFilter(v === 'all' ? undefined : v === 'manual')}
               >
                 <SelectTrigger className="h-10">
@@ -320,15 +319,13 @@ export default function ViewRelatedDocumentsModal({
                     <div className="flex items-start gap-4">
                       {/* Document Icon */}
                       <div className="flex-shrink-0">
-                        <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
-                          doc.manual ? 'bg-blue-50' : 'bg-green-50'
-                        }`}>
-                          <FileText className={`h-6 w-6 ${
-                            doc.manual ? 'text-blue-600' : 'text-green-600'
-                          }`} />
+                        <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${doc.manual ? 'bg-blue-50' : 'bg-green-50'
+                          }`}>
+                          <FileText className={`h-6 w-6 ${doc.manual ? 'text-blue-600' : 'text-green-600'
+                            }`} />
                         </div>
                       </div>
-                      
+
                       {/* Document Info */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-3 mb-2">
@@ -336,7 +333,7 @@ export default function ViewRelatedDocumentsModal({
                             <h4 className="font-semibold text-gray-900 truncate text-base mb-1">
                               {doc.documentName}
                             </h4>
-                            
+
                             {/* Badges */}
                             <div className="flex items-center gap-2 flex-wrap mb-2">
                               <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${getLinkTypeColor(doc.linkType)}`}>
@@ -360,7 +357,7 @@ export default function ViewRelatedDocumentsModal({
                               )}
                             </div>
                           </div>
-                          
+
                           {/* Action Buttons */}
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             {doc.userPermissions?.canView && (
@@ -383,7 +380,7 @@ export default function ViewRelatedDocumentsModal({
                             )}
                           </div>
                         </div>
-                        
+
                         {/* Owner & Email */}
                         <div className="flex items-center gap-3 mb-2">
                           <div className="flex items-center gap-2">
@@ -401,7 +398,7 @@ export default function ViewRelatedDocumentsModal({
                             </div>
                           </div>
                         </div>
-                        
+
                         {/* Metadata Row */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-gray-600 mt-3 pt-3 border-t border-gray-100">
                           {/* Folder Path */}
@@ -411,20 +408,20 @@ export default function ViewRelatedDocumentsModal({
                               <span className="truncate" title={doc.path}>{doc.path}</span>
                             </div>
                           )}
-                          
+
                           {/* File Size */}
                           <div className="flex items-center gap-1">
                             <FileText className="h-3 w-3 text-gray-400" />
                             <span>{formatFileSize(doc.sizeBytes)}</span>
                           </div>
-                          
+
                           {/* Created Date */}
                           <div className="flex items-center gap-1">
                             <Calendar className="h-3 w-3 text-gray-400" />
                             <span>{formatDate(doc.documentCreatedAt)}</span>
                           </div>
                         </div>
-                        
+
                         {/* Description if available */}
                         {doc.documentDescription && (
                           <p className="text-sm text-gray-600 mt-3 p-2 bg-gray-50 rounded italic border-l-2 border-blue-300">
@@ -489,12 +486,12 @@ export default function ViewRelatedDocumentsModal({
                   Remove Document Link
                 </h3>
               </div>
-              
+
               <p className="text-gray-600 mb-2">
                 Are you sure you want to remove the link to{' '}
                 <span className="font-medium text-gray-900">"{linkToDelete.documentName}"</span>?
               </p>
-              
+
               {!linkToDelete.isManual && (
                 <div className="flex items-start gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800 mb-4">
                   <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />

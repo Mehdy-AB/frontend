@@ -125,21 +125,13 @@ export default function VersionHistoryModal({
 
   const handleDownloadVersion = async (versionId: number) => {
     try {
-      const version = versions.find(v => v.id === versionId);
-      const downloadUrl = await notificationApiClient.downloadDocument(document.documentId, versionId);
+      await notificationApiClient.downloadDocument(document.documentId, versionId);
 
       try {
         await notificationApiClient.fileDownloaded(document.documentId, versionId);
       } catch (logError) {
         console.warn('Failed to log download operation:', logError);
       }
-
-      const link = window.document.createElement('a');
-      link.href = downloadUrl;
-      link.download = `${document.name}_v${version?.versionNumber}`;
-      window.document.body.appendChild(link);
-      link.click();
-      window.document.body.removeChild(link);
     } catch (err) {
       console.error('Error downloading version:', err);
       setError('Failed to download version');
@@ -306,12 +298,12 @@ export default function VersionHistoryModal({
                             </span>
                             {/* Modification Type Badge */}
                             <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${version.modificationType === 'MAJOR'
-                                ? 'bg-red-100 text-red-700 border border-red-200'
-                                : version.modificationType === 'MINOR'
-                                  ? 'bg-yellow-100 text-yellow-700 border border-yellow-200'
-                                  : version.modificationType === 'RESTORE'
-                                    ? 'bg-purple-100 text-purple-700 border border-purple-200'
-                                    : 'bg-gray-100 text-gray-600 border border-gray-200'
+                              ? 'bg-red-100 text-red-700 border border-red-200'
+                              : version.modificationType === 'MINOR'
+                                ? 'bg-yellow-100 text-yellow-700 border border-yellow-200'
+                                : version.modificationType === 'RESTORE'
+                                  ? 'bg-purple-100 text-purple-700 border border-purple-200'
+                                  : 'bg-gray-100 text-gray-600 border border-gray-200'
                               }`}>
                               {version.modificationType}
                             </span>

@@ -1971,7 +1971,7 @@ export default function WorkflowDesignerPage() {
         <div className="h-full flex flex-col">
           <div className="flex-1 flex overflow-hidden">
             {/* Combined Sidebar with Tabs */}
-            <Card className="w-80 border-r rounded-none flex flex-col">
+            <Card className="w-96 border-r rounded-none flex flex-col">
               {/* Tab Buttons */}
               <div className="flex border-b">
                 <button
@@ -3070,6 +3070,7 @@ export default function WorkflowDesignerPage() {
                     setEditingNodeData(null);
                   }}
                   nodeData={editingNodeData.data}
+                  workflowVariables={localVariables}
                   onSave={(updatedData) => {
                     setNodes((nds) =>
                       nds.map((n) =>

@@ -269,7 +269,7 @@ export default function WorkflowManagementPage() {
               </p>
             </div>
           </div>
-          <Button onClick={() => setIsCreateOpen(true)} className="gap-2">
+          <Button onClick={() => router.push('/admin/workflow/designer')} className="gap-2">
             <Plus className="h-4 w-4" />
             Create New
           </Button>
@@ -478,7 +478,7 @@ export default function WorkflowManagementPage() {
                           </p>
                         </div>
                         {!searchQuery && statusFilter === 'all' && (
-                          <Button size="sm" onClick={() => setIsCreateOpen(true)} className="gap-1.5 mt-1">
+                          <Button size="sm" onClick={() => router.push('/admin/workflow/designer')} className="gap-1.5 mt-1">
                             <Plus className="h-3.5 w-3.5" />
                             Create Workflow
                           </Button>

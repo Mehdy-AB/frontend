@@ -7,7 +7,8 @@ export type ConditionProperty =
   | 'mimeType'
   | 'filingCategory'
   | 'metadata'
-  | 'createdDate';
+  | 'createdDate'
+  | 'variable';
 
 export type ConditionOperator =
   | 'equals'
@@ -32,6 +33,8 @@ export interface WorkflowCondition {
   metadataFieldName?: string;
   metadataDataType?: string; // e.g. STRING, NUMBER, DATE, DATETIME, BOOLEAN, LIST
   categoryId?: number;
+  variableKey?: string;  // For workflow variable conditions
+  variableType?: string; // e.g. STRING, NUMBER, DATE, BOOLEAN, etc.
 }
 
 export interface ConditionGroup {

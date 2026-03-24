@@ -14,7 +14,8 @@ import {
   Clock,
   Star,
   Folder,
-  File
+  File,
+  Tag
 } from 'lucide-react';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
@@ -48,6 +49,25 @@ const getItemVersionNumber = (item: SearchResultItem): number | undefined => {
   return item.type === 'document' ? item.document.versionNumber : undefined;
 };
 
+const getItemCategory = (item: SearchResultItem): string | undefined => {
+  if (item.type === 'document' && item.document.filingCategory) {
+    return item.document.filingCategory.name || item.document.filingCategory;
+  }
+  return undefined;
+};
+
+const getItemPath = (item: SearchResultItem): string | undefined => {
+  if (item.type === 'document') return item.document.path;
+  if (item.type === 'folder') return item.folder.path;
+  return undefined;
+};
+
+const formatMimeType = (mimeType: string | undefined): string => {
+  if (!mimeType) return 'File';
+  const parts = mimeType.split('/');
+  return parts.length > 1 ? parts[1].toUpperCase() : mimeType.toUpperCase();
+};
+
 interface SearchResultsTableProps {
   items: SearchResultItem[];
   formatFileSize: (bytes: number) => string;
@@ -66,21 +86,22 @@ const SearchResultsTable = memo<SearchResultsTableProps>(({
   showLoadingRows = false
 }) => {
   return (
-    <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+    <div className="bg-card rounded-2xl shadow-lg overflow-hidden border border-border">
       <div className="overflow-x-auto">
         <table className="w-full">
-          <thead className="bg-gray-50 border-b border-gray-200">
+          <thead className="bg-muted/50 border-b border-border">
             <tr>
-              <th className="text-left p-4 text-xs font-medium text-gray-500 uppercase tracking-wide w-[300px]">Name</th>
-              <th className="text-left p-4 text-xs font-medium text-gray-500 uppercase tracking-wide">Type</th>
-              <th className="text-left p-4 text-xs font-medium text-gray-500 uppercase tracking-wide">Owner</th>
-              <th className="text-left p-4 text-xs font-medium text-gray-500 uppercase tracking-wide">Creator</th>
-              <th className="text-left p-4 text-xs font-medium text-gray-500 uppercase tracking-wide">Size</th>
-              <th className="text-left p-4 text-xs font-medium text-gray-500 uppercase tracking-wide">Last Modified</th>
-              <th className="text-left p-4 text-xs font-medium text-gray-500 uppercase tracking-wide">Relevance</th>
+              <th className="text-left p-4 text-xs font-medium text-muted-foreground uppercase tracking-wide w-[300px]">Name</th>
+              <th className="text-left p-4 text-xs font-medium text-muted-foreground uppercase tracking-wide">Type</th>
+              <th className="text-left p-4 text-xs font-medium text-muted-foreground uppercase tracking-wide">Model</th>
+              <th className="text-left p-4 text-xs font-medium text-muted-foreground uppercase tracking-wide">Owner</th>
+              <th className="text-left p-4 text-xs font-medium text-muted-foreground uppercase tracking-wide">Creator</th>
+              <th className="text-left p-4 text-xs font-medium text-muted-foreground uppercase tracking-wide">Size</th>
+              <th className="text-left p-4 text-xs font-medium text-muted-foreground uppercase tracking-wide">Last Modified</th>
+              <th className="text-left p-4 text-xs font-medium text-muted-foreground uppercase tracking-wide">Relevance</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200">
+          <tbody className="divide-y divide-border">
             {items.map((item) => (
               <SearchResultRow
                 key={item.type === 'folder' ? `folder-${getItemId(item)}` : `document-${getItemId(item)}`}
@@ -93,45 +114,48 @@ const SearchResultsTable = memo<SearchResultsTableProps>(({
             ))}
             {/* Loading skeleton rows */}
             {showLoadingRows && Array.from({ length: 5 }).map((_, index) => (
-              <tr key={`skeleton-${index}`} className="border-b border-gray-200">
+              <tr key={`skeleton-${index}`} className="border-b border-border">
                 <td className="p-4">
                   <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 bg-gray-200 animate-pulse rounded-lg"></div>
+                    <div className="h-10 w-10 bg-muted animate-pulse rounded-lg"></div>
                     <div className="space-y-2">
-                      <div className="h-4 w-40 bg-gray-200 animate-pulse rounded"></div>
-                      <div className="h-3 w-32 bg-gray-200 animate-pulse rounded"></div>
+                      <div className="h-4 w-40 bg-muted animate-pulse rounded"></div>
+                      <div className="h-3 w-32 bg-muted animate-pulse rounded"></div>
                     </div>
                   </div>
                 </td>
                 <td className="p-4">
-                  <div className="h-6 w-20 bg-gray-200 animate-pulse rounded"></div>
+                  <div className="h-6 w-20 bg-muted animate-pulse rounded"></div>
+                </td>
+                <td className="p-4">
+                  <div className="h-6 w-24 bg-muted animate-pulse rounded"></div>
                 </td>
                 <td className="p-4">
                   <div className="flex items-center gap-3">
-                    <div className="h-8 w-8 bg-gray-200 animate-pulse rounded-full"></div>
+                    <div className="h-8 w-8 bg-muted animate-pulse rounded-full"></div>
                     <div className="space-y-1">
-                      <div className="h-4 w-24 bg-gray-200 animate-pulse rounded"></div>
-                      <div className="h-3 w-32 bg-gray-200 animate-pulse rounded"></div>
+                      <div className="h-4 w-24 bg-muted animate-pulse rounded"></div>
+                      <div className="h-3 w-32 bg-muted animate-pulse rounded"></div>
                     </div>
                   </div>
                 </td>
                 <td className="p-4">
                   <div className="flex items-center gap-3">
-                    <div className="h-8 w-8 bg-gray-200 animate-pulse rounded-full"></div>
+                    <div className="h-8 w-8 bg-muted animate-pulse rounded-full"></div>
                     <div className="space-y-1">
-                      <div className="h-4 w-24 bg-gray-200 animate-pulse rounded"></div>
-                      <div className="h-3 w-32 bg-gray-200 animate-pulse rounded"></div>
+                      <div className="h-4 w-24 bg-muted animate-pulse rounded"></div>
+                      <div className="h-3 w-32 bg-muted animate-pulse rounded"></div>
                     </div>
                   </div>
                 </td>
                 <td className="p-4">
-                  <div className="h-4 w-20 bg-gray-200 animate-pulse rounded"></div>
+                  <div className="h-4 w-20 bg-muted animate-pulse rounded"></div>
                 </td>
                 <td className="p-4">
-                  <div className="h-4 w-24 bg-gray-200 animate-pulse rounded"></div>
+                  <div className="h-4 w-24 bg-muted animate-pulse rounded"></div>
                 </td>
                 <td className="p-4">
-                  <div className="h-6 w-12 bg-gray-200 animate-pulse rounded"></div>
+                  <div className="h-6 w-12 bg-muted animate-pulse rounded"></div>
                 </td>
               </tr>
             ))}
@@ -158,6 +182,8 @@ const SearchResultRow = memo<{
   const showMenu = openDropdownId === itemId;
   const size = getItemSize(item);
   const updatedAt = getItemUpdatedAt(item);
+  const category = getItemCategory(item);
+  const path = getItemPath(item);
 
   // Get highlighted text for display
   const getHighlightedName = () => {
@@ -180,7 +206,7 @@ const SearchResultRow = memo<{
 
     if (item.highlight?.['metadata.categoryName']) {
       highlights.push(
-        <div key="category" className="text-xs text-blue-600">
+        <div key="category" className="text-xs text-blue-600 dark:text-blue-400">
           <strong>Category:</strong> <span dangerouslySetInnerHTML={{ __html: item.highlight['metadata.categoryName'] }} />
         </div>
       );
@@ -188,7 +214,7 @@ const SearchResultRow = memo<{
 
     if (item.highlight?.['metadata.key']) {
       highlights.push(
-        <div key="key" className="text-xs text-green-600">
+        <div key="key" className="text-xs text-green-600 dark:text-green-400">
           <strong>Key:</strong> <span dangerouslySetInnerHTML={{ __html: item.highlight['metadata.key'] }} />
         </div>
       );
@@ -196,7 +222,7 @@ const SearchResultRow = memo<{
 
     if (item.highlight?.['metadata.value']) {
       highlights.push(
-        <div key="value" className="text-xs text-purple-600">
+        <div key="value" className="text-xs text-purple-600 dark:text-purple-400">
           <strong>Value:</strong> <span dangerouslySetInnerHTML={{ __html: item.highlight['metadata.value'] }} />
         </div>
       );
@@ -204,7 +230,7 @@ const SearchResultRow = memo<{
 
     if (item.highlight?.ocrText) {
       highlights.push(
-        <div key="ocr" className="text-xs text-orange-600">
+        <div key="ocr" className="text-xs text-orange-600 dark:text-orange-400">
           <strong>OCR:</strong> <span dangerouslySetInnerHTML={{ __html: item.highlight.ocrText }} />
         </div>
       );
@@ -221,49 +247,59 @@ const SearchResultRow = memo<{
   const owner = isFolder ? item.folder.ownedBy : item.document.ownedBy;
 
   return (
-    <tr className="border-b border-gray-200 last:border-b-0 hover:bg-gray-50 group transition-colors">
+    <tr className="border-b border-border last:border-b-0 hover:bg-muted/40 group transition-colors">
       <td className="p-4 max-w-[300px]">
         {isFolder ? (
           <Link href={`/folders/${item.folder.id}`} className="flex cursor-pointer group items-center gap-3">
-            <div className="relative h-10 w-10 bg-primary-light rounded-lg flex items-center justify-center shrink-0">
+            <div className="relative h-10 w-10 bg-primary/10 rounded-lg flex items-center justify-center shrink-0">
               <Folder className="h-5 w-5 text-primary" />
               <div className="absolute -bottom-1 -right-1 rounded-full p-0.5">
                 {item.folder.public ? (
-                  <Globe className="h-3 w-3 text-success" />
+                  <Globe className="h-3 w-3 text-green-500" />
                 ) : (
-                  <Lock className="h-3 w-3 text-neutral-text-light" />
+                  <Lock className="h-3 w-3 text-muted-foreground" />
                 )}
               </div>
             </div>
             <div className="min-w-0">
-              <div className="font-medium text-neutral-text-dark group-hover:underline group-hover:text-primary truncate">
+              <div className="font-medium text-foreground group-hover:underline group-hover:text-primary truncate">
                 {getHighlightedName()}
               </div>
-              <div className="text-sm text-neutral-text-light group-hover:underline group-hover:text-primary truncate">
+              <div className="text-sm text-muted-foreground truncate">
                 {getHighlightedDescription()}
               </div>
+              {path && (
+                <div className="text-xs text-muted-foreground/70 truncate mt-0.5">
+                  {path}
+                </div>
+              )}
               {getHighlightedMetadata()}
             </div>
           </Link>
         ) : (
           <Link href={`/documents/${item.document.documentId}`} className="flex cursor-pointer group items-center gap-3">
-            <div className="relative h-10 w-10 bg-primary-light rounded-lg flex items-center justify-center shrink-0">
+            <div className="relative h-10 w-10 bg-primary/10 rounded-lg flex items-center justify-center shrink-0">
               <File className="h-5 w-5 text-primary" />
               <div className="absolute -bottom-1 -right-1 rounded-full p-0.5">
                 {item.document.isPublic ? (
-                  <Globe className="h-3 w-3 text-success" />
+                  <Globe className="h-3 w-3 text-green-500" />
                 ) : (
-                  <Lock className="h-3 w-3 text-neutral-text-light" />
+                  <Lock className="h-3 w-3 text-muted-foreground" />
                 )}
               </div>
             </div>
             <div className="flex-1 min-w-0">
-              <div className="font-medium text-neutral-text-dark group-hover:underline group-hover:text-primary truncate">
+              <div className="font-medium text-foreground group-hover:underline group-hover:text-primary truncate">
                 {getHighlightedName()}
               </div>
-              <div className="text-sm text-neutral-text-light group-hover:underline group-hover:text-primary truncate">
-                {getItemMimeType(item)?.split('/')[1].toUpperCase()} • v{getItemVersionNumber(item)}
+              <div className="text-sm text-muted-foreground truncate">
+                {formatMimeType(getItemMimeType(item))} • v{getItemVersionNumber(item)}
               </div>
+              {path && (
+                <div className="text-xs text-muted-foreground/70 truncate mt-0.5">
+                  {path}
+                </div>
+              )}
               {getHighlightedMetadata()}
             </div>
           </Link>
@@ -275,40 +311,58 @@ const SearchResultRow = memo<{
         </Badge>
       </td>
       <td className="p-4">
-        <div className="flex items-center gap-3">
-          <UserAvatar user={owner} size="sm" />
-          <div className="flex flex-col">
-            <span className="text-sm font-medium text-neutral-text-light">
-              {owner.firstName} {owner.lastName}
-            </span>
-            <span className="text-xs text-neutral-text-light">{owner.email}</span>
+        {category ? (
+          <div className="flex items-center gap-1.5">
+            <Tag className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-sm text-foreground">{category}</span>
           </div>
-        </div>
+        ) : (
+          <span className="text-sm text-muted-foreground">—</span>
+        )}
       </td>
       <td className="p-4">
-        <div className="flex items-center gap-3">
-          <UserAvatar user={creator} size="sm" />
-          <div className="flex flex-col">
-            <span className="text-sm font-medium text-neutral-text-light">
-              {creator.firstName} {creator.lastName}
-            </span>
-            <span className="text-xs text-neutral-text-light">{creator.email}</span>
+        {owner ? (
+          <div className="flex items-center gap-3">
+            <UserAvatar user={owner} size="sm" />
+            <div className="flex flex-col">
+              <span className="text-sm font-medium text-foreground">
+                {owner.firstName} {owner.lastName}
+              </span>
+              <span className="text-xs text-muted-foreground">{owner.email}</span>
+            </div>
           </div>
-        </div>
+        ) : (
+          <span className="text-sm text-muted-foreground">—</span>
+        )}
       </td>
       <td className="p-4">
-        <div className="text-sm text-neutral-text-light">{formatFileSize(size)}</div>
+        {creator ? (
+          <div className="flex items-center gap-3">
+            <UserAvatar user={creator} size="sm" />
+            <div className="flex flex-col">
+              <span className="text-sm font-medium text-foreground">
+                {creator.firstName} {creator.lastName}
+              </span>
+              <span className="text-xs text-muted-foreground">{creator.email}</span>
+            </div>
+          </div>
+        ) : (
+          <span className="text-sm text-muted-foreground">—</span>
+        )}
+      </td>
+      <td className="p-4">
+        <div className="text-sm text-muted-foreground">{formatFileSize(size)}</div>
       </td>
       <td className="p-4">
         <div className="flex items-center gap-2">
-          <Clock className="h-4 w-4 text-gray-400" />
-          <span className="text-sm text-neutral-text-light">{formatDate(updatedAt)}</span>
+          <Clock className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm text-muted-foreground">{formatDate(updatedAt)}</span>
         </div>
       </td>
       <td className="p-4">
         <div className="flex items-center gap-1">
           <Star className="h-4 w-4 text-yellow-500" />
-          <span className="text-sm font-semibold text-gray-700">{item.score.toFixed(2)}</span>
+          <span className="text-sm font-semibold text-foreground">{item.score?.toFixed(2) ?? '—'}</span>
         </div>
       </td>
     </tr>
@@ -349,27 +403,27 @@ const SearchResultMenu = memo<{
   }, [onClose]);
 
   const menuContent = (
-    <div className="search-result-menu-dropdown fixed w-56 bg-white border border-gray-200 rounded-xl shadow-xl" style={{ zIndex: 9999, top: position.top, left: position.left }}>
+    <div className="search-result-menu-dropdown fixed w-56 bg-popover border border-border rounded-xl shadow-xl" style={{ zIndex: 9999, top: position.top, left: position.left }}>
       {!isFolder && (
-        <button className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-50 rounded-t-xl transition-colors">
+        <button className="w-full flex items-center gap-3 px-4 py-3 text-sm text-popover-foreground hover:bg-accent rounded-t-xl transition-colors">
           <Eye className="h-4 w-4" />
           Preview Document
         </button>
       )}
-      <button className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-50 transition-colors">
+      <button className="w-full flex items-center gap-3 px-4 py-3 text-sm text-popover-foreground hover:bg-accent transition-colors">
         <Download className="h-4 w-4" />
         Download
       </button>
-      <button className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-50 transition-colors">
+      <button className="w-full flex items-center gap-3 px-4 py-3 text-sm text-popover-foreground hover:bg-accent transition-colors">
         <Share2 className="h-4 w-4" />
         Share
       </button>
-      <button className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-50 transition-colors">
+      <button className="w-full flex items-center gap-3 px-4 py-3 text-sm text-popover-foreground hover:bg-accent transition-colors">
         <Edit className="h-4 w-4" />
         Edit
       </button>
-      <hr className="border-gray-200" />
-      <button className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-600 hover:bg-red-50 rounded-b-xl transition-colors">
+      <hr className="border-border" />
+      <button className="w-full flex items-center gap-3 px-4 py-3 text-sm text-destructive hover:bg-destructive/10 rounded-b-xl transition-colors">
         <Trash2 className="h-4 w-4" />
         Move to Trash
       </button>

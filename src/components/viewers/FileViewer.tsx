@@ -12,6 +12,21 @@ import {
 } from 'lucide-react';
 import { DocumentResponseDto } from '../../types/api';
 
+// Tier 1 viewers
+import PdfViewer from './tier1/PdfViewer';
+import ImageViewer from './tier1/ImageViewer';
+import TextViewer from './tier1/TextViewer';
+import DocxViewer from './tier1/DocxViewer';
+import XlsxViewer from './tier1/XlsxViewer';
+import CsvViewer from './tier1/CsvViewer';
+
+// Tier 2 viewers
+import UnsupportedViewer from './tier2/UnsupportedViewer';
+
+// Tier 3 viewers
+import VideoViewer from './tier3/VideoViewer';
+import AudioViewer from './tier3/AudioViewer';
+
 interface FileViewerProps {
   document: DocumentResponseDto;
   downloadUrl: string;
@@ -21,10 +36,58 @@ interface FileViewerProps {
   onRef?: (refreshFn: () => void) => void;
 }
 
+type ViewerType = 'pdf' | 'image' | 'text' | 'docx' | 'xlsx' | 'csv' | 'video' | 'audio' | 'unsupported';
+
 interface FileContent {
-  type: 'pdf' | 'image' | 'text' | 'docx' | 'xlsx' | 'csv' | 'unsupported';
+  type: ViewerType;
   content: any;
   error?: string;
+}
+
+/**
+ * Determine the viewer type from a MIME type string.
+ */
+function getViewerType(mimeType: string): ViewerType {
+  const mime = mimeType.toLowerCase();
+
+  // PDF
+  if (mime.includes('pdf')) return 'pdf';
+
+  // Images
+  if (mime.startsWith('image/')) return 'image';
+
+  // Video
+  if (mime.startsWith('video/')) return 'video';
+
+  // Audio
+  if (mime.startsWith('audio/')) return 'audio';
+
+  // CSV (check before text/plain)
+  if (mime.includes('csv')) return 'csv';
+
+  // Plain text, JSON, XML, YAML, Markdown
+  if (mime.includes('text/plain') || mime.includes('text/markdown') ||
+      mime.includes('application/json') || mime.includes('application/xml') ||
+      mime.includes('text/xml') || mime.includes('text/yaml') ||
+      mime.includes('application/x-yaml')) return 'text';
+
+  // Word documents
+  if (mime.includes('word') || mime.includes('wordprocessingml') ||
+      mime.includes('opendocument.text') || mime.includes('msword')) return 'docx';
+
+  // Excel spreadsheets
+  if (mime.includes('excel') || mime.includes('spreadsheet') ||
+      mime.includes('spreadsheetml')) return 'xlsx';
+
+  // PowerPoint — treated as docx-like for now (mammoth won't render it, so fallback to unsupported)
+  if (mime.includes('powerpoint') || mime.includes('presentationml') ||
+      mime.includes('opendocument.presentation')) return 'unsupported';
+
+  // RTF — treat as text
+  if (mime.includes('rtf')) return 'text';
+
+  // Archives, CAD, eBook, PostScript, binary — no preview
+  return 'unsupported';
 }
 
 export default function FileViewer({
@@ -66,68 +129,71 @@ export default function FileViewer({
     refreshContent();
   }, [downloadUrl, optimisticFile, document.mimeType, refreshTrigger, refreshContent]);
 
+  /**
+   * Load content from an optimistic (local) File object.
+   */
   const loadOptimisticFileContent = async (file: File) => {
     try {
       setLoading(true);
       setError(null);
 
       const mimeType = file.type.toLowerCase();
+      const viewerType = getViewerType(mimeType);
       let content: FileContent;
 
-      if (mimeType.includes('pdf')) {
-        const fileUrl = URL.createObjectURL(file);
-        content = {
-          type: 'pdf',
-          content: fileUrl
-        };
-      } else if (mimeType.includes('image')) {
-        const imageUrl = URL.createObjectURL(file);
-        content = {
-          type: 'image',
-          content: imageUrl
-        };
-      } else if (mimeType.includes('text/plain') || mimeType.includes('text/csv')) {
-        const text = await file.text();
-        if (mimeType.includes('csv')) {
+      switch (viewerType) {
+        case 'pdf': {
+          content = { type: 'pdf', content: URL.createObjectURL(file) };
+          break;
+        }
+        case 'image': {
+          content = { type: 'image', content: URL.createObjectURL(file) };
+          break;
+        }
+        case 'video': {
+          content = { type: 'video', content: URL.createObjectURL(file) };
+          break;
+        }
+        case 'audio': {
+          content = { type: 'audio', content: URL.createObjectURL(file) };
+          break;
+        }
+        case 'csv': {
+          const text = await file.text();
           const parsed = Papa.parse(text, { header: true });
+          content = { type: 'csv', content: parsed.data };
+          break;
+        }
+        case 'text': {
+          const text = await file.text();
+          content = { type: 'text', content: text };
+          break;
+        }
+        case 'docx': {
+          const arrayBuffer = await file.arrayBuffer();
+          const result = await mammoth.convertToHtml({ arrayBuffer });
+          content = { type: 'docx', content: result.value };
+          break;
+        }
+        case 'xlsx': {
+          const arrayBuffer = await file.arrayBuffer();
+          const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+          const sheets = workbook.SheetNames.map(name => ({
+            name,
+            data: XLSX.utils.sheet_to_json(workbook.Sheets[name])
+          }));
+          content = { type: 'xlsx', content: sheets };
+          break;
+        }
+        default: {
           content = {
-            type: 'csv',
-            content: parsed.data
-          };
-        } else {
-          content = {
-            type: 'text',
-            content: text
+            type: 'unsupported',
+            content: null,
+            error: `File type ${mimeType} is not supported for preview`
           };
         }
-      } else if (mimeType.includes('word') || mimeType.includes('docx')) {
-        const arrayBuffer = await file.arrayBuffer();
-        const result = await mammoth.convertToHtml({ arrayBuffer });
-        content = {
-          type: 'docx',
-          content: result.value
-        };
-      } else if (mimeType.includes('excel') || mimeType.includes('spreadsheet') ||
-        mimeType.includes('xlsx') || mimeType.includes('xls')) {
-        const arrayBuffer = await file.arrayBuffer();
-        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-        const sheets = workbook.SheetNames.map(name => ({
-          name,
-          data: XLSX.utils.sheet_to_json(workbook.Sheets[name])
-        }));
-        content = {
-          type: 'xlsx',
-          content: sheets
-        };
-      } else {
-        content = {
-          type: 'unsupported',
-          content: null,
-          error: `File type ${mimeType} is not supported for preview`
-        };
       }
 
-      console.log('Setting file content:', { type: content.type, content: content.content });
       setFileContent(content);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load file';
@@ -138,74 +204,89 @@ export default function FileViewer({
     }
   };
 
+  /**
+   * Load content from a remote URL (download endpoint).
+   */
   const loadFileContent = async () => {
     try {
       setLoading(true);
       setError(null);
 
       console.log('Loading file content from URL:', downloadUrl);
+      const mimeType = document.mimeType.toLowerCase();
+      const viewerType = getViewerType(mimeType);
+
+      // For types that need the raw URL (pdf, video, audio) — skip fetch
+      if (viewerType === 'pdf') {
+        setFileContent({ type: 'pdf', content: downloadUrl });
+        setLoading(false);
+        return;
+      }
+
+      if (viewerType === 'video') {
+        setFileContent({ type: 'video', content: downloadUrl });
+        setLoading(false);
+        return;
+      }
+
+      if (viewerType === 'audio') {
+        setFileContent({ type: 'audio', content: downloadUrl });
+        setLoading(false);
+        return;
+      }
+
+      if (viewerType === 'unsupported') {
+        setFileContent({ type: 'unsupported', content: null, error: `File type ${mimeType} is not supported for preview` });
+        setLoading(false);
+        return;
+      }
+
+      // Fetch the file for remaining types
       const response = await fetch(downloadUrl);
       if (!response.ok) {
         throw new Error(`Failed to load file: ${response.statusText}`);
       }
 
-      const mimeType = document.mimeType.toLowerCase();
       let content: FileContent;
 
-      if (mimeType.includes('pdf')) {
-        content = {
-          type: 'pdf',
-          content: downloadUrl
-        };
-      } else if (mimeType.includes('image')) {
-        const blob = await response.blob();
-        const imageUrl = URL.createObjectURL(blob);
-        content = {
-          type: 'image',
-          content: imageUrl
-        };
-      } else if (mimeType.includes('text/plain') || mimeType.includes('text/csv')) {
-        const text = await response.text();
-        if (mimeType.includes('csv')) {
-          const parsed = Papa.parse(text, { header: true });
-          content = {
-            type: 'csv',
-            content: parsed.data
-          };
-        } else {
-          content = {
-            type: 'text',
-            content: text
-          };
+      switch (viewerType) {
+        case 'image': {
+          const blob = await response.blob();
+          content = { type: 'image', content: URL.createObjectURL(blob) };
+          break;
         }
-      } else if (mimeType.includes('word') || mimeType.includes('docx')) {
-        const arrayBuffer = await response.arrayBuffer();
-        const result = await mammoth.convertToHtml({ arrayBuffer });
-        content = {
-          type: 'docx',
-          content: result.value
-        };
-      } else if (mimeType.includes('excel') || mimeType.includes('spreadsheet') ||
-        mimeType.includes('xlsx') || mimeType.includes('xls')) {
-        const arrayBuffer = await response.arrayBuffer();
-        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-        const sheets = workbook.SheetNames.map(name => ({
-          name,
-          data: XLSX.utils.sheet_to_json(workbook.Sheets[name])
-        }));
-        content = {
-          type: 'xlsx',
-          content: sheets
-        };
-      } else {
-        content = {
-          type: 'unsupported',
-          content: null,
-          error: `File type ${mimeType} is not supported for preview`
-        };
+        case 'csv': {
+          const text = await response.text();
+          const parsed = Papa.parse(text, { header: true });
+          content = { type: 'csv', content: parsed.data };
+          break;
+        }
+        case 'text': {
+          const text = await response.text();
+          content = { type: 'text', content: text };
+          break;
+        }
+        case 'docx': {
+          const arrayBuffer = await response.arrayBuffer();
+          const result = await mammoth.convertToHtml({ arrayBuffer });
+          content = { type: 'docx', content: result.value };
+          break;
+        }
+        case 'xlsx': {
+          const arrayBuffer = await response.arrayBuffer();
+          const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+          const sheets = workbook.SheetNames.map(name => ({
+            name,
+            data: XLSX.utils.sheet_to_json(workbook.Sheets[name])
+          }));
+          content = { type: 'xlsx', content: sheets };
+          break;
+        }
+        default: {
+          content = { type: 'unsupported', content: null, error: `File type ${mimeType} is not supported for preview` };
+        }
       }
 
-      console.log('Setting file content:', { type: content.type, content: content.content });
       setFileContent(content);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load file';
@@ -215,7 +296,6 @@ export default function FileViewer({
       setLoading(false);
     }
   };
-
 
   const handleDownload = () => {
     const link = window.document.createElement('a');
@@ -226,6 +306,7 @@ export default function FileViewer({
     window.document.removeChild(link);
   };
 
+  // Loading state
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -237,6 +318,7 @@ export default function FileViewer({
     );
   }
 
+  // Error state
   if (error) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -255,6 +337,7 @@ export default function FileViewer({
     );
   }
 
+  // No content
   if (!fileContent) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -266,156 +349,61 @@ export default function FileViewer({
     );
   }
 
+  // Render the appropriate viewer based on type
   return (
     <div className="h-full flex flex-col">
-      {/* Content Area */}
       <div ref={contentRef} className="flex-1 overflow-auto p-4">
-        {/* File Content */}
         {fileContent.type === 'pdf' && (
-          <div className="flex justify-center h-full">
-            <iframe
-              key={fileContent.content}
-              src={`${fileContent.content}#view=FitH`}
-              className="pdf-viewer-iframe w-full h-full"
-              title={`PDF Viewer - ${document.name}`}
-              onLoad={() => setLoading(false)}
-              onError={() => {
-                setError('Failed to load PDF. Please try downloading the file.');
-                setLoading(false);
-              }}
-            />
-          </div>
+          <PdfViewer
+            document={document}
+            downloadUrl={downloadUrl}
+            content={fileContent.content}
+            onError={(err) => setError(err)}
+          />
         )}
 
         {fileContent.type === 'image' && (
-          <div className="flex justify-center items-start">
-            <img
-              src={fileContent.content}
-              alt={document.name}
-              className="max-w-full h-auto rounded-lg shadow-lg"
-            />
-          </div>
+          <ImageViewer document={document} content={fileContent.content} />
         )}
 
         {fileContent.type === 'text' && (
-          <div className="max-w-4xl mx-auto">
-            <pre key={fileContent.content} className="whitespace-pre-wrap font-mono text-sm bg-neutral-background p-4 rounded-lg border border-ui">
-              {fileContent.content}
-            </pre>
-          </div>
+          <TextViewer content={fileContent.content} />
         )}
 
         {fileContent.type === 'docx' && (
-          <div className="max-w-4xl mx-auto">
-            <div
-              key={fileContent.content}
-              className="prose max-w-none p-6 rounded-lg border border-ui shadow-sm"
-              dangerouslySetInnerHTML={{ __html: fileContent.content }}
-            />
-          </div>
+          <DocxViewer content={fileContent.content} />
         )}
 
         {fileContent.type === 'xlsx' && (
-          <div className="max-w-6xl mx-auto">
-            <div className="space-y-6">
-              {fileContent.content.map((sheet: any, index: number) => (
-                <div key={index} className=" rounded-lg border border-ui shadow-sm">
-                  <div className="p-4 border-b border-ui">
-                    <h3 className="font-semibold text-neutral-text-dark">{sheet.name}</h3>
-                  </div>
-                  <div className="overflow-auto">
-                    <table className="viewer-table">
-                      <thead>
-                        <tr>
-                          {Object.keys(sheet.data[0] || {}).map((header, i) => (
-                            <th key={i}>
-                              {header}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {sheet.data.slice(0, 100).map((row: any, i: number) => (
-                          <tr key={i}>
-                            {Object.values(row).map((cell: any, j: number) => (
-                              <td key={j}>
-                                {String(cell)}
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    {sheet.data.length > 100 && (
-                      <div className="p-4 text-center text-neutral-text-light">
-                        Showing first 100 rows of {sheet.data.length} total rows
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          <XlsxViewer content={fileContent.content} />
         )}
 
         {fileContent.type === 'csv' && (
-          <div className="max-w-6xl mx-auto">
-            <div className=" rounded-lg border border-ui shadow-sm">
-              <div className="p-4 border-b border-ui">
-                <h3 className="font-semibold text-neutral-text-dark">CSV Data</h3>
-              </div>
-              <div className="overflow-auto">
-                <table className="viewer-table">
-                  <thead>
-                    <tr>
-                      {Object.keys(fileContent.content[0] || {}).map((header, i) => (
-                        <th key={i}>
-                          {header}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {fileContent.content.slice(0, 100).map((row: any, i: number) => (
-                      <tr key={i}>
-                        {Object.values(row).map((cell: any, j: number) => (
-                          <td key={j}>
-                            {String(cell)}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {fileContent.content.length > 100 && (
-                  <div className="p-4 text-center text-neutral-text-light">
-                    Showing first 100 rows of {fileContent.content.length} total rows
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+          <CsvViewer content={fileContent.content} />
+        )}
+
+        {fileContent.type === 'video' && (
+          <VideoViewer
+            document={document}
+            content={fileContent.content}
+            mimeType={document.mimeType}
+          />
+        )}
+
+        {fileContent.type === 'audio' && (
+          <AudioViewer
+            document={document}
+            content={fileContent.content}
+            mimeType={document.mimeType}
+          />
         )}
 
         {fileContent.type === 'unsupported' && (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center">
-              <FileText className="h-16 w-16 text-neutral-ui mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-neutral-text-dark mb-2">
-                Preview Not Available
-              </h3>
-              <p className="text-neutral-text-light mb-4 max-w-md">
-                {fileContent.error || 'This file type cannot be previewed in the browser.'}
-              </p>
-              <button
-                onClick={handleDownload}
-                className="bg-primary text-surface px-4 py-2 rounded-lg hover:bg-primary-dark transition-colors"
-              >
-                <Download className="h-4 w-4 inline mr-2" />
-                Download to View
-              </button>
-            </div>
-          </div>
+          <UnsupportedViewer
+            mimeType={document.mimeType}
+            documentName={document.name}
+            onDownload={handleDownload}
+          />
         )}
       </div>
     </div>

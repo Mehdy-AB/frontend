@@ -10,7 +10,8 @@ import {
   Shield, 
   Zap,
   Archive,
-  FileText
+  FileText,
+  FileType
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -22,6 +23,7 @@ import SecurityTab from './components/SecurityTab';
 import PerformanceTab from './components/PerformanceTab';
 import BackupTab from './components/BackupTab';
 import LogsTab from './components/LogsTab';
+import FileTypesTab from './components/FileTypesTab';
 import { useAdminPagePermissions } from '@/hooks/useAdminPagePermissions';
 
 export default function DMSSettingsPage() {
@@ -126,7 +128,7 @@ export default function DMSSettingsPage() {
 
       {/* Settings Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="overview" className="gap-2">
             <Activity className="h-4 w-4" />
             Overview
@@ -150,6 +152,10 @@ export default function DMSSettingsPage() {
           <TabsTrigger value="logs" className="gap-2">
             <FileText className="h-4 w-4" />
             Logs
+          </TabsTrigger>
+          <TabsTrigger value="filetypes" className="gap-2">
+            <FileType className="h-4 w-4" />
+            File Types
           </TabsTrigger>
         </TabsList>
 
@@ -196,6 +202,10 @@ export default function DMSSettingsPage() {
             logFilter={logFilter}
             onFilterChange={setLogFilter}
           />
+        </TabsContent>
+
+        <TabsContent value="filetypes">
+          <FileTypesTab canUpdate={canUpdate} />
         </TabsContent>
       </Tabs>
     </div>

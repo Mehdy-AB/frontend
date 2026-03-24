@@ -26,6 +26,14 @@ interface UnifiedTableViewProps {
   setOpenDropdownId: (id: string | null) => void;
   showLoadingRows?: boolean;
   showOwner?: boolean;
+  // Selection props
+  selectedItems?: Set<string>;
+  onToggleSelect?: (key: string) => void;
+  onSelectAll?: () => void;
+}
+
+function getItemKey(item: TableItem): string {
+  return item.type === 'folder' ? `folder-${item.id}` : `document-${item.documentId}`;
 }
 
 export function UnifiedTableView({
@@ -47,8 +55,16 @@ export function UnifiedTableView({
   openDropdownId,
   setOpenDropdownId,
   showLoadingRows = false,
-  showOwner = true
+  showOwner = true,
+  selectedItems,
+  onToggleSelect,
+  onSelectAll,
 }: UnifiedTableViewProps) {
+  const selectionEnabled = !!selectedItems && !!onToggleSelect && !!onSelectAll;
+  const allSelected = selectionEnabled && items.length > 0 && items.every(i => selectedItems!.has(getItemKey(i)));
+  const someSelected = selectionEnabled && items.some(i => selectedItems!.has(getItemKey(i)));
+  const isIndeterminate = someSelected && !allSelected;
+
   if (items.length === 0 && !showLoadingRows) {
     return (
       <div className="text-center py-12 bg-white">
@@ -64,6 +80,17 @@ export function UnifiedTableView({
       <table className="w-full relative" style={{ zIndex: 1 }}>
         <thead className="bg-gray-50 border-b border-gray-200">
           <tr>
+            {selectionEnabled && (
+              <th className="p-4 w-[48px]">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  ref={(el) => { if (el) el.indeterminate = isIndeterminate; }}
+                  onChange={onSelectAll}
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+                />
+              </th>
+            )}
             <th className="text-left p-4 text-xs font-medium text-gray-500 uppercase tracking-wide w-[300px]">Name</th>
             {showOwner && <th className="text-left p-4 text-xs font-medium text-gray-500 uppercase tracking-wide">Owner</th>}
             <th className="text-left p-4 text-xs font-medium text-gray-500 uppercase tracking-wide">Creator</th>
@@ -74,32 +101,42 @@ export function UnifiedTableView({
           </tr>
         </thead>
         <tbody>
-          {items.map((item) => (
-            <TableRow
-              key={item.type === 'folder' ? `folder-${item.id}` : `document-${item.documentId}`}
-              item={item}
-              formatFileSize={formatFileSize}
-              formatDate={formatDate}
-              currentFolderId={currentFolderId}
-              onEditPermissions={onEditPermissions}
-              onEditFolderPermissions={onEditFolderPermissions}
-              onMove={onMove}
-              onRename={onRename}
-              onDelete={onDelete}
-              onShowComments={onShowComments}
-              onDownload={onDownload}
-              onShare={onShare}
-              onCopyLink={onCopyLink}
-              onView={onView}
-              onChangeDescription={onChangeDescription}
-              openDropdownId={openDropdownId}
-              setOpenDropdownId={setOpenDropdownId}
-              showOwner={showOwner}
-            />
-          ))}
+          {items.map((item) => {
+            const key = getItemKey(item);
+            return (
+              <TableRow
+                key={key}
+                item={item}
+                formatFileSize={formatFileSize}
+                formatDate={formatDate}
+                currentFolderId={currentFolderId}
+                onEditPermissions={onEditPermissions}
+                onEditFolderPermissions={onEditFolderPermissions}
+                onMove={onMove}
+                onRename={onRename}
+                onDelete={onDelete}
+                onShowComments={onShowComments}
+                onDownload={onDownload}
+                onShare={onShare}
+                onCopyLink={onCopyLink}
+                onView={onView}
+                onChangeDescription={onChangeDescription}
+                openDropdownId={openDropdownId}
+                setOpenDropdownId={setOpenDropdownId}
+                showOwner={showOwner}
+                isSelected={selectionEnabled ? selectedItems!.has(key) : undefined}
+                onToggleSelect={selectionEnabled ? () => onToggleSelect!(key) : undefined}
+              />
+            );
+          })}
           {/* Loading skeleton rows */}
           {showLoadingRows && [...Array(3)].map((_, i) => (
             <tr key={`loading-${i}`} className="border-b border-ui last:border-b-0">
+              {selectionEnabled && (
+                <td className="p-4">
+                  <div className="h-4 w-4 bg-neutral-ui rounded animate-pulse"></div>
+                </td>
+              )}
               <td className="p-4">
                 <div className="flex items-center gap-3">
                   <div className="h-10 w-10 bg-neutral-ui rounded-lg animate-pulse"></div>

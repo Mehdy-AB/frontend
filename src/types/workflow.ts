@@ -334,7 +334,7 @@ export interface WorkflowNodeInstanceResponse {
 
 export interface WorkflowInstanceAssignmentResponse {
   id: number;
-  assigneeType: 'USER' | 'ROLE' | 'GROUP' | 'ORG_UNIT' | 'ORG_UNIT_HEAD' | 'CREATOR_RESPONSIBLE';
+  assigneeType: 'USER' | 'ROLE' | 'GROUP' | 'ORG_UNIT' | 'ORG_UNIT_HEAD' | 'CREATOR_RESPONSIBLE' | 'DOCUMENT_CREATOR';
   userId?: string; // UUID (matches backend field name)
   assigneeName?: string; // Display name
   orgUnitId?: string;
