@@ -258,6 +258,35 @@ class ApiClient {
     });
     return response.data;
   }
+
+  // Download file method that also returns the filename from headers
+  async downloadFileWithInfo(url: string, config?: AxiosRequestConfig): Promise<{ blob: Blob; filename: string | null }> {
+    const response: AxiosResponse<Blob> = await this.client.get(url, {
+      ...config,
+      responseType: 'blob',
+    });
+
+    let filename = null;
+    const disposition = response.headers['content-disposition'];
+
+    if (disposition && (disposition.indexOf('attachment') !== -1 || disposition.indexOf('inline') !== -1)) {
+      // Check for UTF-8 filename first (filename*=UTF-8''...)
+      const utf8Regex = /filename\*=UTF-8''([^;\n]*)/i;
+      const utf8Matches = utf8Regex.exec(disposition);
+      if (utf8Matches != null && utf8Matches[1]) {
+        filename = decodeURIComponent(utf8Matches[1]);
+      } else {
+        // Fallback to regular filename
+        const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/i;
+        const matches = filenameRegex.exec(disposition);
+        if (matches != null && matches[1]) {
+          filename = matches[1].replace(/['"]/g, '');
+        }
+      }
+    }
+
+    return { blob: response.data, filename };
+  }
 }
 
 export const apiClient = new ApiClient();

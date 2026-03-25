@@ -14,6 +14,7 @@ import {
   Globe,
   Calendar,
   Download,
+  FolderInput,
   Share2,
   Edit,
   Trash2,
@@ -125,6 +126,77 @@ export default function FoldersPage() {
   const [showCommentModal, setShowCommentModal] = useState(false);
   const [commentingFolder, setCommentingFolder] = useState<FolderResDto | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showDownloadDialog, setShowDownloadDialog] = useState(false);
+  const [downloadFolder, setDownloadFolder] = useState<FolderResDto | null>(null);
+  const [includeMetadata, setIncludeMetadata] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  // Selection state
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+  const [isBulkDownloading, setIsBulkDownloading] = useState(false);
+  const [showBulkDownloadDialog, setShowBulkDownloadDialog] = useState(false);
+  const [bulkIncludeMetadata, setBulkIncludeMetadata] = useState(false);
+
+  // Clear selection on page/sort/search change
+  useEffect(() => {
+    setSelectedItems(new Set());
+  }, [page, sortBy, sortDesc, searchQuery]);
+
+  const handleToggleSelect = useCallback((key: string) => {
+    setSelectedItems(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }, []);
+
+  const handleSelectAll = useCallback(() => {
+    const allKeys = folders.map(f => `folder-${f.id}`);
+    const allSelected = allKeys.every(k => selectedItems.has(k));
+    if (allSelected) {
+      setSelectedItems(new Set());
+    } else {
+      setSelectedItems(new Set(allKeys));
+    }
+  }, [folders, selectedItems]);
+
+  const getSelectedFolders = useCallback(() => {
+    return folders.filter(f => selectedItems.has(`folder-${f.id}`));
+  }, [folders, selectedItems]);
+
+  const handleBulkDelete = async () => {
+    setIsBulkDeleting(true);
+    try {
+      const selected = getSelectedFolders();
+      for (const folder of selected) {
+        await folderService.deleteFolder(folder.id);
+        removeItem(folder.id);
+      }
+      setSelectedItems(new Set());
+      fetchData(true);
+    } catch (error) {
+      console.error('Error bulk deleting folders:', error);
+    } finally {
+      setIsBulkDeleting(false);
+      setShowBulkDeleteModal(false);
+    }
+  };
+
+  const handleBulkDownload = async () => {
+    setIsBulkDownloading(true);
+    try {
+      const selected = getSelectedFolders();
+      const folderIds = selected.map(f => f.id);
+      await folderService.bulkDownload([], folderIds, bulkIncludeMetadata);
+    } catch (error) {
+      console.error('Error bulk downloading:', error);
+    } finally {
+      setIsBulkDownloading(false);
+      setShowBulkDownloadDialog(false);
+    }
+  };
 
   // Refresh function
   const handleRefresh = async () => {
@@ -180,11 +252,23 @@ export default function FoldersPage() {
     setShowCommentModal(true);
   };
 
-  const handleDownloadFolder = async (folder: FolderResDto) => {
+  const handleDownloadFolder = (folder: FolderResDto) => {
+    setDownloadFolder(folder);
+    setIncludeMetadata(false);
+    setShowDownloadDialog(true);
+  };
+
+  const handleConfirmDownload = async () => {
+    if (!downloadFolder) return;
+    setIsDownloading(true);
     try {
-      await folderService.downloadFolder(folder.id, folder.name);
+      await folderService.downloadFolder(downloadFolder.id, downloadFolder.name, includeMetadata);
     } catch (error) {
       console.error('Error downloading folder:', error);
+    } finally {
+      setIsDownloading(false);
+      setShowDownloadDialog(false);
+      setDownloadFolder(null);
     }
   };
 
@@ -438,6 +522,9 @@ export default function FoldersPage() {
           setOpenDropdownId={setOpenDropdownId}
           showLoadingRows={showSkeletonRows}
           showOwner={false}
+          selectedItems={selectedItems}
+          onToggleSelect={handleToggleSelect}
+          onSelectAll={handleSelectAll}
         />
       </Card>
 
@@ -567,6 +654,170 @@ export default function FoldersPage() {
           setCommentingFolder(null);
         }}
       />
+
+      {/* Download Dialog */}
+      {showDownloadDialog && downloadFolder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="h-10 w-10 bg-blue-100 rounded-xl flex items-center justify-center">
+                  <Download className="h-5 w-5 text-blue-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Download Folder</h3>
+                  <p className="text-sm text-gray-500">{downloadFolder.name}</p>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 rounded-xl p-4 mb-6">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={includeMetadata}
+                    onChange={(e) => setIncludeMetadata(e.target.checked)}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-gray-700">Export with metadata</span>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Each file will include a .metadata.json with the model schema and values
+                    </p>
+                  </div>
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowDownloadDialog(false);
+                    setDownloadFolder(null);
+                  }}
+                  disabled={isDownloading}
+                  className="rounded-xl"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleConfirmDownload}
+                  disabled={isDownloading}
+                  className="bg-blue-500 hover:bg-blue-600 text-white rounded-xl"
+                >
+                  {isDownloading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                      Downloading...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="h-4 w-4 mr-2" />
+                      Download
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Bulk Action Bar */}
+      {selectedItems.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-4 fade-in duration-200">
+          <div className="bg-gray-900 text-white rounded-2xl shadow-2xl px-6 py-3 flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <div className="h-7 w-7 bg-blue-500 rounded-lg flex items-center justify-center text-xs font-bold">
+                {selectedItems.size}
+              </div>
+              <span className="text-sm font-medium text-gray-300">selected</span>
+            </div>
+
+            <div className="w-px h-6 bg-gray-700" />
+
+            <button
+              onClick={() => setShowBulkDeleteModal(true)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-red-400 hover:bg-red-500/20 transition-colors"
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete
+            </button>
+
+            <button
+              onClick={() => { setBulkIncludeMetadata(false); setShowBulkDownloadDialog(true); }}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-blue-400 hover:bg-blue-500/20 transition-colors"
+            >
+              <Download className="h-4 w-4" />
+              Download
+            </button>
+
+            <button
+              onClick={() => {
+                const selected = getSelectedFolders();
+                if (selected.length > 0) {
+                  setActionItem(selected[0]);
+                  setShowMoveModal(true);
+                }
+              }}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-green-400 hover:bg-green-500/20 transition-colors"
+            >
+              <FolderInput className="h-4 w-4" />
+              Move
+            </button>
+
+            <div className="w-px h-6 bg-gray-700" />
+
+            <button
+              onClick={() => setSelectedItems(new Set())}
+              className="text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Confirmation */}
+      <ConfirmationModal
+        isOpen={showBulkDeleteModal}
+        onClose={() => setShowBulkDeleteModal(false)}
+        onConfirm={handleBulkDelete}
+        title={`Delete ${selectedItems.size} Item(s)`}
+        message={`Are you sure you want to delete ${selectedItems.size} selected item(s)? This action cannot be undone.`}
+        confirmText="Delete All"
+        cancelText="Cancel"
+        variant="destructive"
+        loading={isBulkDeleting}
+        itemName={`${selectedItems.size} folders`}
+        itemType="folder"
+      />
+      {/* Bulk Download Dialog */}
+      {showBulkDownloadDialog && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold mb-4">Download {selectedItems.size} Item(s)</h3>
+            <p className="text-sm text-gray-600 mb-4">Selected items will be packaged into a single ZIP file.</p>
+            <label className="flex items-start gap-3 p-3 rounded-xl border border-gray-200 hover:bg-gray-50 cursor-pointer mb-4">
+              <input
+                type="checkbox"
+                checked={bulkIncludeMetadata}
+                onChange={(e) => setBulkIncludeMetadata(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <div>
+                <span className="text-sm font-medium text-gray-700">Export with metadata</span>
+                <p className="text-xs text-gray-500 mt-0.5">Each file will include a .metadata.json with the model schema and values</p>
+              </div>
+            </label>
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setShowBulkDownloadDialog(false)} disabled={isBulkDownloading} className="rounded-xl">Cancel</Button>
+              <Button onClick={handleBulkDownload} disabled={isBulkDownloading} className="bg-blue-500 hover:bg-blue-600 text-white rounded-xl">
+                {isBulkDownloading ? (<><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />Downloading...</>) : (<><Download className="h-4 w-4 mr-2" />Download ZIP</>)}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div >
   );
 }

@@ -34,6 +34,8 @@ interface TableRowProps {
   openDropdownId: string | null;
   setOpenDropdownId: (id: string | null) => void;
   showOwner?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: () => void;
 }
 
 /** Recursive child row for nested composed documents */
@@ -238,8 +240,11 @@ export function TableRow({
   onView,
   onChangeDescription,
   showOwner = true,
+  isSelected,
+  onToggleSelect,
 }: TableRowProps) {
   const isFolder = item.type === 'folder';
+  const selectionEnabled = isSelected !== undefined && !!onToggleSelect;
   const size = isFolder ? item.size : item.sizeBytes;
   const updatedAt = isFolder ? item.updatedAt : item.updatedAt;
   const createdAt = item.createdAt;
@@ -250,7 +255,17 @@ export function TableRow({
 
   return (
     <>
-      <tr className="border-b border-ui last:border-b-0 hover:bg-neutral-background group">
+      <tr className={`border-b border-ui last:border-b-0 hover:bg-neutral-background group ${isSelected ? 'bg-blue-50/60' : ''}`}>
+        {selectionEnabled && (
+          <td className="p-4 w-[48px]">
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={(e) => { e.stopPropagation(); onToggleSelect!(); }}
+              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+            />
+          </td>
+        )}
         <td className="p-4 max-w-[300px]">
           {isFolder ? (
             <Link href={`/folders/${item.id}`} className="flex cursor-pointer group items-center gap-3">

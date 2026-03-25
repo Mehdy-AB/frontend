@@ -128,14 +128,7 @@ export default function RepositoryBrowser({ userId, className = '' }: Repository
     const handleDownloadDocument = async (doc: DocumentResponseDto) => {
         try {
             const documentId = Number(doc.documentId);
-            // Returns a URL string, not a blob
-            const url = await notificationApiClient.downloadDocument(documentId);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = doc.name || 'document';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            await notificationApiClient.downloadDocument(documentId);
         } catch (error) {
             console.error('Error downloading document:', error);
         }

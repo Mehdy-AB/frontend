@@ -184,10 +184,44 @@ export class DocumentService {
     return apiClient.put<void>(`${this.baseUrl}/move/${documentId}/${targetFolderId}`);
   }
 
-  // Download document (returns download URL)
-  async getDownloadUrl(documentId: number, versionId?: number): Promise<string> {
+  // Download document via streaming (returns blob, triggers download)
+  async streamDownload(documentId: number, versionId?: number): Promise<void> {
     const params = versionId ? `?version=${versionId}` : '';
-    return apiClient.get<string>(`${this.baseUrl}/download/${documentId}${params}`);
+    const { blob, filename } = await apiClient.downloadFileWithInfo(`${this.baseUrl}/download/${documentId}${params}`);
+
+    // Create download link
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+
+    // Extract filename from the Content-Disposition header, fallback to generic name if not found
+    link.download = filename || `document_${documentId}_download`;
+
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(downloadUrl);
+  }
+
+  // Download document (alias for streamDownload)
+  async downloadDocument(documentId: number, versionId?: number): Promise<void> {
+    return this.streamDownload(documentId, versionId);
+  }
+
+  // Get a content URL for the file viewer (returns a direct API URL with token for proper native viewer downloading)
+  async getContentUrl(documentId: number, versionId?: number): Promise<string> {
+    const { tokenManager } = await import('../../api/auth/tokenManager');
+    const { getApiUrl } = await import('../../api/client');
+    const token = await tokenManager.getValidAccessToken();
+
+    const versionParam = versionId ? `version=${versionId}` : '';
+    const tokenParam = token ? `token=${token}` : '';
+
+    // Combine params safely
+    const params = [versionParam, tokenParam].filter(Boolean).join('&');
+    const queryString = params ? `?${params}` : '';
+
+    return `${getApiUrl()}${this.baseUrl}/download/${documentId}${queryString}`;
   }
 
   // Mark file as downloaded
@@ -388,10 +422,7 @@ export class DocumentService {
     return apiClient.delete<void>(`/api/v1/document-links/${linkId}`);
   }
 
-  // Download document (alias for getDownloadUrl)
-  async downloadDocument(documentId: number, versionId?: number): Promise<string> {
-    return this.getDownloadUrl(documentId, versionId);
-  }
+
 
   // File downloaded (alias for markFileAsDownloaded)
   async fileDownloaded(documentId: number, versionId?: number): Promise<void> {

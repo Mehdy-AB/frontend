@@ -29,6 +29,7 @@ import {
 import { useNotifications } from '@/hooks/useNotifications';
 import { notificationApiClient } from '@/api/notificationClient';
 import { tagService } from '@/api/services/tagService';
+import { fileTypeService, AllowedFileTypeDto } from '@/api/services/fileTypeService';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SearchSelect } from '@/components/main/SearchSelect';
 import {
@@ -103,6 +104,10 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
   const [isLoadingTags, setIsLoadingTags] = useState(false);
   const [isCreateTagModalOpen, setIsCreateTagModalOpen] = useState(false);
 
+  // Allowed file types (fetched from backend)
+  const [allowedFileTypes, setAllowedFileTypes] = useState<AllowedFileTypeDto[]>([]);
+  const [allowedMimeSet, setAllowedMimeSet] = useState<Set<string>>(new Set());
+
   // Metadata extraction from filename states
   const [separator, setSeparator] = useState<string>('#');
   const [autoExtractEnabled, setAutoExtractEnabled] = useState<boolean>(false);
@@ -152,10 +157,21 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
         console.log('[FileUploadModal] Skipping fetch - already loaded');
         return;
       }
-      console.log('[FileUploadModal] Loading categories and tags...');
+      console.log('[FileUploadModal] Loading categories, tags, and allowed file types...');
       hasFetchedRef.current = true;
       loadFilingCategories();
       loadAvailableTags();
+
+      // Load allowed file types
+      fileTypeService.getAllowedFileTypes().then(types => {
+        setAllowedFileTypes(types);
+        setAllowedMimeSet(new Set(types.map(t => t.mimeType)));
+        console.log('[FileUploadModal] Loaded', types.length, 'allowed file types');
+      }).catch(err => {
+        console.error('Error loading allowed file types:', err);
+        // If the endpoint fails (e.g., old backend), allow all files
+        setAllowedMimeSet(new Set());
+      });
     }
   }, [isOpen]);
 
@@ -194,7 +210,28 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
 
   const handleFiles = (fileList: FileList) => {
     if (fileList.length > 0) {
-      const newFiles: FileWithMetadata[] = Array.from(fileList).map(file => {
+      // Filter by allowed MIME types if loaded
+      const allFiles = Array.from(fileList);
+      let acceptedFiles = allFiles;
+      let rejectedFiles: File[] = [];
+
+      if (allowedMimeSet.size > 0) {
+        acceptedFiles = allFiles.filter(f => allowedMimeSet.has(f.type) || f.type === '');
+        rejectedFiles = allFiles.filter(f => !allowedMimeSet.has(f.type) && f.type !== '');
+      }
+
+      if (rejectedFiles.length > 0) {
+        const names = rejectedFiles.map(f => f.name).slice(0, 5).join(', ');
+        const extra = rejectedFiles.length > 5 ? ` and ${rejectedFiles.length - 5} more` : '';
+        showWarning(
+          'File type not allowed',
+          `The following file(s) were rejected because their type is not enabled by the administrator: ${names}${extra}`
+        );
+      }
+
+      if (acceptedFiles.length === 0) return;
+
+      const newFiles: FileWithMetadata[] = acceptedFiles.map(file => {
         // Use webkitRelativePath if available (for folder uploads), otherwise fallback to name
         const relativePath = (file as any).webkitRelativePath || file.name;
 
@@ -1544,7 +1581,7 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                             />
                           </div>
 
-                          {(files[currentFileIndex]?.file.type.startsWith('image/') || /\.(jpg|jpeg|png|tiff|tif|bmp|gif)$/i.test(files[currentFileIndex]?.file.name)) && (
+                          {(files[currentFileIndex]?.file.type === 'application/pdf' || /\.pdf$/i.test(files[currentFileIndex]?.file.name) || files[currentFileIndex]?.file.type.startsWith('image/') || /\.(jpg|jpeg|png|tiff|tif|bmp|gif)$/i.test(files[currentFileIndex]?.file.name)) && (
                             <div className="md:col-span-2 flex items-center gap-2 mt-1">
                               <input
                                 type="checkbox"
@@ -1555,7 +1592,9 @@ export default function FileUploadModal({ isOpen, onClose, folderId, folderName,
                                 disabled={uploading}
                               />
                               <label htmlFor="convertToPdf" className="text-sm font-medium text-neutral-text-dark select-none cursor-pointer">
-                                Convert to searchable PDF
+                                {(files[currentFileIndex]?.file.type === 'application/pdf' || /\.pdf$/i.test(files[currentFileIndex]?.file.name))
+                                  ? 'Make PDF searchable (OCR)'
+                                  : 'Convert to searchable PDF'}
                               </label>
                             </div>
                           )}

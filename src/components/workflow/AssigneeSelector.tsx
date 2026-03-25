@@ -1,13 +1,13 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { X, Users, Shield, User as UserIcon, Search, ChevronDown, Building2, Crown, UserCog } from 'lucide-react';
+import { X, Users, Shield, User as UserIcon, Search, ChevronDown, Building2, Crown, UserCog, UserSquare } from 'lucide-react';
 import { notificationApiClient } from '@/api/notificationClient';
 import { UserDto, RoleDto, GroupDto, CreateStepAssignmentRequest } from '@/types/api';
 import { orgUnitService, OrgUnitResponse } from '@/api/services/orgUnitService';
 import UserAvatar from '@/components/main/UserAvatar';
 
-export type GranteeType = 'user' | 'group' | 'role' | 'org_unit' | 'org_unit_head' | 'creator_responsible';
+export type GranteeType = 'user' | 'group' | 'role' | 'org_unit' | 'org_unit_head' | 'creator_responsible' | 'document_creator';
 
 export interface StepAssignment {
     id: string;
@@ -17,7 +17,7 @@ export interface StepAssignment {
 }
 
 export interface AssignmentEntity {
-    assigneeType: 'USER' | 'ROLE' | 'GROUP' | 'ORG_UNIT' | 'ORG_UNIT_HEAD' | 'CREATOR_RESPONSIBLE';
+    assigneeType: 'USER' | 'ROLE' | 'GROUP' | 'ORG_UNIT' | 'ORG_UNIT_HEAD' | 'CREATOR_RESPONSIBLE' | 'DOCUMENT_CREATOR';
     assigneeId: string;
     entity: UserDto | GroupDto | RoleDto | OrgUnitResponse | { id: string; name: string };
 }
@@ -165,6 +165,18 @@ export default function AssigneeSelector({
         }]);
     };
 
+    // Add document creator (dynamic)
+    const addDocumentCreator = () => {
+        const id = 'document_creator-dynamic';
+        if (assignments.some(a => a.id === id)) return;
+        onChange([...assignments, {
+            id,
+            type: 'document_creator',
+            entity: { id: 'dynamic', name: 'Document Creator' } as any,
+            canEdit: false,
+        }]);
+    };
+
     // Remove assignment
     const removeAssignment = (id: string) => {
         onChange(assignments.filter(a => a.id !== id));
@@ -211,6 +223,7 @@ export default function AssigneeSelector({
             case 'org_unit': return <Building2 className="w-3.5 h-3.5 text-orange-500" />;
             case 'org_unit_head': return <Crown className="w-3.5 h-3.5 text-amber-500" />;
             case 'creator_responsible': return <UserCog className="w-3.5 h-3.5 text-teal-500" />;
+            case 'document_creator': return <UserSquare className="w-3.5 h-3.5 text-cyan-500" />;
         }
     };
 
@@ -227,6 +240,8 @@ export default function AssigneeSelector({
                 return `${(a.entity as OrgUnitResponse).name} (head)`;
             case 'creator_responsible':
                 return "Creator's Responsible";
+            case 'document_creator':
+                return 'Document Creator';
         }
     };
 
@@ -235,11 +250,13 @@ export default function AssigneeSelector({
             case 'org_unit': return 'bg-orange-50 text-orange-800';
             case 'org_unit_head': return 'bg-amber-50 text-amber-800';
             case 'creator_responsible': return 'bg-teal-50 text-teal-800';
+            case 'document_creator': return 'bg-cyan-50 text-cyan-800';
             default: return 'bg-gray-100 text-gray-800';
         }
     };
 
     const hasCreatorResponsible = assignments.some(a => a.type === 'creator_responsible');
+    const hasDocumentCreator = assignments.some(a => a.type === 'document_creator');
 
     return (
         <div className={`space-y-2 ${className}`} ref={containerRef}>
@@ -339,6 +356,25 @@ export default function AssigneeSelector({
                                             <div className="text-xs text-gray-500">Head of the document creator&apos;s org unit</div>
                                         </div>
                                         {hasCreatorResponsible && (
+                                            <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">Added</span>
+                                        )}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            if (!hasDocumentCreator) addDocumentCreator();
+                                        }}
+                                        disabled={hasDocumentCreator}
+                                        className={`w-full px-3 py-3 flex items-center gap-3 rounded-lg transition-colors text-left ${hasDocumentCreator ? 'bg-gray-50 opacity-50 cursor-not-allowed' : 'hover:bg-cyan-50'}`}
+                                    >
+                                        <div className="w-9 h-9 rounded-lg bg-cyan-100 flex items-center justify-center flex-shrink-0">
+                                            <UserSquare className="w-4.5 h-4.5 text-cyan-600" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-sm font-medium text-gray-900">Document Creator</div>
+                                            <div className="text-xs text-gray-500">The user who created/uploaded the document</div>
+                                        </div>
+                                        {hasDocumentCreator && (
                                             <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">Added</span>
                                         )}
                                     </button>
@@ -470,7 +506,7 @@ export default function AssigneeSelector({
 export function toAssignmentRequests(assignments: StepAssignment[]): CreateStepAssignmentRequest[] {
     return assignments.map(assignment => ({
         assigneeType: assignment.type.toUpperCase() as any,
-        assigneeId: assignment.type === 'creator_responsible' ? undefined : assignment.entity.id,
+        assigneeId: (assignment.type === 'creator_responsible' || assignment.type === 'document_creator') ? undefined : assignment.entity.id,
         canEdit: assignment.canEdit,
     }));
 }

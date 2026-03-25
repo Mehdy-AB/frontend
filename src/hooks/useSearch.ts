@@ -112,27 +112,8 @@ export const useSearch = () => {
     return [...folderItems, ...documentItems];
   }, [searchResults]);
 
-  // Load users and models on component mount
-  useEffect(() => {
-    const loadUsersAndModels = async () => {
-      try {
-        const [usersResponse, modelsData] = await Promise.all([
-          userManagementService.searchUsers('', ['USERNAME'], 0, 100),
-          // Add model loading here when API is available
-          Promise.resolve([] as FilingCategoryResponseDto[])
-        ]);
-        const usersData = usersResponse.content || [];
-        setUsers(usersData);
-        setModels(modelsData);
-        setFilteredUsers(usersData);
-        setFilteredModels(modelsData);
-      } catch (error) {
-        console.error('Error loading users and models:', error);
-      }
-    };
-    
-    loadUsersAndModels();
-  }, []);
+  // Users and models are now lazy-loaded when the AdvancedSearchModal dropdowns are opened.
+  // No eager loading on mount.
 
   // User search functionality
   const performUserSearch = useCallback(async (query: string) => {

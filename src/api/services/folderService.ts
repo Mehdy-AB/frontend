@@ -429,23 +429,68 @@ export class FolderService {
   }
 
   // Download folder as ZIP
-  async downloadFolder(folderId: number, folderName: string): Promise<void> {
+  async downloadFolder(folderId: number, folderName: string, includeMetadata: boolean = false): Promise<void> {
     try {
-      const blob = await apiClient.downloadFile(`${this.baseUrl}/${folderId}/download`);
+      const url = includeMetadata
+        ? `${this.baseUrl}/${folderId}/download?includeMetadata=true`
+        : `${this.baseUrl}/${folderId}/download`;
+
+      const { blob, filename } = await apiClient.downloadFileWithInfo(url);
 
       // Create download link
-      const url = window.URL.createObjectURL(blob);
+      const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = url;
-      link.download = `${folderName}.zip`;
+      link.href = downloadUrl;
+      link.download = filename || `${folderName}.zip`;
       document.body.appendChild(link);
       link.click();
 
       // Cleanup
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      setTimeout(() => {
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(downloadUrl);
+      }, 100);
     } catch (error) {
       console.error('Error downloading folder:', error);
+      throw error;
+    }
+  }
+
+  // Bulk download selected documents/folders as ZIP
+  async bulkDownload(
+    documentIds: number[],
+    folderIds: number[],
+    includeMetadata: boolean = false
+  ): Promise<void> {
+    try {
+      const params = new URLSearchParams();
+      // append documentIds and folderIds
+      documentIds.forEach((id) => params.append('documentIds', id.toString()));
+      folderIds.forEach((id) => params.append('folderIds', id.toString()));
+
+      if (includeMetadata) {
+        params.append('includeMetadata', 'true');
+      }
+
+      const { blob, filename } = await apiClient.downloadFileWithInfo(
+        `${this.baseUrl}/bulk-download?${params}`
+      );
+
+      // Create download link
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = filename || 'bulk-download.zip';
+      document.body.appendChild(link);
+      link.click();
+
+      // Cleanup
+      setTimeout(() => {
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(downloadUrl);
+      }, 100);
+    } catch (error) {
+      console.error('Error bulk downloading:', error);
       throw error;
     }
   }

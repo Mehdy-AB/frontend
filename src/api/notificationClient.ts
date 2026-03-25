@@ -781,7 +781,14 @@ class NotificationApiClient {
 
   async downloadDocument(id: number, versionId?: number, options?: ApiNotificationOptions) {
     return this.withNotification(
-      () => documentService.getDownloadUrl(id, versionId),
+      () => documentService.downloadDocument(id, versionId),
+      { silent: true, ...options }
+    )
+  }
+
+  async getContentUrl(id: number, versionId?: number, options?: ApiNotificationOptions) {
+    return this.withNotification(
+      () => documentService.getContentUrl(id, versionId),
       { silent: true, ...options }
     )
   }

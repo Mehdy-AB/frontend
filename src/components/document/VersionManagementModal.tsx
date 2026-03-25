@@ -151,24 +151,14 @@ export default function VersionManagementModal({
 
   const handleDownloadVersion = async (versionId: number) => {
     try {
-      const version = versions.find(v => v.versionId === versionId);
-      const downloadUrl = await notificationApiClient.downloadDocument(document.documentId, versionId);
+      await notificationApiClient.downloadDocument(document.documentId, versionId);
 
       // Log the download operation
       try {
         await notificationApiClient.fileDownloaded(document.documentId, versionId);
       } catch (logError) {
         console.warn('Failed to log download operation:', logError);
-        // Don't throw here as the download was successful
       }
-
-      // Create a temporary link to download the file
-      const link = window.document.createElement('a');
-      link.href = downloadUrl;
-      link.download = `${document.name}_v${version?.versionNumber}`;
-      window.document.body.appendChild(link);
-      link.click();
-      window.document.body.removeChild(link);
     } catch (err) {
       console.error('Error downloading version:', err);
       setError('Failed to download version');
@@ -372,12 +362,12 @@ export default function VersionManagementModal({
                             </span>
                             {/* Modification Type Badge */}
                             <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${version.modificationType === 'MAJOR'
-                                ? 'bg-red-100 text-red-700'
-                                : version.modificationType === 'MINOR'
-                                  ? 'bg-yellow-100 text-yellow-700'
-                                  : version.modificationType === 'RESTORE'
-                                    ? 'bg-purple-100 text-purple-700'
-                                    : 'bg-gray-100 text-gray-600'
+                              ? 'bg-red-100 text-red-700'
+                              : version.modificationType === 'MINOR'
+                                ? 'bg-yellow-100 text-yellow-700'
+                                : version.modificationType === 'RESTORE'
+                                  ? 'bg-purple-100 text-purple-700'
+                                  : 'bg-gray-100 text-gray-600'
                               }`}>
                               {version.modificationType}
                             </span>

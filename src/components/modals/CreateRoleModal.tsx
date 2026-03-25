@@ -56,9 +56,10 @@ export default function CreateRoleModal({ isOpen, onClose, onSubmit, loading = f
     }
 
     const query = searchQuery.toLowerCase();
-    const filtered = allPermissions.filter(perm => 
-      perm.key.toLowerCase().includes(query) ||
-      perm.name.toLowerCase().includes(query) ||
+    const filtered = allPermissions.filter(perm =>
+      perm.key?.toLowerCase().includes(query) ||
+      perm.name?.toLowerCase().includes(query) ||
+      perm.description?.toLowerCase().includes(query) ||
       perm.category?.toLowerCase().includes(query)
     );
     setFilteredPermissions(filtered);
@@ -219,9 +220,8 @@ export default function CreateRoleModal({ isOpen, onClose, onSubmit, loading = f
                             <div
                               key={perm.id}
                               onClick={() => togglePermission(perm.key)}
-                              className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                                isSelected ? 'bg-primary-light border-primary' : 'hover:bg-muted'
-                              }`}
+                              className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${isSelected ? 'bg-primary-light border-primary' : 'hover:bg-muted'
+                                }`}
                             >
                               <input
                                 type="checkbox"

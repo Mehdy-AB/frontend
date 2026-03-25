@@ -74,14 +74,14 @@ export const useDocumentOperations = (documentId: number) => {
   // Add new comment
   const addComment = useCallback(async (document: DocumentViewDto, commentText: string) => {
     if (!commentText.trim()) return;
-    
+
     try {
       await commentService.addComment({
         entityType: 'DOCUMENT',
         entityId: document.documentId,
         text: commentText.trim()
       });
-      
+
       // Refresh comments
       await fetchComments(document.documentId);
     } catch (error) {
@@ -109,11 +109,11 @@ export const useDocumentOperations = (documentId: number) => {
   // Update document name
   const updateDocumentName = useCallback(async (document: DocumentViewDto, newName: string) => {
     if (!newName.trim() || newName === document.name) return;
-    
+
     try {
       // Here you would call the API to update the document name
       // await notificationApiClient.updateDocument(document.documentId, { name: newName.trim() });
-      
+
       // For now, just return the updated document
       return { ...document, name: newName.trim() };
     } catch (error) {
@@ -127,7 +127,7 @@ export const useDocumentOperations = (documentId: number) => {
     try {
       // Here you would call the API to update the document file
       // await notificationApiClient.updateDocumentFile(document.documentId, file);
-      
+
       // Refresh document data would be handled by the parent component
     } catch (error) {
       console.error('Error updating document file:', error);
@@ -138,17 +138,14 @@ export const useDocumentOperations = (documentId: number) => {
   // Download document
   const downloadDocument = useCallback(async (document: DocumentViewDto, version?: number) => {
     try {
-      const downloadUrl = await notificationApiClient.downloadDocument(document.documentId, version);
-      
+      await notificationApiClient.downloadDocument(document.documentId, version);
+
       // Log the download operation
       try {
         await notificationApiClient.fileDownloaded(document.documentId, version);
       } catch (logError) {
         console.warn('Failed to log download operation:', logError);
-        // Don't throw here as the download was successful
       }
-      
-      return downloadUrl;
     } catch (error) {
       console.error('Download failed:', error);
       throw error;
