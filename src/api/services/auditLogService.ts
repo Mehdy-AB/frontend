@@ -29,6 +29,7 @@ export interface AuditLogResponseDto {
 export interface AuditLogFilterRequest {
   actions?: string[];
   entityTypes?: string[];
+  entityId?: string;
   userId?: string;
   userIds?: string[];
   username?: string;

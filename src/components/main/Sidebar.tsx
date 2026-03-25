@@ -16,7 +16,8 @@ import {
   Share2,
   User,
   FileCheck,
-  Archive
+  Archive,
+  Crown
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -27,6 +28,7 @@ import { Separator } from '@/components/ui/separator';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { isAdmin } from '../../utils/adminUtils';
 import { workflowAdminService } from '@/api/services/workflowAdminService';
+import { myScopeService } from '@/api/services/myScopeService';
 
 interface SidebarItem {
   id: string;
@@ -39,6 +41,7 @@ interface SidebarItem {
 export default function Sidebar() {
   const [expandedItems, setExpandedItems] = useState<string[]>(['files']);
   const [pendingTasksCount, setPendingTasksCount] = useState(0);
+  const [showMyScope, setShowMyScope] = useState(false);
   const pathname = usePathname();
   const { t } = useLanguage();
 
@@ -61,6 +64,31 @@ export default function Sidebar() {
     return () => clearInterval(interval);
   }, []);
 
+  // Check if user has active leadership for My Scope
+  useEffect(() => {
+    const checkLeadership = async () => {
+      try {
+        const hasLeadership = await myScopeService.hasLeadership();
+        setShowMyScope(hasLeadership);
+      } catch (error) {
+        console.error('Failed to check leadership status', error);
+      }
+    };
+    checkLeadership();
+
+    // Poll every 30 seconds
+    const interval = setInterval(checkLeadership, 30000);
+
+    // Listen to custom event for immediate refresh
+    const handleLeadershipUpdate = () => checkLeadership();
+    window.addEventListener('leadership:updated', handleLeadershipUpdate);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('leadership:updated', handleLeadershipUpdate);
+    };
+  }, []);
+
   // Base navigation items for all users
   const baseItems: SidebarItem[] = [
     {
@@ -75,6 +103,12 @@ export default function Sidebar() {
       icon: FileCheck,
       href: '/tasks',
     },
+    ...(showMyScope ? [{
+      id: 'my-scope',
+      label: 'My Scope',
+      icon: Crown,
+      href: '/my-scope',
+    }] : []),
     {
       id: 'myrepo',
       label: 'My Repository',

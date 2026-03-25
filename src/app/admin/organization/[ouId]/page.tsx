@@ -33,6 +33,8 @@ import {
     AlertTriangle,
     Settings,
     Pencil,
+    Eye,
+    UserCog,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -58,6 +60,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import HeadScopedRolesPanel from '@/components/organization/HeadScopedRolesPanel';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useNotification } from '@/contexts/NotificationContext';
 import {
@@ -70,6 +73,8 @@ import {
     CreateOrgPositionRequest,
     UpdateOrgPositionRequest,
     PositionAssignmentResponse,
+    MemberDetailResponse,
+    getTypeColorClass,
 } from '@/api/services/orgUnitService';
 import { apiClient } from '@/api/client';
 import { Permissions } from '@/constants/permissions';
@@ -110,6 +115,7 @@ export default function OrgUnitDetailPage() {
     const canCreatePositions = hasPermission(Permissions.POSITION_CREATE);
     const canDeletePositions = hasPermission(Permissions.POSITION_DELETE);
     const canReadAudit = hasPermission(Permissions.AUDIT_READ);
+    const canAssignManager = hasPermission(Permissions.ORG_ASSIGN_MANAGER);
 
     // Data state
     const [detail, setDetail] = useState<OrgUnitResponse | null>(null);
@@ -153,6 +159,16 @@ export default function OrgUnitDetailPage() {
     const [memberTotalPages, setMemberTotalPages] = useState(0);
     const [memberTotalElements, setMemberTotalElements] = useState(0);
     const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
+
+    // View member detail dialog
+    const [viewingMember, setViewingMember] = useState<MemberDetailResponse | null>(null);
+    const [viewingMemberLoading, setViewingMemberLoading] = useState(false);
+
+    // Set manager dialog
+    const [isSetManagerOpen, setIsSetManagerOpen] = useState(false);
+    const [managerSearchQuery, setManagerSearchQuery] = useState('');
+    const [managerSearchResults, setManagerSearchResults] = useState<SimpleUser[]>([]);
+    const [selectedManagerId, setSelectedManagerId] = useState<string | null>(null);
 
     // Seat checkbox selection (bulk delete)
     const [selectedSeatIds, setSelectedSeatIds] = useState<string[]>([]);
@@ -240,6 +256,9 @@ export default function OrgUnitDetailPage() {
     const [reportingToFocused, setReportingToFocused] = useState(false);
     const [reportingToSelectedLabel, setReportingToSelectedLabel] = useState('');
     const reportingToRef = useRef<HTMLDivElement>(null);
+
+    // Global refresh key to remount child tabs
+    const [globalRefreshKey, setGlobalRefreshKey] = useState(0);
 
     // ==================== Data Fetching ====================
 
@@ -529,6 +548,106 @@ export default function OrgUnitDetailPage() {
             fetchDetail();
         } catch (err: any) {
             addNotification({ type: 'error', title: 'Failed to remove members', message: err?.message });
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const handleBatchSetPrimary = async () => {
+        if (!detail || selectedMemberIds.length === 0) return;
+        try {
+            setActionLoading(true);
+            const result = await orgUnitService.setPrimaryBatch(detail.id, selectedMemberIds);
+            if (result.failCount > 0) {
+                addNotification({ type: 'warning', title: 'Partial Success', message: `Set primary for ${result.successCount} member(s). ${result.failCount} failed: ${result.errors.join('; ')}` });
+            } else {
+                addNotification({ type: 'success', title: 'Primary Status Updated', message: `Marked as primary for ${result.successCount} member(s)` });
+            }
+            setSelectedMemberIds([]);
+            fetchMembers();
+            fetchDetail();
+        } catch (err: any) {
+            addNotification({ type: 'error', title: 'Failed to set primary', message: err?.message });
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const handleBatchRemovePrimary = async () => {
+        if (!detail || selectedMemberIds.length === 0) return;
+        try {
+            setActionLoading(true);
+            const result = await orgUnitService.removePrimaryBatch(detail.id, selectedMemberIds);
+            if (result.failCount > 0) {
+                addNotification({ type: 'warning', title: 'Partial Success', message: `Removed primary for ${result.successCount} member(s). ${result.failCount} failed: ${result.errors.join('; ')}` });
+            } else {
+                addNotification({ type: 'success', title: 'Primary Status Removed', message: `Primary status removed for ${result.successCount} member(s)` });
+            }
+            setSelectedMemberIds([]);
+            fetchMembers();
+            fetchDetail();
+        } catch (err: any) {
+            addNotification({ type: 'error', title: 'Failed to remove primary', message: err?.message });
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    // View member details
+    const handleViewMemberDetails = async (userId: string) => {
+        if (!detail) return;
+        try {
+            setViewingMemberLoading(true);
+            const data = await orgUnitService.getMemberDetails(detail.id, userId);
+            setViewingMember(data);
+        } catch (err: any) {
+            addNotification({ type: 'error', title: 'Failed to load member details', message: err?.message });
+        } finally {
+            setViewingMemberLoading(false);
+        }
+    };
+
+    // Manager search
+    useEffect(() => {
+        if (!isSetManagerOpen || managerSearchQuery.length < 2) {
+            setManagerSearchResults([]);
+            return;
+        }
+        const timer = setTimeout(async () => {
+            try {
+                const params = new URLSearchParams({ query: managerSearchQuery, page: '0', size: '10' });
+                const res = await apiClient.get<any>(`/api/v1/admin/users/search?${params}`);
+                const users = (res.content || res || []).map((u: any) => ({
+                    id: u.id,
+                    username: u.username,
+                    displayName: u.displayName,
+                    email: u.email,
+                    imageUrl: u.imageUrl || u.imgUrl || undefined,
+                }));
+                setManagerSearchResults(Array.isArray(users) ? users : []);
+            } catch { setManagerSearchResults([]); }
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [managerSearchQuery, isSetManagerOpen]);
+
+    // Batch set manager
+    const handleBatchSetManager = async () => {
+        if (!detail || selectedMemberIds.length === 0 || !selectedManagerId) return;
+        try {
+            setActionLoading(true);
+            const result = await orgUnitService.setManagerBatch(detail.id, selectedMemberIds, selectedManagerId);
+            if (result.failCount > 0) {
+                addNotification({ type: 'warning', title: 'Partial Success', message: `Assigned manager for ${result.successCount} member(s). ${result.failCount} failed: ${result.errors.join('; ')}` });
+            } else {
+                addNotification({ type: 'success', title: 'Manager Assigned', message: `Manager assigned for ${result.successCount} member(s)` });
+            }
+            setSelectedMemberIds([]);
+            setIsSetManagerOpen(false);
+            setSelectedManagerId(null);
+            setManagerSearchQuery('');
+            fetchMembers();
+        } catch (err: any) {
+            addNotification({ type: 'error', title: 'Failed to set manager', message: err?.message });
         } finally {
             setActionLoading(false);
         }
@@ -921,7 +1040,7 @@ export default function OrgUnitDetailPage() {
         );
     }
 
-    const typeColorClass = detail.typeColor || 'bg-slate-100 text-slate-800 border-slate-200';
+    const typeColorClass = getTypeColorClass(detail.typeColor);
     const typeName = detail.typeName || 'Unknown Type';
 
     return (
@@ -995,6 +1114,8 @@ export default function OrgUnitDetailPage() {
                                     fetchAncestors();
                                     fetchChildren();
                                     fetchMembers();
+                                    fetchPositions();
+                                    setGlobalRefreshKey(prev => prev + 1);
                                 }} className="gap-1.5">
                                     <RefreshCw className="h-3.5 w-3.5" />
                                     Refresh
@@ -1249,7 +1370,7 @@ export default function OrgUnitDetailPage() {
                                                     href={`/admin/organization/${a.id}`}
                                                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border hover:bg-muted/60 transition-colors"
                                                 >
-                                                    <div className={`h-5 w-5 rounded flex items-center justify-center ${a.typeColor || 'bg-slate-100 text-slate-800 border-slate-200'}`}>
+                                                    <div className={`h-5 w-5 rounded flex items-center justify-center ${getTypeColorClass(a.typeColor)}`}>
                                                         <Building2 className="h-3 w-3" />
                                                     </div>
                                                     <span className="text-sm font-medium">{a.name}</span>
@@ -1306,7 +1427,7 @@ export default function OrgUnitDetailPage() {
                                     ) : (
                                         <div className="space-y-1">
                                             {children.map(child => {
-                                                const childTypeColorClass = child.typeColor || 'bg-slate-100 text-slate-800 border-slate-200';
+                                                const childTypeColorClass = getTypeColorClass(child.typeColor);
                                                 const childTypeName = child.typeName || 'Unknown Type';
                                                 return (
                                                     <Link
@@ -1367,24 +1488,34 @@ export default function OrgUnitDetailPage() {
                                 </CardHeader>
                                 <CardContent>
                                     {detail.headUserId && detail.headUserDisplayName ? (
-                                        <div className="flex items-center gap-4 p-4 rounded-lg border bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800">
+                                        <div className="flex items-center gap-4 p-5 rounded-xl border bg-card shadow-sm transition-all hover:shadow-md">
                                             <UserAvatar
                                                 user={{ displayName: detail.headUserDisplayName }}
                                                 size="xl"
+                                                className="ring-2 ring-primary/10 ring-offset-2 ring-offset-background"
                                             />
                                             <div className="flex-1">
-                                                <div className="flex items-center gap-2">
-                                                    <h3 className="font-semibold text-lg">{detail.headUserDisplayName}</h3>
-                                                    <Crown className="h-4 w-4 text-amber-500" />
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <h3 className="font-semibold text-lg tracking-tight">{detail.headUserDisplayName}</h3>
+                                                    <Badge variant="secondary" className="bg-primary/10 text-primary hover:bg-primary/20 border-none px-2 py-0.5 h-6 gap-1">
+                                                        <Crown className="h-3.5 w-3.5" /> Unit Head
+                                                    </Badge>
                                                 </div>
-                                                <p className="text-sm text-muted-foreground">Head of {detail.name}</p>
+                                                <div className="flex flex-col gap-1 text-sm text-muted-foreground">
+                                                    <span className="flex items-center gap-1.5">
+                                                        <UsersIcon className="h-3.5 w-3.5" />
+                                                        Leading <span className="font-medium text-foreground">{detail.name}</span>
+                                                    </span>
+                                                </div>
                                             </div>
-                                            <Link href={`/admin/users/${detail.headUserId}`}>
-                                                <Button variant="outline" size="sm" className="gap-1.5">
-                                                    <ExternalLink className="h-3.5 w-3.5" />
-                                                    View Profile
-                                                </Button>
-                                            </Link>
+                                            <div className="flex flex-col items-end gap-2">
+                                                <Link href={`/admin/users/${detail.headUserId}`}>
+                                                    <Button variant="secondary" size="sm" className="gap-2 shrink-0">
+                                                        <ExternalLink className="h-4 w-4" />
+                                                        View Profile
+                                                    </Button>
+                                                </Link>
+                                            </div>
                                         </div>
                                     ) : (
                                         <div className="text-center py-10">
@@ -1401,54 +1532,77 @@ export default function OrgUnitDetailPage() {
                                 </CardContent>
                             </Card>
 
+                            {/* Scoped Roles Management for Head */}
+                            {detail.headUserId && (
+                                <HeadScopedRolesPanel
+                                    orgUnitId={detail.id}
+                                    headUserId={detail.headUserId}
+                                    headDisplayName={detail.headUserDisplayName || 'Unit Head'}
+                                    canEdit={canAssignHead}
+                                />
+                            )}
+
                             {/* Head Search Modal */}
-                            {isSetHeadOpen && (
-                                <Card>
-                                    <CardHeader className="pb-3">
-                                        <div className="flex items-center justify-between">
-                                            <CardTitle className="text-base">Search Users</CardTitle>
-                                            <Button variant="ghost" size="sm" onClick={() => { setIsSetHeadOpen(false); setHeadSearchQuery(''); }}>
-                                                <X className="h-4 w-4" />
-                                            </Button>
-                                        </div>
-                                    </CardHeader>
-                                    <CardContent className="space-y-3">
+                            <Dialog open={isSetHeadOpen} onOpenChange={(open) => { if (!open) { setIsSetHeadOpen(false); setHeadSearchQuery(''); } }}>
+                                <DialogContent className="sm:max-w-[450px]">
+                                    <DialogHeader>
+                                        <DialogTitle className="flex items-center gap-2">
+                                            <UserPlus className="h-4 w-4 text-primary" /> Assign Unit Head
+                                        </DialogTitle>
+                                        <DialogDescription>
+                                            Search for a user in the system to assign as the head of {detail.name}.
+                                        </DialogDescription>
+                                    </DialogHeader>
+                                    <div className="space-y-4 py-2">
                                         <div className="relative">
                                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                             <Input
                                                 placeholder="Search by name or email..."
                                                 value={headSearchQuery}
                                                 onChange={(e) => setHeadSearchQuery(e.target.value)}
-                                                className="pl-9"
+                                                className="pl-9 h-10"
                                                 autoFocus
                                             />
                                         </div>
-                                        <div className="max-h-64 overflow-y-auto space-y-1">
+                                        <div className="max-h-64 overflow-y-auto space-y-1.5 p-1">
                                             {headSearchResults.length === 0 ? (
-                                                <p className="text-sm text-muted-foreground text-center py-4">
-                                                    {headSearchQuery ? 'No users found' : 'Type to search users'}
-                                                </p>
+                                                <div className="text-center py-6 border rounded-lg bg-muted/20 border-dashed">
+                                                    <UsersIcon className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
+                                                    <p className="text-sm text-muted-foreground">
+                                                        {headSearchQuery ? 'No users found matching your search' : 'Type a name or email to search'}
+                                                    </p>
+                                                </div>
                                             ) : (
                                                 headSearchResults.map(user => (
                                                     <button
                                                         key={user.id}
-                                                        onClick={() => handleSetHead(user)}
+                                                        onClick={() => { handleSetHead(user); setIsSetHeadOpen(false); }}
                                                         disabled={actionLoading}
-                                                        className="w-full flex items-center gap-3 p-2.5 rounded-lg border hover:bg-muted/60 transition-colors text-left"
+                                                        className="w-full flex items-center gap-3 p-3 rounded-xl border hover:border-primary/50 hover:bg-primary/5 transition-all text-left group"
                                                     >
-                                                        <UserAvatar user={user} size="sm" />
+                                                        <UserAvatar user={user} size="md" />
                                                         <div className="flex-1 min-w-0">
-                                                            <p className="text-sm font-medium truncate">{user.displayName || user.username}</p>
+                                                            <p className="text-sm font-semibold truncate group-hover:text-primary transition-colors">{user.displayName || user.username}</p>
                                                             <p className="text-xs text-muted-foreground truncate">{user.email}</p>
                                                         </div>
-                                                        <Check className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100" />
+                                                        <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <Check className="h-4 w-4 text-primary" />
+                                                        </div>
                                                     </button>
                                                 ))
                                             )}
                                         </div>
-                                    </CardContent>
-                                </Card>
-                            )}
+                                    </div>
+                                    <DialogFooter className="sm:justify-between border-t border-border/40 pt-4 mt-2">
+                                        <div className="text-xs text-muted-foreground flex items-center">
+                                            Head role assignments take effect immediately
+                                        </div>
+                                        <Button variant="outline" size="sm" onClick={() => setIsSetHeadOpen(false)}>
+                                            Cancel
+                                        </Button>
+                                    </DialogFooter>
+                                </DialogContent>
+                            </Dialog>
                         </TabsContent>
 
                         {/* ==================== Positions Tab ==================== */}
@@ -2126,74 +2280,73 @@ export default function OrgUnitDetailPage() {
                                                     const slotsLeft = pos ? pos.maxHeadcount - pos.currentHeadcount - assignSeatSelectedIds.length : 0;
                                                     const isDisabled = !isSelected && slotsLeft <= 0;
                                                     return (
-                                                    <button
-                                                        key={member.userId}
-                                                        disabled={isDisabled}
-                                                        onClick={() => {
-                                                            if (isDisabled) return;
-                                                            setAssignSeatSelectedIds(prev =>
-                                                                prev.includes(member.userId)
-                                                                    ? prev.filter(id => id !== member.userId)
-                                                                    : [...prev, member.userId]
-                                                            );
-                                                        }}
-                                                        className={`w-full flex items-center gap-3 p-2.5 rounded-lg border transition-colors text-left ${
-                                                            isSelected ? 'bg-primary/10 border-primary/30' : isDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-muted/60'
-                                                        }`}
-                                                    >
-                                                        <input
-                                                            type="checkbox"
-                                                            className="h-4 w-4 rounded border-gray-300"
-                                                            checked={isSelected}
+                                                        <button
+                                                            key={member.userId}
                                                             disabled={isDisabled}
-                                                            readOnly
-                                                        />
-                                                        <UserAvatar user={{ displayName: member.displayName, imgUrl: member.imageUrl || undefined }} size="sm" />
-                                                        <div className="flex-1 min-w-0">
-                                                            <p className="text-sm font-medium truncate">{member.displayName}</p>
-                                                            <p className="text-xs text-muted-foreground truncate">{member.email}</p>
-                                                        </div>
-                                                    </button>
+                                                            onClick={() => {
+                                                                if (isDisabled) return;
+                                                                setAssignSeatSelectedIds(prev =>
+                                                                    prev.includes(member.userId)
+                                                                        ? prev.filter(id => id !== member.userId)
+                                                                        : [...prev, member.userId]
+                                                                );
+                                                            }}
+                                                            className={`w-full flex items-center gap-3 p-2.5 rounded-lg border transition-colors text-left ${isSelected ? 'bg-primary/10 border-primary/30' : isDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-muted/60'
+                                                                }`}
+                                                        >
+                                                            <input
+                                                                type="checkbox"
+                                                                className="h-4 w-4 rounded border-gray-300"
+                                                                checked={isSelected}
+                                                                disabled={isDisabled}
+                                                                readOnly
+                                                            />
+                                                            <UserAvatar user={{ displayName: member.displayName, imgUrl: member.imageUrl || undefined }} size="sm" />
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="text-sm font-medium truncate">{member.displayName}</p>
+                                                                <p className="text-xs text-muted-foreground truncate">{member.email}</p>
+                                                            </div>
+                                                        </button>
                                                     );
                                                 })
                                             )}
                                         </div>
-                                    {/* Assignment Configuration — always visible */}
-                                    <div className="border-t pt-3 mt-2 space-y-3">
-                                        <p className="text-sm font-medium text-primary flex items-center gap-1.5">
-                                            <Settings className="h-3.5 w-3.5" /> Assignment Configuration
-                                        </p>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <div className="space-y-1.5">
-                                                <Label className="text-xs">Assignment Type</Label>
-                                                <Select value={assignConfigForm.assignmentType} onValueChange={(v) => setAssignConfigForm(f => ({ ...f, assignmentType: v }))}>
-                                                    <SelectTrigger><SelectValue /></SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="PERMANENT">Permanent</SelectItem>
-                                                        <SelectItem value="ACTING">Acting</SelectItem>
-                                                        <SelectItem value="INTERIM">Interim</SelectItem>
-                                                        <SelectItem value="SECONDMENT">Secondment</SelectItem>
-                                                    </SelectContent>
-                                                </Select>
+                                        {/* Assignment Configuration — always visible */}
+                                        <div className="border-t pt-3 mt-2 space-y-3">
+                                            <p className="text-sm font-medium text-primary flex items-center gap-1.5">
+                                                <Settings className="h-3.5 w-3.5" /> Assignment Configuration
+                                            </p>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1.5">
+                                                    <Label className="text-xs">Assignment Type</Label>
+                                                    <Select value={assignConfigForm.assignmentType} onValueChange={(v) => setAssignConfigForm(f => ({ ...f, assignmentType: v }))}>
+                                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="PERMANENT">Permanent</SelectItem>
+                                                            <SelectItem value="ACTING">Acting</SelectItem>
+                                                            <SelectItem value="INTERIM">Interim</SelectItem>
+                                                            <SelectItem value="SECONDMENT">Secondment</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <Label className="text-xs">FTE %</Label>
+                                                    <Input type="number" min={0} max={100} value={assignConfigForm.ftePercentage} onChange={(e) => setAssignConfigForm(f => ({ ...f, ftePercentage: Number(e.target.value) }))} />
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <Label className="text-xs">Effective From</Label>
+                                                    <Input type="date" value={assignConfigForm.effectiveFrom} onChange={(e) => setAssignConfigForm(f => ({ ...f, effectiveFrom: e.target.value }))} />
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <Label className="text-xs">Effective To</Label>
+                                                    <Input type="date" value={assignConfigForm.effectiveTo} onChange={(e) => setAssignConfigForm(f => ({ ...f, effectiveTo: e.target.value }))} />
+                                                </div>
                                             </div>
-                                            <div className="space-y-1.5">
-                                                <Label className="text-xs">FTE %</Label>
-                                                <Input type="number" min={0} max={100} value={assignConfigForm.ftePercentage} onChange={(e) => setAssignConfigForm(f => ({ ...f, ftePercentage: Number(e.target.value) }))} />
-                                            </div>
-                                            <div className="space-y-1.5">
-                                                <Label className="text-xs">Effective From</Label>
-                                                <Input type="date" value={assignConfigForm.effectiveFrom} onChange={(e) => setAssignConfigForm(f => ({ ...f, effectiveFrom: e.target.value }))} />
-                                            </div>
-                                            <div className="space-y-1.5">
-                                                <Label className="text-xs">Effective To</Label>
-                                                <Input type="date" value={assignConfigForm.effectiveTo} onChange={(e) => setAssignConfigForm(f => ({ ...f, effectiveTo: e.target.value }))} />
+                                            <div className="flex items-center gap-2">
+                                                <input type="checkbox" id="assign-config-primary" checked={assignConfigForm.isPrimary} onChange={(e) => setAssignConfigForm(f => ({ ...f, isPrimary: e.target.checked }))} className="h-4 w-4 rounded" />
+                                                <Label htmlFor="assign-config-primary" className="text-sm cursor-pointer">Primary Position</Label>
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-2">
-                                            <input type="checkbox" id="assign-config-primary" checked={assignConfigForm.isPrimary} onChange={(e) => setAssignConfigForm(f => ({ ...f, isPrimary: e.target.checked }))} className="h-4 w-4 rounded" />
-                                            <Label htmlFor="assign-config-primary" className="text-sm cursor-pointer">Primary Position</Label>
-                                        </div>
-                                    </div>
                                     </div>
                                     <DialogFooter>
                                         <Button variant="outline" onClick={() => { setAssignToSeatId(null); setAssignSeatSelectedIds([]); }}>Cancel</Button>
@@ -2263,10 +2416,9 @@ export default function OrgUnitDetailPage() {
                             </Dialog>
                         </TabsContent>
 
-                        {/* ==================== Members Tab ==================== */}
                         <TabsContent value="members" className="mt-0 space-y-4">
-                            <Card>
-                                <CardHeader className="pb-3">
+                            <Card className="overflow-hidden max-h-[500px]">
+                                <CardHeader className="pb-3 sticky top-1 z-10 bg-card border-b">
                                     <div className="flex items-center justify-between">
                                         <CardTitle className="text-base flex items-center gap-2">
                                             <UsersIcon className="h-4 w-4 text-primary" />
@@ -2282,12 +2434,43 @@ export default function OrgUnitDetailPage() {
                                                     className="pl-9 h-8 w-52"
                                                 />
                                             </div>
-                                            {selectedMemberIds.length > 0 && canAssignUser && (
-                                                <Button variant="destructive" size="sm" onClick={handleBatchRemoveMembers} disabled={actionLoading} className="gap-1.5">
-                                                    <UserMinus className="h-3.5 w-3.5" />
-                                                    Remove ({selectedMemberIds.length})
-                                                </Button>
-                                            )}
+                                            {selectedMemberIds.length > 0 && canAssignUser && (() => {
+                                                const someNotPrimary = selectedMemberIds.some(id => {
+                                                    const m = members.find(mbr => mbr.userId === id);
+                                                    return m && !m.isPrimary && !m.primary;
+                                                });
+                                                const someArePrimary = selectedMemberIds.some(id => {
+                                                    const m = members.find(mbr => mbr.userId === id);
+                                                    return m && (m.isPrimary || m.primary);
+                                                });
+
+                                                return (
+                                                    <>
+                                                        {someNotPrimary && (
+                                                            <Button variant="outline" size="sm" onClick={handleBatchSetPrimary} disabled={actionLoading} className="gap-1.5 border-primary text-primary hover:bg-primary/10">
+                                                                <Crown className="h-3.5 w-3.5" />
+                                                                Set Primary ({selectedMemberIds.length})
+                                                            </Button>
+                                                        )}
+                                                        {someArePrimary && (
+                                                            <Button variant="outline" size="sm" onClick={handleBatchRemovePrimary} disabled={actionLoading} className="gap-1.5 border-amber-500 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/50">
+                                                                <UserMinus className="h-3.5 w-3.5" />
+                                                                Remove Primary ({selectedMemberIds.length})
+                                                            </Button>
+                                                        )}
+                                                        {canAssignManager && (
+                                                            <Button variant="outline" size="sm" onClick={() => { setIsSetManagerOpen(true); setManagerSearchQuery(''); setSelectedManagerId(null); }} disabled={actionLoading} className="gap-1.5 border-indigo-500 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/50">
+                                                                <UserCog className="h-3.5 w-3.5" />
+                                                                Set Manager ({selectedMemberIds.length})
+                                                            </Button>
+                                                        )}
+                                                        <Button variant="destructive" size="sm" onClick={handleBatchRemoveMembers} disabled={actionLoading} className="gap-1.5">
+                                                            <UserMinus className="h-3.5 w-3.5" />
+                                                            Remove ({selectedMemberIds.length})
+                                                        </Button>
+                                                    </>
+                                                );
+                                            })()}
                                             {canAssignUser && (
                                                 <Button variant="outline" size="sm" onClick={() => { setIsAddMemberOpen(true); setMemberSearchQuery(''); setSelectedMemberAddIds([]); }} className="gap-1.5">
                                                     <UserPlus className="h-3.5 w-3.5" />
@@ -2297,7 +2480,7 @@ export default function OrgUnitDetailPage() {
                                         </div>
                                     </div>
                                 </CardHeader>
-                                <CardContent>
+                                <CardContent className="max-h-[600px] overflow-y-auto">
                                     {members.length === 0 ? (
                                         <div className="text-center py-10">
                                             <UsersIcon className="h-12 w-12 text-muted-foreground mx-auto mb-3 opacity-30" />
@@ -2332,12 +2515,26 @@ export default function OrgUnitDetailPage() {
                                                 </div>
                                             )}
                                             {members.map(member => (
-                                                <div key={member.userId} className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/40 transition-colors">
-                                                    <div className="flex items-center gap-3">
+                                                <div
+                                                    key={member.userId}
+                                                    className={`flex items-center justify-between p-4 rounded-xl border hover:bg-muted/30 hover:shadow-sm transition-all group ${canAssignUser ? 'cursor-pointer' : ''} ${selectedMemberIds.includes(member.userId) ? 'bg-primary/5 border-primary/30' : ''}`}
+                                                    onClick={(e) => {
+                                                        if (!canAssignUser) return;
+                                                        // Don't toggle if clicking a link, button, or the checkbox itself
+                                                        const target = e.target as HTMLElement;
+                                                        if (target.closest('a') || target.closest('button') || target.tagName === 'INPUT') return;
+                                                        setSelectedMemberIds(prev =>
+                                                            prev.includes(member.userId)
+                                                                ? prev.filter(id => id !== member.userId)
+                                                                : [...prev, member.userId]
+                                                        );
+                                                    }}
+                                                >
+                                                    <div className="flex items-center gap-4 flex-1 min-w-0">
                                                         {canAssignUser && (
                                                             <input
                                                                 type="checkbox"
-                                                                className="h-4 w-4 rounded border-gray-300"
+                                                                className="h-4 w-4 rounded border-gray-300 shrink-0"
                                                                 checked={selectedMemberIds.includes(member.userId)}
                                                                 onChange={(e) => {
                                                                     if (e.target.checked) {
@@ -2348,56 +2545,83 @@ export default function OrgUnitDetailPage() {
                                                                 }}
                                                             />
                                                         )}
-                                                        <UserAvatar user={{ displayName: member.displayName, imgUrl: member.imageUrl || undefined }} size="md" />
-                                                        <div>
-                                                            <div className="flex items-center gap-2">
-                                                                <Link href={`/admin/users/${member.userId}`} className="font-medium text-sm hover:text-primary hover:underline transition-colors">
+                                                        <div className="relative shrink-0">
+                                                            <UserAvatar user={{ displayName: member.displayName, imgUrl: member.imageUrl || undefined }} size="md" />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            {/* Row 1: Name + Badges */}
+                                                            <div className="flex items-center gap-2 flex-wrap">
+                                                                <Link href={`/admin/users/${member.userId}`} className="font-semibold text-sm hover:text-primary hover:underline transition-colors truncate">
                                                                     {member.displayName}
                                                                 </Link>
-                                                                {member.isPrimary && (
-                                                                    <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-400 dark:border-blue-800">
+                                                                {detail.headUserId === member.userId && (
+                                                                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-[18px] gap-0.5 shrink-0">
+                                                                        <Crown className="h-2.5 w-2.5" /> Head
+                                                                    </Badge>
+                                                                )}
+                                                                {(member.isPrimary || member.primary) && (
+                                                                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-[18px] shrink-0">
                                                                         Primary
                                                                     </Badge>
                                                                 )}
-                                                                {detail.headUserId === member.userId && (
-                                                                    <Crown className="h-3.5 w-3.5 text-amber-500" />
-                                                                )}
                                                             </div>
-                                                            <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
-                                                                <span>{member.email}</span>
-                                                                {member.positionTitle && (
-                                                                    <span className="flex items-center gap-1">
-                                                                        <Briefcase className="h-3 w-3" />{member.positionTitle}
+                                                            {/* Row 2: Email */}
+                                                            <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                                                                {member.email}
+                                                            </p>
+                                                            {/* Row 3: Metadata pills */}
+                                                            <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                                                                {member.assignedAt && (
+                                                                    <span className="flex items-center gap-1 text-[11px] text-muted-foreground shrink-0" title={`Joined unit: ${new Date(member.assignedAt).toLocaleDateString()}`}>
+                                                                        <UsersIcon className="h-3 w-3" />Joined {new Date(member.assignedAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
                                                                     </span>
                                                                 )}
                                                             </div>
                                                         </div>
                                                     </div>
-                                                    {canAssignUser && (
+                                                    <div className="flex items-center gap-2 shrink-0 ml-4">
+                                                        <Link href={`/admin/users/${member.userId}`}>
+                                                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                <ExternalLink className="h-3.5 w-3.5" />
+                                                            </Button>
+                                                        </Link>
                                                         <Tooltip>
                                                             <TooltipTrigger asChild>
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="sm"
-                                                                    className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                                                                    onClick={() => handleRemoveMember(member.userId, member.displayName)}
-                                                                    disabled={removingMemberId === member.userId}
-                                                                >
-                                                                    {removingMemberId === member.userId ? (
-                                                                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                                                                    ) : (
-                                                                        <UserMinus className="h-3.5 w-3.5" />
-                                                                    )}
+                                                                <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => handleViewMemberDetails(member.userId)}>
+                                                                    <Eye className="h-3.5 w-3.5" />
                                                                 </Button>
                                                             </TooltipTrigger>
-                                                            <TooltipContent>Remove member</TooltipContent>
+                                                            <TooltipContent>View details</TooltipContent>
                                                         </Tooltip>
-                                                    )}
+                                                        {canAssignUser && (
+                                                            <Tooltip>
+                                                                <TooltipTrigger asChild>
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                                                                        onClick={() => handleRemoveMember(member.userId, member.displayName)}
+                                                                        disabled={removingMemberId === member.userId}
+                                                                    >
+                                                                        {removingMemberId === member.userId ? (
+                                                                            <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                                                                        ) : (
+                                                                            <UserMinus className="h-3.5 w-3.5" />
+                                                                        )}
+                                                                    </Button>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent>Remove member</TooltipContent>
+                                                            </Tooltip>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             ))}
                                         </div>
                                     )}
-                                    {/* Pagination */}
+
+                                </CardContent>
+                                {/* Pagination */}
+                                <div className='px-6'>
                                     <Pagination
                                         currentPage={memberPage}
                                         totalPages={memberTotalPages}
@@ -2407,7 +2631,7 @@ export default function OrgUnitDetailPage() {
                                         onPageSizeChange={(s) => { setMemberPageSize(s); setMemberPage(0); setSelectedMemberIds([]); }}
                                         pageSizeOptions={[5, 10, 20, 50]}
                                     />
-                                </CardContent>
+                                </div>
                             </Card>
 
                             {/* Add Member Dialog (server-side search, multi-select) */}
@@ -2452,9 +2676,8 @@ export default function OrgUnitDetailPage() {
                                                                         : [...prev, user.id]
                                                                 );
                                                             }}
-                                                            className={`w-full flex items-center gap-3 p-2.5 rounded-lg border transition-colors text-left ${
-                                                                selectedMemberAddIds.includes(user.id) ? 'bg-primary/10 border-primary/30' : 'hover:bg-muted/60'
-                                                            }`}
+                                                            className={`w-full flex items-center gap-3 p-2.5 rounded-lg border transition-colors text-left ${selectedMemberAddIds.includes(user.id) ? 'bg-primary/10 border-primary/30' : 'hover:bg-muted/60'
+                                                                }`}
                                                         >
                                                             <input
                                                                 type="checkbox"
@@ -2481,14 +2704,170 @@ export default function OrgUnitDetailPage() {
                                     </DialogFooter>
                                 </DialogContent>
                             </Dialog>
+
+                            {/* View Member Details Dialog */}
+                            <Dialog open={!!viewingMember} onOpenChange={(open) => { if (!open) setViewingMember(null); }}>
+                                <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto">
+                                    <DialogHeader>
+                                        <DialogTitle className="flex items-center gap-2"><Eye className="h-4 w-4 text-primary" /> Member Details</DialogTitle>
+                                        <DialogDescription>Detailed information about this member in the current organizational unit.</DialogDescription>
+                                    </DialogHeader>
+                                    {viewingMember && (
+                                        <div className="space-y-5 py-2">
+                                            {/* User Info Header */}
+                                            <div className="flex items-center gap-4 p-4 rounded-xl border bg-muted/20">
+                                                <UserAvatar user={{ displayName: viewingMember.displayName, imgUrl: viewingMember.imageUrl || undefined }} size="lg" />
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <h3 className="font-semibold text-base">{viewingMember.displayName}</h3>
+                                                        {viewingMember.isPrimary && (
+                                                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-[18px]">Primary</Badge>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-sm text-muted-foreground">{viewingMember.email}</p>
+                                                    {viewingMember.jobTitle && <p className="text-xs text-muted-foreground mt-0.5">{viewingMember.jobTitle}</p>}
+                                                    <p className="text-xs text-muted-foreground mt-0.5">@{viewingMember.username}</p>
+                                                    {viewingMember.assignedAt && (
+                                                        <p className="text-[11px] text-muted-foreground mt-1">
+                                                            Joined: {new Date(viewingMember.assignedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                            {viewingMember.assignedByDisplayName && ` · by ${viewingMember.assignedByDisplayName}`}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Direct Manager */}
+                                            <div>
+                                                <h4 className="text-sm font-semibold flex items-center gap-1.5 mb-2"><UserCog className="h-3.5 w-3.5 text-primary" /> Direct Manager</h4>
+                                                {viewingMember.managerUserId ? (
+                                                    <div className="flex items-center gap-3 p-3 rounded-lg border">
+                                                        <UserAvatar user={{ displayName: viewingMember.managerDisplayName || '', imgUrl: viewingMember.managerImageUrl || undefined }} size="sm" />
+                                                        <div>
+                                                            <p className="text-sm font-medium">{viewingMember.managerDisplayName}</p>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-sm text-muted-foreground italic px-3 py-2 rounded-lg border border-dashed">No direct manager assigned</p>
+                                                )}
+                                            </div>
+
+                                            {/* Position Assignments */}
+                                            <div>
+                                                <h4 className="text-sm font-semibold flex items-center gap-1.5 mb-2"><Briefcase className="h-3.5 w-3.5 text-primary" /> Position Assignments ({viewingMember.positionAssignments?.length || 0})</h4>
+                                                {viewingMember.positionAssignments && viewingMember.positionAssignments.length > 0 ? (
+                                                    <div className="space-y-2">
+                                                        {viewingMember.positionAssignments.map(pa => (
+                                                            <div key={pa.id} className="p-3 rounded-lg border text-sm space-y-1">
+                                                                <div className="flex items-center gap-2 flex-wrap">
+                                                                    {pa.orgUnitTypeColor && (
+                                                                        <div className={`h-2.5 w-2.5 rounded-full ${getTypeColorClass(pa.orgUnitTypeColor).split(' ')[0]}`} />
+                                                                    )}
+                                                                    <span className="font-medium">{pa.positionTitle}</span>
+                                                                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-[16px]">{pa.seatCode}</Badge>
+                                                                    {pa.isPrimary && <Badge className="text-[10px] px-1.5 py-0 h-[16px] bg-blue-100 text-blue-700 border-blue-200">Primary</Badge>}
+                                                                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-[16px]">{pa.assignmentType}</Badge>
+                                                                </div>
+                                                                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                                                    <Badge variant="outline" className={`text-[10px] px-1.5 py-0 h-[16px] ${getTypeColorClass(pa.orgUnitTypeColor)}`}>{pa.orgUnitName}</Badge>
+                                                                    {pa.ftePercentage != null && <span>FTE: {pa.ftePercentage}%</span>}
+                                                                    {pa.effectiveFrom && <span>From: {new Date(pa.effectiveFrom).toLocaleDateString()}</span>}
+                                                                    {pa.effectiveTo && <span>To: {new Date(pa.effectiveTo).toLocaleDateString()}</span>}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-sm text-muted-foreground italic px-3 py-2 rounded-lg border border-dashed">No position assignments</p>
+                                                )}
+                                            </div>
+
+                                            {/* Operational Groups */}
+                                            <div>
+                                                <h4 className="text-sm font-semibold flex items-center gap-1.5 mb-2"><UsersRound className="h-3.5 w-3.5 text-primary" /> Operational Groups ({viewingMember.groupMemberships?.length || 0})</h4>
+                                                {viewingMember.groupMemberships && viewingMember.groupMemberships.length > 0 ? (
+                                                    <div className="space-y-2">
+                                                        {viewingMember.groupMemberships.map(gm => (
+                                                            <div key={gm.groupId} className="flex items-center justify-between p-3 rounded-lg border text-sm">
+                                                                <div className="flex items-center gap-2 flex-wrap">
+                                                                    {gm.groupTypeColor && (
+                                                                        <div className={`h-2.5 w-2.5 rounded-full ${getTypeColorClass(gm.groupTypeColor).split(' ')[0]}`} />
+                                                                    )}
+                                                                    <span className="font-medium">{gm.groupName}</span>
+                                                                    <span className="text-xs text-muted-foreground">{gm.groupCode}</span>
+                                                                    {gm.groupTypeName && <Badge variant="outline" className={`text-[10px] px-1.5 py-0 h-[16px] ${getTypeColorClass(gm.groupTypeColor)}`}>{gm.groupTypeName}</Badge>}
+                                                                </div>
+                                                                <Badge variant="secondary" className="text-[10px] shrink-0">{gm.roleInGroup}</Badge>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-sm text-muted-foreground italic px-3 py-2 rounded-lg border border-dashed">Not in any operational groups in this unit</p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </DialogContent>
+                            </Dialog>
+
+                            {/* Set Manager Dialog */}
+                            <Dialog open={isSetManagerOpen} onOpenChange={(open) => { if (!open) { setIsSetManagerOpen(false); setManagerSearchQuery(''); setSelectedManagerId(null); } }}>
+                                <DialogContent className="sm:max-w-[500px] max-h-[80vh] overflow-y-auto">
+                                    <DialogHeader>
+                                        <DialogTitle className="flex items-center gap-2"><UserCog className="h-4 w-4 text-primary" /> Set Direct Manager</DialogTitle>
+                                        <DialogDescription>Search for a user to assign as the direct manager for {selectedMemberIds.length} selected member(s).</DialogDescription>
+                                    </DialogHeader>
+                                    <div className="space-y-3 py-2">
+                                        <div className="relative">
+                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                            <Input
+                                                placeholder="Search by name or email..."
+                                                value={managerSearchQuery}
+                                                onChange={(e) => setManagerSearchQuery(e.target.value)}
+                                                className="pl-9"
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
+                                            {managerSearchQuery.length < 2 ? (
+                                                <p className="text-sm text-muted-foreground text-center py-4">Type at least 2 characters to search</p>
+                                            ) : managerSearchResults.length === 0 ? (
+                                                <p className="text-sm text-muted-foreground text-center py-4">No users found</p>
+                                            ) : (
+                                                managerSearchResults.map(user => (
+                                                    <button
+                                                        key={user.id}
+                                                        onClick={() => setSelectedManagerId(selectedManagerId === user.id ? null : user.id)}
+                                                        className={`w-full flex items-center gap-3 p-2.5 rounded-lg border transition-colors text-left ${selectedManagerId === user.id ? 'bg-primary/10 border-primary/30' : 'hover:bg-muted/60'}`}
+                                                    >
+                                                        <div className={`h-5 w-5 rounded-full border-2 flex items-center justify-center shrink-0 ${selectedManagerId === user.id ? 'border-primary bg-primary' : 'border-gray-300'}`}>
+                                                            {selectedManagerId === user.id && <Check className="h-3 w-3 text-white" />}
+                                                        </div>
+                                                        <UserAvatar user={{ displayName: user.displayName, imgUrl: user.imageUrl || undefined }} size="sm" />
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-sm font-medium truncate">{user.displayName}</p>
+                                                            <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                                                        </div>
+                                                    </button>
+                                                ))
+                                            )}
+                                        </div>
+                                    </div>
+                                    <DialogFooter>
+                                        <Button variant="outline" onClick={() => { setIsSetManagerOpen(false); setSelectedManagerId(null); }}>Cancel</Button>
+                                        <Button onClick={handleBatchSetManager} disabled={actionLoading || !selectedManagerId} className="gap-1.5">
+                                            {actionLoading && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+                                            Assign Manager
+                                        </Button>
+                                    </DialogFooter>
+                                </DialogContent>
+                            </Dialog>
                         </TabsContent>
 
                         <TabsContent value="groups" className="mt-0">
-                            <GroupsTab ouId={ouId} canManageGroups={canManageGroups} addNotification={addNotification} />
+                            <GroupsTab key={`groups-${globalRefreshKey}`} ouId={ouId} canManageGroups={canManageGroups} addNotification={addNotification} />
                         </TabsContent>
 
                         <TabsContent value="audit" className="mt-0">
-                            <AuditTab ouId={ouId} />
+                            <AuditTab key={`audit-${globalRefreshKey}`} ouId={ouId} ouName={detail?.name} />
                         </TabsContent>
                     </div>
                 </Tabs>
@@ -2604,7 +2983,7 @@ function MoveTreeView({
                 .map(node => {
                     const isDisabled = node.id === currentOuId;
                     const isSelected = selectedId === node.id;
-                    const typeColorClass = node.typeColor || 'bg-slate-100 text-slate-800 border-slate-200';
+                    const typeColorClass = getTypeColorClass(node.typeColor);
                     const typeName = node.typeName || 'Unknown Type';
 
                     return (

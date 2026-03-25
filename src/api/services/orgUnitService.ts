@@ -1,5 +1,6 @@
 import { apiClient } from '../client';
 import axios, { AxiosInstance } from 'axios';
+import { PageResponse } from '../../types/api';
 
 export const COLOR_THEMES: Record<string, string> = {
     slate: 'bg-slate-100 text-slate-800 border-slate-200',
@@ -112,7 +113,7 @@ export interface OrgUnitMemberResponse {
     email: string;
     imageUrl: string | null;
     isPrimary: boolean;
-    positionTitle: string | null;
+    primary?: boolean;
     assignedAt: string;
     assignedBy: string | null;
     assignedByDisplayName: string | null;
@@ -144,14 +145,12 @@ export interface UpdateOrgUnitRequest {
 export interface AssignUserToOrgUnitRequest {
     userId: string;
     isPrimary?: boolean;
-    positionTitle?: string;
 }
 
 export interface BatchAssignUsersRequest {
     assignments: {
         userId: string;
         isPrimary?: boolean;
-        positionTitle?: string;
     }[];
 }
 
@@ -204,6 +203,7 @@ export interface PositionAssignmentResponse {
     positionTitle: string;
     orgUnitId: string;
     orgUnitName: string;
+    orgUnitTypeColor: string | null;
     isPrimary: boolean;
     effectiveFrom: string;
     effectiveTo: string | null;
@@ -225,6 +225,50 @@ export interface PagedResponse<T> {
     totalPages: number;
     number: number;
     size: number;
+}
+
+// ==================== Member Detail Types ====================
+
+export interface GroupMembershipInfo {
+    groupId: string;
+    groupName: string;
+    groupCode: string;
+    groupTypeName: string | null;
+    groupTypeColor: string | null;
+    roleInGroup: string;
+    joinedAt: string;
+}
+
+export interface MemberDetailResponse {
+    userId: string;
+    username: string;
+    displayName: string;
+    email: string;
+    imageUrl: string | null;
+    jobTitle: string | null;
+    isPrimary: boolean;
+    assignedAt: string;
+    assignedByDisplayName: string | null;
+    managerUserId: string | null;
+    managerDisplayName: string | null;
+    managerImageUrl: string | null;
+    positionAssignments: PositionAssignmentResponse[];
+    groupMemberships: GroupMembershipInfo[];
+}
+
+export interface UserOrgUnitResponse {
+    membershipId: string;
+    isPrimary: boolean;
+    assignedAt: string;
+    orgUnitId: string;
+    orgUnitName: string;
+    orgUnitCode: string;
+    orgUnitTypeCode: string;
+    orgUnitTypeName: string;
+    orgUnitTypeColor: string | null;
+    level: number;
+    headUserId: string | null;
+    headUserDisplayName: string | null;
 }
 
 // ==================== Group Types ====================
@@ -257,6 +301,13 @@ export interface CreateOrgUnitGroupRequest {
     description?: string;
     groupTypeId?: string;
     leaderUserId?: string;
+}
+
+export interface UpdateOrgUnitGroupRequest {
+    name?: string;
+    description?: string;
+    groupTypeId?: string;
+    isActive?: boolean;
 }
 
 export interface GroupMemberResponse {
@@ -348,17 +399,54 @@ export class OrgUnitService {
     }
 
     async removeUser(orgUnitId: string, userId: string): Promise<void> {
-        return apiClient.delete<void>(`${this.baseUrl}/${orgUnitId}/members/${userId}`);
+        return apiClient.delete<void>(`${this.baseUrl}/${orgUnitId}/members/${userId}`).then(res => {
+            if (typeof window !== 'undefined') window.dispatchEvent(new Event('leadership:updated'));
+            return res;
+        });
     }
 
     async removeUsersBatch(orgUnitId: string, userIds: string[]): Promise<void> {
         return apiClient.delete<void>(`${this.baseUrl}/${orgUnitId}/members/batch`, {
             data: { userIds }
+        } as any).then(res => {
+            if (typeof window !== 'undefined') window.dispatchEvent(new Event('leadership:updated'));
+            return res;
+        });
+    }
+
+    async setPrimaryBatch(orgUnitId: string, userIds: string[]): Promise<{ successCount: number; failCount: number; errors: string[] }> {
+        return apiClient.put(`${this.baseUrl}/${orgUnitId}/members/primary/batch`, { userIds });
+    }
+
+    async removePrimaryBatch(orgUnitId: string, userIds: string[]): Promise<{ successCount: number; failCount: number; errors: string[] }> {
+        return apiClient.delete(`${this.baseUrl}/${orgUnitId}/members/primary/batch`, {
+            data: { userIds }
         } as any);
     }
 
+    async getMemberDetails(orgUnitId: string, userId: string): Promise<MemberDetailResponse> {
+        return apiClient.get<MemberDetailResponse>(`${this.baseUrl}/${orgUnitId}/members/${userId}/details`);
+    }
+
+    async setManagerBatch(orgUnitId: string, userIds: string[], managerUserId: string): Promise<{ successCount: number; failCount: number; errors: string[] }> {
+        return apiClient.put(`${this.baseUrl}/${orgUnitId}/members/manager/batch`, { userIds, managerUserId });
+    }
+
     async setHead(orgUnitId: string, headUserId: string): Promise<OrgUnitResponse> {
-        return apiClient.put<OrgUnitResponse>(`${this.baseUrl}/${orgUnitId}/head`, { headUserId });
+        return apiClient.put<OrgUnitResponse>(`${this.baseUrl}/${orgUnitId}/head`, { headUserId }).then(res => {
+            if (typeof window !== 'undefined') window.dispatchEvent(new Event('leadership:updated'));
+            return res;
+        });
+    }
+
+    // ==================== User-Centric Queries ====================
+
+    async getUserOrgUnits(userId: string): Promise<UserOrgUnitResponse[]> {
+        return apiClient.get<UserOrgUnitResponse[]>(`${this.baseUrl}/user/${userId}`);
+    }
+
+    async getUserPrimaryOrgUnit(userId: string): Promise<UserOrgUnitResponse> {
+        return apiClient.get<UserOrgUnitResponse>(`${this.baseUrl}/user/${userId}/primary`);
     }
 
     // Move
@@ -455,12 +543,30 @@ export class OrgUnitService {
 
     // ==================== Operational Groups ====================
 
-    async getGroups(ouId: string): Promise<OrgUnitGroupResponse[]> {
-        return apiClient.get<OrgUnitGroupResponse[]>(`${this.baseUrl}/${ouId}/groups`);
+    async getGroups(
+        ouId: string,
+        params?: { query?: string; groupTypeId?: string; isActive?: boolean; page?: number; size?: number; sort?: string; direction?: string }
+    ): Promise<PageResponse<OrgUnitGroupResponse>> {
+        const queryParams = new URLSearchParams();
+        if (params?.query) queryParams.append('query', params.query);
+        if (params?.groupTypeId && params.groupTypeId !== 'ALL') queryParams.append('groupTypeId', params.groupTypeId);
+        if (params?.isActive !== undefined) queryParams.append('isActive', params.isActive.toString());
+        if (params?.page !== undefined) queryParams.append('page', params.page.toString());
+        if (params?.size !== undefined) queryParams.append('size', params.size.toString());
+        if (params?.sort) queryParams.append('sort', params.sort);
+        if (params?.direction) queryParams.append('direction', params.direction);
+        
+        const queryString = queryParams.toString();
+        const url = `${this.baseUrl}/${ouId}/groups` + (queryString ? `?${queryString}` : '');
+        return apiClient.get<PageResponse<OrgUnitGroupResponse>>(url);
     }
 
     async createGroup(ouId: string, data: CreateOrgUnitGroupRequest): Promise<OrgUnitGroupResponse> {
         return apiClient.post<OrgUnitGroupResponse>(`${this.baseUrl}/${ouId}/groups`, data);
+    }
+
+    async updateGroup(ouId: string, groupId: string, data: UpdateOrgUnitGroupRequest): Promise<OrgUnitGroupResponse> {
+        return apiClient.put<OrgUnitGroupResponse>(`${this.baseUrl}/${ouId}/groups/${groupId}`, data);
     }
 
     async getGroup(ouId: string, groupId: string): Promise<OrgUnitGroupResponse> {
@@ -475,8 +581,21 @@ export class OrgUnitService {
         return apiClient.put<OrgUnitGroupResponse>(`${this.baseUrl}/${ouId}/groups/${groupId}/leader?leaderUserId=${leaderUserId}`, {});
     }
 
-    async getGroupMembers(ouId: string, groupId: string): Promise<GroupMemberResponse[]> {
-        return apiClient.get<GroupMemberResponse[]>(`${this.baseUrl}/${ouId}/groups/${groupId}/members`);
+    async getGroupMembers(
+        ouId: string,
+        groupId: string,
+        params?: { query?: string; page?: number; size?: number; sort?: string; direction?: string }
+    ): Promise<PageResponse<GroupMemberResponse>> {
+        const queryParams = new URLSearchParams();
+        if (params?.query) queryParams.append('query', params.query);
+        if (params?.page !== undefined) queryParams.append('page', params.page.toString());
+        if (params?.size !== undefined) queryParams.append('size', params.size.toString());
+        if (params?.sort) queryParams.append('sort', params.sort);
+        if (params?.direction) queryParams.append('direction', params.direction);
+        
+        const queryString = queryParams.toString();
+        const url = `${this.baseUrl}/${ouId}/groups/${groupId}/members` + (queryString ? `?${queryString}` : '');
+        return apiClient.get<PageResponse<GroupMemberResponse>>(url);
     }
 
     async addGroupMember(ouId: string, groupId: string, userId: string, role: string = 'MEMBER'): Promise<GroupMemberResponse> {
@@ -546,6 +665,70 @@ export class OrgUnitService {
     async removeTypeRelation(parentTypeId: string, childTypeId: string): Promise<void> {
         return apiClient.delete<void>(`/api/v1/admin/reference/org-unit-types/relations/${parentTypeId}/${childTypeId}`);
     }
+
+    // ==================== Leadership & Scoped Roles ====================
+
+    async getLeadership(ouId: string): Promise<LeadershipAssignmentDto[]> {
+        return apiClient.get<LeadershipAssignmentDto[]>(`${this.baseUrl}/${ouId}/leadership`);
+    }
+
+    async getHeadScopedRoles(ouId: string): Promise<ScopedRoleAssignmentDto[]> {
+        return apiClient.get<ScopedRoleAssignmentDto[]>(`${this.baseUrl}/${ouId}/scoped-roles`);
+    }
+
+    async getAvailableScopedRoles(ouId: string): Promise<ScopedRoleDto[]> {
+        return apiClient.get<ScopedRoleDto[]>(`${this.baseUrl}/${ouId}/scoped-roles/available`);
+    }
+
+    async grantScopedRole(ouId: string, roleCode: string, reason?: string): Promise<ScopedRoleAssignmentDto> {
+        return apiClient.post<ScopedRoleAssignmentDto>(`${this.baseUrl}/${ouId}/scoped-roles`, {
+            roleCode,
+            reason: reason || 'Granted via admin UI'
+        });
+    }
+
+    async revokeScopedRole(ouId: string, roleCode: string): Promise<void> {
+        return apiClient.delete<void>(`${this.baseUrl}/${ouId}/scoped-roles/${roleCode}`);
+    }
+}
+
+// ==================== Scoped Role Types ====================
+
+export interface LeadershipAssignmentDto {
+    id: string;
+    userId: string;
+    userDisplayName: string | null;
+    userUsername: string | null;
+    userImageUrl: string | null;
+    leadershipRole: string;
+    effectiveFrom: string;
+    effectiveTo: string | null;
+    status: string;
+}
+
+export interface ScopedRoleAssignmentDto {
+    id: string;
+    roleCode: string;
+    roleName: string;
+    roleDescription: string | null;
+    isDefault: boolean;
+    status: string;
+    grantedBy: string | null;
+    grantedByDisplayName: string | null;
+    effectiveFrom: string;
+    effectiveTo: string | null;
+    assignmentReason: string | null;
+    source: string;
+}
+
+export interface ScopedRoleDto {
+    id: string;
+    code: string;
+    name: string;
+    description: string | null;
+    isSystem: boolean;
+    isDefault: boolean;
+    permissionKeys: string[];
 }
 
 export const orgUnitService = new OrgUnitService();

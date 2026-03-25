@@ -69,6 +69,7 @@ import { useNotification } from '@/contexts/NotificationContext';
 import { ImageCropDialog } from '@/components/ui/image-crop-dialog';
 import CreateReferenceDataModal from '@/components/modals/CreateReferenceDataModal';
 import RepositoryBrowser from '@/components/main/RepositoryBrowser';
+import UserOrganizationTab from './UserOrganizationTab';
 
 interface UserStatistics {
   userId: string;
@@ -134,6 +135,10 @@ export default function UserDetailPage() {
   const canViewGroups = hasPermission(Permissions.GROUP_READ);
   const canViewAudit = hasPermission(Permissions.AUDIT_READ);
   const canViewSessions = hasPermission(Permissions.USER_READ); // Sessions are part of user read
+  const canViewOrg = hasPermission(Permissions.ORG_READ);
+  const canAssignUser = hasPermission(Permissions.ORG_ASSIGN_USER);
+  const canManageGroups = hasPermission(Permissions.ORG_MANAGE_GROUPS);
+  const canAssignPosition = hasPermission(Permissions.POSITION_ASSIGN);
 
   // Modal states
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -962,10 +967,25 @@ export default function UserDetailPage() {
               </TooltipContent>
             )}
           </Tooltip>
-          <TabsTrigger value="organization">
-            <Building2 className="h-4 w-4 mr-2" />
-            Organization
-          </TabsTrigger>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div>
+                <TabsTrigger
+                  value="organization"
+                  disabled={!canViewOrg}
+                  className={!canViewOrg ? 'opacity-50 cursor-not-allowed' : ''}
+                >
+                  <Building2 className="h-4 w-4 mr-2" />
+                  Organization
+                </TabsTrigger>
+              </div>
+            </TooltipTrigger>
+            {!canViewOrg && (
+              <TooltipContent>
+                <p>You don't have permission to view organization data (org:read required)</p>
+              </TooltipContent>
+            )}
+          </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
               <div>
@@ -1762,75 +1782,16 @@ export default function UserDetailPage() {
           </Card>
         </TabsContent>
 
-        {/* Organization Tab - UI Shell */}
+        {/* Organization Tab */}
         <TabsContent value="organization">
-          <div className="space-y-4">
-            {/* Org Unit Memberships */}
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-2">
-                      <Building2 className="h-5 w-5" />
-                      Org Unit Memberships
-                    </CardTitle>
-                    <CardDescription>Organizational units this user belongs to</CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-8">
-                  <Building2 className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
-                  <p className="text-muted-foreground">Org unit memberships will be displayed here</p>
-                  <p className="text-xs text-muted-foreground mt-1">Shows departments, teams, and units this user is assigned to</p>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Position Assignments */}
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-2">
-                      <MapPin className="h-5 w-5" />
-                      Position Assignments
-                    </CardTitle>
-                    <CardDescription>Positions this user holds across the organization</CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-8">
-                  <MapPin className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
-                  <p className="text-muted-foreground">Position assignments will be displayed here</p>
-                  <p className="text-xs text-muted-foreground mt-1">Shows seat codes, titles, FTE%, and assignment types</p>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Operational Groups */}
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-2">
-                      <Network className="h-5 w-5" />
-                      Operational Groups
-                    </CardTitle>
-                    <CardDescription>Project teams, committees, and task forces</CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-8">
-                  <Network className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
-                  <p className="text-muted-foreground">Operational group memberships will be displayed here</p>
-                  <p className="text-xs text-muted-foreground mt-1">Shows group name, role, and leader information</p>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+          <UserOrganizationTab
+            userId={userId}
+            canRead={canViewOrg}
+            canAssignUser={canAssignUser}
+            canManageGroups={canManageGroups}
+            canAssignPosition={canAssignPosition}
+            addNotification={addNotification}
+          />
         </TabsContent>
 
         {/* Sessions Tab */}

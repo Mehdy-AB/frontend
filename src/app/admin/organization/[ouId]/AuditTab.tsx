@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import {
     Activity,
@@ -12,6 +12,9 @@ import {
     XCircle,
     Clock,
     Filter,
+    Building2,
+    X,
+    ChevronDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,6 +29,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { auditLogService, AuditLogResponseDto } from '@/api/services/auditLogService';
+import { orgUnitService, OrgUnitResponse } from '@/api/services/orgUnitService';
 
 // ==================== Constants ====================
 
@@ -73,11 +77,12 @@ function formatActionLabel(action: string | null): string {
 
 interface AuditTabProps {
     ouId: string;
+    ouName?: string;
 }
 
 // ==================== Component ====================
 
-export default function AuditTab({ ouId }: AuditTabProps) {
+export default function AuditTab({ ouId, ouName }: AuditTabProps) {
     // State
     const [logs, setLogs] = useState<AuditLogResponseDto[]>([]);
     const [loading, setLoading] = useState(false);
@@ -89,14 +94,56 @@ export default function AuditTab({ ouId }: AuditTabProps) {
     const [searchDebounced, setSearchDebounced] = useState('');
     const [expandedLogId, setExpandedLogId] = useState<number | null>(null);
 
+    // OU filter state
+    const [ouFilterId, setOuFilterId] = useState<string>('ALL');
+    const [ouFilterName, setOuFilterName] = useState<string>('All Units');
+    const [ouPickerOpen, setOuPickerOpen] = useState(false);
+    const [ouSearchQuery, setOuSearchQuery] = useState('');
+    const [ouSearchResults, setOuSearchResults] = useState<OrgUnitResponse[]>([]);
+    const [ouSearchLoading, setOuSearchLoading] = useState(false);
+    const ouPickerRef = useRef<HTMLDivElement>(null);
+
+    // Close OU picker on click outside
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (ouPickerRef.current && !ouPickerRef.current.contains(e.target as Node)) {
+                setOuPickerOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    // Debounced OU search
+    useEffect(() => {
+        if (!ouPickerOpen) return;
+        if (ouSearchQuery.length < 2) {
+            setOuSearchResults([]);
+            return;
+        }
+        const timer = setTimeout(async () => {
+            try {
+                setOuSearchLoading(true);
+                const results = await orgUnitService.search(ouSearchQuery);
+                setOuSearchResults(Array.isArray(results) ? results : []);
+            } catch {
+                setOuSearchResults([]);
+            } finally {
+                setOuSearchLoading(false);
+            }
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [ouSearchQuery, ouPickerOpen]);
+
     // ==================== Fetch Audit Logs (Server-side) ====================
 
-    const fetchLogs = useCallback(async (p: number, action: string, search: string) => {
+    const fetchLogs = useCallback(async (p: number, action: string, search: string, entityId: string) => {
         try {
             setLoading(true);
             const result = await auditLogService.filter({
                 entityTypes: OU_ENTITY_TYPES,
                 actions: action && action !== 'ALL' ? [action] : undefined,
+                entityId: entityId && entityId !== 'ALL' ? entityId : undefined,
                 search: search || undefined,
                 page: p,
                 size: 15,
@@ -114,8 +161,8 @@ export default function AuditTab({ ouId }: AuditTabProps) {
     }, []);
 
     useEffect(() => {
-        fetchLogs(page, actionFilter, searchDebounced);
-    }, [page, actionFilter, searchDebounced, fetchLogs]);
+        fetchLogs(page, actionFilter, searchDebounced, ouFilterId);
+    }, [page, actionFilter, searchDebounced, ouFilterId, fetchLogs]);
 
     // Debounce search
     useEffect(() => {
@@ -129,6 +176,15 @@ export default function AuditTab({ ouId }: AuditTabProps) {
     // Reset page on filter change
     const handleActionFilterChange = (val: string) => {
         setActionFilter(val);
+        setPage(0);
+    };
+
+    const handleSelectOU = (id: string, name: string) => {
+        setOuFilterId(id);
+        setOuFilterName(name);
+        setOuPickerOpen(false);
+        setOuSearchQuery('');
+        setOuSearchResults([]);
         setPage(0);
     };
 
@@ -152,7 +208,7 @@ export default function AuditTab({ ouId }: AuditTabProps) {
                                 <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">{totalElements}</Badge>
                             )}
                         </CardTitle>
-                        <Button variant="ghost" size="sm" onClick={() => fetchLogs(page, actionFilter, searchDebounced)} className="gap-1.5 text-xs">
+                        <Button variant="ghost" size="sm" onClick={() => fetchLogs(page, actionFilter, searchDebounced, ouFilterId)} className="gap-1.5 text-xs">
                             <RefreshCw className="h-3 w-3" /> Refresh
                         </Button>
                     </div>
@@ -166,6 +222,89 @@ export default function AuditTab({ ouId }: AuditTabProps) {
                                 placeholder="Search audit logs..."
                                 className="pl-9 h-8 text-sm"
                             />
+                        </div>
+                        {/* OU Picker */}
+                        <div className="relative" ref={ouPickerRef}>
+                            <button
+                                type="button"
+                                onClick={() => { setOuPickerOpen(!ouPickerOpen); setOuSearchQuery(''); }}
+                                className="flex items-center gap-1.5 h-8 px-3 text-sm border rounded-md bg-background hover:bg-muted/50 transition-colors min-w-[160px] max-w-[220px]"
+                            >
+                                <Building2 className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                                <span className="truncate flex-1 text-left">{ouFilterName}</span>
+                                {ouFilterId !== 'ALL' ? (
+                                    <X
+                                        className="h-3 w-3 text-muted-foreground hover:text-foreground flex-shrink-0"
+                                        onClick={(e) => { e.stopPropagation(); handleSelectOU('ALL', 'All Units'); }}
+                                    />
+                                ) : (
+                                    <ChevronDown className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                                )}
+                            </button>
+                            {ouPickerOpen && (
+                                <div className="absolute z-50 top-full mt-1 right-0 w-72 bg-popover border rounded-lg shadow-lg overflow-hidden">
+                                    <div className="p-2 border-b">
+                                        <Input
+                                            value={ouSearchQuery}
+                                            onChange={(e) => setOuSearchQuery(e.target.value)}
+                                            placeholder="Search org units..."
+                                            className="h-7 text-xs"
+                                            autoFocus
+                                        />
+                                    </div>
+                                    <div className="max-h-52 overflow-y-auto">
+                                        {/* All Units option */}
+                                        <button
+                                            type="button"
+                                            onClick={() => handleSelectOU('ALL', 'All Units')}
+                                            className={`w-full text-left px-3 py-2 text-sm hover:bg-muted/50 flex items-center gap-2 transition-colors ${ouFilterId === 'ALL' ? 'bg-primary/10 text-primary font-medium' : ''}`}
+                                        >
+                                            <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                                            All Units
+                                        </button>
+                                        {/* This Unit (current OU) */}
+                                        <button
+                                            type="button"
+                                            onClick={() => handleSelectOU(ouId, ouName || 'This Unit')}
+                                            className={`w-full text-left px-3 py-2 text-sm hover:bg-muted/50 flex items-center gap-2 border-b transition-colors ${ouFilterId === ouId ? 'bg-primary/10 text-primary font-medium' : ''}`}
+                                        >
+                                            <Building2 className="h-3.5 w-3.5 text-primary" />
+                                            <span className="truncate">{ouName || 'This Unit'}</span>
+                                            <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5 flex-shrink-0">current</Badge>
+                                        </button>
+                                        {/* Search results */}
+                                        {ouSearchQuery.length >= 2 && (
+                                            <>
+                                                {ouSearchLoading ? (
+                                                    <div className="px-3 py-3 text-xs text-muted-foreground text-center">Searching...</div>
+                                                ) : ouSearchResults.length === 0 ? (
+                                                    <div className="px-3 py-3 text-xs text-muted-foreground text-center">No units found</div>
+                                                ) : (
+                                                    ouSearchResults
+                                                        .filter(ou => ou.id !== ouId)
+                                                        .map(ou => (
+                                                            <button
+                                                                key={ou.id}
+                                                                type="button"
+                                                                onClick={() => handleSelectOU(ou.id, ou.name)}
+                                                                className={`w-full text-left px-3 py-2 text-sm hover:bg-muted/50 flex items-center gap-2 transition-colors ${ouFilterId === ou.id ? 'bg-primary/10 text-primary font-medium' : ''}`}
+                                                            >
+                                                                <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                                                                <div className="min-w-0 flex-1">
+                                                                    <div className="truncate">{ou.name}</div>
+                                                                    <div className="text-[10px] text-muted-foreground truncate">{ou.code} · {ou.typeName}</div>
+                                                                </div>
+                                                            </button>
+                                                        ))
+                                                )}
+                                            </>
+                                        )}
+                                        {ouSearchQuery.length < 2 && ouSearchQuery.length > 0 && (
+                                            <div className="px-3 py-3 text-xs text-muted-foreground text-center">Type at least 2 characters</div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                         <Select value={actionFilter} onValueChange={handleActionFilterChange}>
                             <SelectTrigger className="w-48 h-8 text-sm">
@@ -190,7 +329,7 @@ export default function AuditTab({ ouId }: AuditTabProps) {
                         <div className="text-center py-10">
                             <Activity className="h-12 w-12 text-muted-foreground mx-auto mb-3 opacity-30" />
                             <p className="text-muted-foreground">
-                                {searchInput || (actionFilter && actionFilter !== 'ALL') ? 'No audit events match your filters' : 'No audit events recorded for this unit'}
+                                {searchInput || (actionFilter && actionFilter !== 'ALL') || ouFilterId !== 'ALL' ? 'No audit events match your filters' : 'No audit events recorded for this unit'}
                             </p>
                         </div>
                     ) : (
