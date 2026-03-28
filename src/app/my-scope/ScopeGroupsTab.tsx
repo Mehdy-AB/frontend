@@ -36,14 +36,6 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import {
-    orgUnitService,
-    OrgUnitGroupResponse,
-    GroupMemberResponse,
-    CreateOrgUnitGroupRequest,
-    UpdateOrgUnitGroupRequest,
-    OrgUnitGroupTypeResponse,
-} from '@/api/services/orgUnitService';
-import {
     AlertDialog,
     AlertDialogAction,
     AlertDialogCancel,
@@ -53,6 +45,14 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { myScopeService } from '@/api/services/myScopeService';
+import { orgUnitService } from '@/api/services/orgUnitService';
+import type {
+    OrgUnitGroupResponse,
+    GroupMemberResponse,
+    CreateOrgUnitGroupRequest,
+    OrgUnitGroupTypeResponse,
+} from '@/api/services/orgUnitService';
 
 // ==================== Types ====================
 
@@ -65,15 +65,17 @@ interface SimpleUser {
     imgUrl?: string;
 }
 
-interface GroupsTabProps {
+interface ScopeGroupsTabProps {
     ouId: string;
-    canManageGroups: boolean;
+    canCreate: boolean;
+    canManage: boolean;
     addNotification: (n: { type: 'success' | 'error' | 'warning' | 'info'; title: string; message: string }) => void;
+    refreshTrigger?: number;
 }
 
 // ==================== Component ====================
 
-export default function GroupsTab({ ouId, canManageGroups, addNotification }: GroupsTabProps) {
+export default function ScopeGroupsTab({ ouId, canCreate, canManage, addNotification, refreshTrigger = 0 }: ScopeGroupsTabProps) {
     // Groups data
     const [groups, setGroups] = useState<OrgUnitGroupResponse[]>([]);
     const [groupsLoading, setGroupsLoading] = useState(false);
@@ -125,18 +127,18 @@ export default function GroupsTab({ ouId, canManageGroups, addNotification }: Gr
     const fetchGroups = useCallback(async () => {
         try {
             setGroupsLoading(true);
-            const data = await orgUnitService.getGroups(ouId, {
+            const data: any = await myScopeService.getMyGroupsPaged(ouId, {
                 page: groupsPage,
                 size: 10,
                 query: searchQuery,
                 groupTypeId: typeFilter === 'ALL' ? undefined : typeFilter,
                 isActive: statusFilter === 'ALL' ? undefined : statusFilter === 'ACTIVE'
             });
-            setGroups(data.content);
-            setGroupsTotalPages(data.totalPages);
+            setGroups(data?.content || (Array.isArray(data) ? data : []));
+            setGroupsTotalPages(data?.totalPages || 1);
         } catch { /* ignore */ }
         finally { setGroupsLoading(false); }
-    }, [ouId, groupsPage, searchQuery, typeFilter, statusFilter]);
+    }, [ouId, searchQuery, typeFilter, statusFilter, groupsPage, refreshTrigger]);
 
     const fetchGroupTypes = useCallback(async () => {
         try {
@@ -155,14 +157,14 @@ export default function GroupsTab({ ouId, canManageGroups, addNotification }: Gr
 
     const fetchGroupMembers = useCallback(async (groupId: string) => {
         try {
-            const data = await orgUnitService.getGroupMembers(ouId, groupId, {
+            const data: any = await myScopeService.getGroupMembersPaged(ouId, groupId, {
                 page: membersPage,
                 size: 10,
                 query: membersSearchQuery
             });
-            setGroupMembers(prev => ({ ...prev, [groupId]: data.content }));
-            setMembersTotalPages(data.totalPages);
-            setMembersTotalElements(data.totalElements);
+            setGroupMembers(prev => ({ ...prev, [groupId]: data?.content || (Array.isArray(data) ? data : []) }));
+            setMembersTotalPages(data?.totalPages || 1);
+            setMembersTotalElements(data?.totalElements || (Array.isArray(data) ? data.length : 0));
         } catch {
             setGroupMembers(prev => ({ ...prev, [groupId]: [] }));
             setMembersTotalPages(0);
@@ -180,7 +182,7 @@ export default function GroupsTab({ ouId, canManageGroups, addNotification }: Gr
 
     const searchOuMembers = useCallback(async (query: string): Promise<SimpleUser[]> => {
         try {
-            const result = await orgUnitService.getMembers(ouId, { query: query || undefined, page: 0, size: 15 });
+            const result = await myScopeService.getMyMembersPaged(ouId, { query: query || undefined, page: 0, size: 15 });
             const members = result?.content || result || [];
             if (!Array.isArray(members)) return [];
             return members.map((m: any) => ({
@@ -253,7 +255,7 @@ export default function GroupsTab({ ouId, canManageGroups, addNotification }: Gr
         try {
             setActionLoading(true);
             if (editingGroup) {
-                await orgUnitService.updateGroup(ouId, editingGroup.id, {
+                await myScopeService.updateGroup(ouId, editingGroup.id, {
                     name: form.name,
                     description: form.description || undefined,
                     groupTypeId: form.groupTypeId || undefined,
@@ -261,7 +263,7 @@ export default function GroupsTab({ ouId, canManageGroups, addNotification }: Gr
                 });
                 addNotification({ type: 'success', title: 'Group Updated', message: `"${form.name}" updated successfully` });
             } else {
-                await orgUnitService.createGroup(ouId, form);
+                await myScopeService.createGroup(ouId, form);
                 addNotification({ type: 'success', title: 'Group Created', message: `"${form.name}" created successfully` });
             }
             setDialogOpen(false);
@@ -282,7 +284,7 @@ export default function GroupsTab({ ouId, canManageGroups, addNotification }: Gr
         if (!groupToDelete) return;
         try {
             setActionLoading(true);
-            await orgUnitService.deleteGroup(ouId, groupToDelete.id);
+            await myScopeService.deleteGroup(ouId, groupToDelete.id);
             addNotification({ type: 'success', title: 'Group Deleted', message: `"${groupToDelete.name}" deleted successfully` });
             if (expandedGroupId === groupToDelete.id) setExpandedGroupId(null);
             fetchGroups();
@@ -305,7 +307,7 @@ export default function GroupsTab({ ouId, canManageGroups, addNotification }: Gr
     const handleAddMember = async (groupId: string, user: SimpleUser) => {
         try {
             setActionLoading(true);
-            await orgUnitService.addGroupMember(ouId, groupId, user.id);
+            await myScopeService.addGroupMember(ouId, groupId, user.id);
             addNotification({ type: 'success', title: 'Member Added', message: `${user.displayName || user.username} added to group` });
             fetchGroupMembers(groupId);
             fetchGroups();
@@ -319,7 +321,7 @@ export default function GroupsTab({ ouId, canManageGroups, addNotification }: Gr
     const handleRemoveMember = async (groupId: string, userId: string, displayName: string) => {
         try {
             setActionLoading(true);
-            await orgUnitService.removeGroupMember(ouId, groupId, userId);
+            await myScopeService.removeGroupMember(ouId, groupId, userId);
             addNotification({ type: 'success', title: 'Member Removed', message: `${displayName} removed from group` });
             fetchGroupMembers(groupId);
             fetchGroups();
@@ -341,7 +343,7 @@ export default function GroupsTab({ ouId, canManageGroups, addNotification }: Gr
     const handleSetLeader = async (groupId: string, user: SimpleUser) => {
         try {
             setActionLoading(true);
-            await orgUnitService.setGroupLeader(ouId, groupId, user.id);
+            await myScopeService.setGroupLeader(ouId, groupId, user.id);
             addNotification({ type: 'success', title: 'Leader Updated', message: `${user.displayName || user.username} is now the group leader` });
             setLeaderDialogOpen(false);
             fetchGroupMembers(groupId);
@@ -369,10 +371,7 @@ export default function GroupsTab({ ouId, canManageGroups, addNotification }: Gr
                                 )}
                             </CardTitle>
                             <div className="flex items-center gap-2">
-                                <Button variant="ghost" size="sm" onClick={fetchGroups} className="gap-1.5 text-xs">
-                                    <RefreshCw className="h-3 w-3" /> Refresh
-                                </Button>
-                                {canManageGroups && (
+                                {(canCreate || canManage) && (
                                     <Button variant="outline" size="sm" onClick={openCreateDialog} className="gap-1.5">
                                         <Plus className="h-3.5 w-3.5" />
                                         Create Group
@@ -430,7 +429,7 @@ export default function GroupsTab({ ouId, canManageGroups, addNotification }: Gr
                                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-3" />
                                 <p className="text-muted-foreground text-sm">Loading groups...</p>
                             </div>
-                        ) : groups.length === 0 && (searchQuery || typeFilter !== 'ALL') ? (
+                        ) : groups.length === 0 && (searchQuery || typeFilter !== 'ALL' || statusFilter !== 'ALL') ? (
                             <div className="text-center py-8">
                                 <Search className="h-10 w-10 text-muted-foreground mx-auto mb-3 opacity-30" />
                                 <p className="text-muted-foreground text-sm">No groups match your filters</p>
@@ -439,7 +438,7 @@ export default function GroupsTab({ ouId, canManageGroups, addNotification }: Gr
                             <div className="text-center py-10">
                                 <UsersRound className="h-12 w-12 text-muted-foreground mx-auto mb-3 opacity-30" />
                                 <p className="text-muted-foreground">No operational groups in this unit</p>
-                                {canManageGroups && (
+                                {(canCreate || canManage) && (
                                     <Button variant="outline" size="sm" className="mt-3 gap-1.5" onClick={openCreateDialog}>
                                         <Plus className="h-3.5 w-3.5" />
                                         Create First Group
@@ -481,7 +480,7 @@ export default function GroupsTab({ ouId, canManageGroups, addNotification }: Gr
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-1">
-                                                    {canManageGroups && (
+                                                    {canManage && (
                                                         <>
                                                             <Tooltip>
                                                                 <TooltipTrigger asChild>
@@ -535,7 +534,7 @@ export default function GroupsTab({ ouId, canManageGroups, addNotification }: Gr
                                                                     className="h-7 w-full pl-8 text-xs bg-background"
                                                                 />
                                                             </div>
-                                                            {canManageGroups && (
+                                                            {canManage && (
                                                                 <Button variant="outline" size="sm" className="h-7 text-xs gap-1 px-2.5 bg-background"
                                                                     onClick={() => openAddMemberDialog(group.id)}>
                                                                     <UserPlus className="h-3.5 w-3.5" /> Add Member
@@ -574,7 +573,7 @@ export default function GroupsTab({ ouId, canManageGroups, addNotification }: Gr
                                                                     </div>
                                                                     <div className="flex items-center gap-2">
                                                                         <span className="text-[10px] text-muted-foreground">{new Date(member.joinedAt).toLocaleDateString()}</span>
-                                                                        {canManageGroups && (
+                                                                        {canManage && (
                                                                             <Tooltip>
                                                                                 <TooltipTrigger asChild>
                                                                                     <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
@@ -789,16 +788,15 @@ export default function GroupsTab({ ouId, canManageGroups, addNotification }: Gr
                     <AlertDialogHeader>
                         <AlertDialogTitle>Delete Operational Group</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Are you sure you want to delete the group "{groupToDelete?.name}"? This action cannot be undone. All membership associations will be removed.
+                            Are you sure you want to delete the group &quot;{groupToDelete?.name}&quot;? This action cannot be undone. All membership associations will be removed.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel disabled={actionLoading}>Cancel</AlertDialogCancel>
                         <AlertDialogAction
-                            variant="destructive"
                             onClick={(e) => { e.preventDefault(); handleDelete(); }}
                             disabled={actionLoading}
-                            className="gap-2"
+                            className="gap-2 bg-destructive text-destructive-foreground hover:bg-destructive/90"
                         >
                             {actionLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                             Delete Group
