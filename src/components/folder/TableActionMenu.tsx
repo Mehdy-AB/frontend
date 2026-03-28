@@ -10,7 +10,8 @@ import {
     Eye,
     Copy,
     MoreVertical,
-    FileText
+    FileText,
+    Globe
 } from 'lucide-react';
 import { DocumentResponseDto, FolderResDto } from '@/types/api';
 import {
@@ -30,6 +31,7 @@ interface TableActionMenuProps {
     onEditPermissions?: (document: DocumentResponseDto) => void;
     onEditFolderPermissions?: (folder: FolderResDto) => void;
     onMove?: (item: TableItem) => void;
+    onMoveToWorkspace?: (item: TableItem) => void;
     onRename?: (item: TableItem) => void;
     onDelete?: (item: TableItem) => void;
     onShowComments?: (item: TableItem) => void;
@@ -45,6 +47,7 @@ export function TableActionMenu({
     onEditPermissions,
     onEditFolderPermissions,
     onMove,
+    onMoveToWorkspace,
     onRename,
     onDelete,
     onShowComments,
@@ -144,6 +147,17 @@ export function TableActionMenu({
                     >
                         <Folder className="mr-2 h-4 w-4" />
                         <span>Move</span>
+                    </DropdownMenuItem>
+                )}
+
+                {onMoveToWorkspace && (
+                    <DropdownMenuItem
+                        onClick={() => onMoveToWorkspace(item)}
+                        disabled={!canMove}
+                        className="cursor-pointer"
+                    >
+                        <Globe className="mr-2 h-4 w-4" />
+                        <span>Move to Workspace</span>
                     </DropdownMenuItem>
                 )}
 

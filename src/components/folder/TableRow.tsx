@@ -23,6 +23,7 @@ interface TableRowProps {
   onEditPermissions?: (document: DocumentResponseDto) => void;
   onEditFolderPermissions?: (folder: FolderResDto) => void;
   onMove?: (item: TableItem) => void;
+  onMoveToWorkspace?: (item: TableItem) => void;
   onRename?: (item: TableItem) => void;
   onDelete?: (item: TableItem) => void;
   onShowComments?: (item: TableItem) => void;
@@ -231,6 +232,7 @@ export function TableRow({
   onEditPermissions,
   onEditFolderPermissions,
   onMove,
+  onMoveToWorkspace,
   onRename,
   onDelete,
   onShowComments,
@@ -310,6 +312,37 @@ export function TableRow({
             </Link>
           )}
         </td>
+        {/* Placement Badge */}
+        <td className="p-4">
+          {(() => {
+            const wsId = isFolder ? (item as FolderResDto).workspaceId : undefined;
+            const wsName = isFolder ? (item as FolderResDto).workspaceName : undefined;
+            const wsType = isFolder ? (item as FolderResDto).workspaceType : undefined;
+            const path = item.path || '';
+            const isWorkspace = !!wsId || path.startsWith('ws.');
+            const isSecured = wsType === 'SECURED';
+
+            if (isWorkspace && isSecured) {
+              return (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                  <Lock className="h-3 w-3" />Secured
+                </span>
+              );
+            }
+            if (isWorkspace) {
+              return (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800" title={wsName || undefined}>
+                  <Globe className="h-3 w-3" />{wsName || 'Workspace'}
+                </span>
+              );
+            }
+            return (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                <Folder className="h-3 w-3" />Personal
+              </span>
+            );
+          })()}
+        </td>
         {showOwner && (
           <td className="p-4">
             <div className="flex items-center gap-3">
@@ -362,6 +395,7 @@ export function TableRow({
                 onEditPermissions={onEditPermissions}
                 onEditFolderPermissions={onEditFolderPermissions}
                 onMove={onMove}
+                onMoveToWorkspace={onMoveToWorkspace}
                 onRename={onRename}
                 onDelete={onDelete}
                 onShowComments={onShowComments}

@@ -14,6 +14,7 @@ interface UnifiedTableViewProps {
   onEditPermissions?: (document: DocumentResponseDto) => void;
   onEditFolderPermissions?: (folder: FolderResDto) => void;
   onMove?: (item: TableItem) => void;
+  onMoveToWorkspace?: (item: TableItem) => void;
   onRename?: (item: TableItem) => void;
   onDelete?: (item: TableItem) => void;
   onShowComments?: (item: TableItem) => void;
@@ -44,6 +45,7 @@ export function UnifiedTableView({
   onEditPermissions,
   onEditFolderPermissions,
   onMove,
+  onMoveToWorkspace,
   onRename,
   onDelete,
   onShowComments,
@@ -92,6 +94,7 @@ export function UnifiedTableView({
               </th>
             )}
             <th className="text-left p-4 text-xs font-medium text-gray-500 uppercase tracking-wide w-[300px]">Name</th>
+            <th className="text-left p-4 text-xs font-medium text-gray-500 uppercase tracking-wide w-[120px]">Placement</th>
             {showOwner && <th className="text-left p-4 text-xs font-medium text-gray-500 uppercase tracking-wide">Owner</th>}
             <th className="text-left p-4 text-xs font-medium text-gray-500 uppercase tracking-wide">Creator</th>
             <th className="text-left p-4 text-xs font-medium text-gray-500 uppercase tracking-wide">Size</th>
@@ -113,6 +116,7 @@ export function UnifiedTableView({
                 onEditPermissions={onEditPermissions}
                 onEditFolderPermissions={onEditFolderPermissions}
                 onMove={onMove}
+                onMoveToWorkspace={onMoveToWorkspace}
                 onRename={onRename}
                 onDelete={onDelete}
                 onShowComments={onShowComments}
@@ -145,6 +149,9 @@ export function UnifiedTableView({
                     <div className="h-3 bg-neutral-ui rounded w-24 animate-pulse"></div>
                   </div>
                 </div>
+              </td>
+              <td className="p-4">
+                <div className="h-4 bg-neutral-ui rounded w-16 animate-pulse"></div>
               </td>
               {showOwner && (
                 <td className="p-4">

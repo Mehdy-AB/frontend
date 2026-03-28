@@ -732,6 +732,10 @@ export interface FolderResDto {
   updatedAt: string;
   path: string;
   userPermissions: FolderPermissionResDto;
+  // Workspace placement
+  workspaceId?: string;
+  workspaceName?: string;
+  workspaceType?: string;
 }
 
 export interface FolderWithOwnerDto extends FolderResDto {

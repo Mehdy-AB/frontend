@@ -20,6 +20,7 @@ import ChangeDescriptionModal from '@/components/modals/ChangeDescriptionModal';
 import ConfirmationModal from '@/components/modals/ConfirmationModal';
 import { CommentsModal } from '@/components/modals/CommentsModal';
 import { FolderActivityModal } from '@/components/modals/FolderActivityModal';
+import { MoveToWorkspaceModal } from '@/components/workspace';
 
 // Import extracted components
 import {
@@ -66,6 +67,7 @@ export default function FolderDetailsPage() {
   // New state for separate modals
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [showMoveModal, setShowMoveModal] = useState(false);
+  const [showMoveToWorkspaceModal, setShowMoveToWorkspaceModal] = useState(false);
   const [showChangeDescriptionModal, setShowChangeDescriptionModal] = useState(false);
   const [actionItem, setActionItem] = useState<TableItem | null>(null);
 
@@ -475,6 +477,11 @@ export default function FolderDetailsPage() {
     setShowMoveModal(true);
   };
 
+  const handleMoveToWorkspace = (item: TableItem) => {
+    setActionItem(item);
+    setShowMoveToWorkspaceModal(true);
+  };
+
   const handleRename = (item: TableItem) => {
     setActionItem(item);
     setShowRenameModal(true);
@@ -818,6 +825,7 @@ export default function FolderDetailsPage() {
             onEditPermissions={handleEditDocumentPermissions}
             onEditFolderPermissions={handleEditFolderPermissions}
             onMove={handleMove}
+            onMoveToWorkspace={handleMoveToWorkspace}
             onRename={handleRename}
             onDelete={handleDelete}
             onShowComments={handleShowComments}
@@ -923,6 +931,30 @@ export default function FolderDetailsPage() {
           item={actionItem.type === 'folder' ? actionItem as FolderResDto : actionItem as DocumentResponseDto}
           itemType={actionItem.type}
           onSuccess={handleFolderActionSuccess}
+        />
+      )}
+
+      {showMoveToWorkspaceModal && actionItem && (
+        <MoveToWorkspaceModal
+          open={showMoveToWorkspaceModal}
+          onClose={() => {
+            setShowMoveToWorkspaceModal(false);
+            setActionItem(null);
+          }}
+          itemName={actionItem.type === 'folder' ? (actionItem as FolderResDto).name : (actionItem as DocumentResponseDto).name}
+          itemType={actionItem.type}
+          onConfirm={async (workspaceId, targetFolderId) => {
+            try {
+              if (actionItem.type === 'folder') {
+                await notificationApiClient.moveFolder((actionItem as FolderResDto).id, targetFolderId);
+              } else {
+                await notificationApiClient.moveDocument((actionItem as DocumentResponseDto).documentId, targetFolderId);
+              }
+              handleFolderActionSuccess();
+            } catch (err) {
+              console.error('Move to workspace failed:', err);
+            }
+          }}
         />
       )}
 

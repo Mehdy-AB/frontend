@@ -16,7 +16,9 @@ import {
   Share2,
   User,
   FileCheck,
-  Archive
+  Archive,
+  Globe,
+  ShieldCheck
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -80,6 +82,18 @@ export default function Sidebar() {
       label: 'My Repository',
       icon: Folder,
       href: '/folders',
+    },
+    {
+      id: 'workspaces',
+      label: 'Workspaces',
+      icon: Globe,
+      href: '/workspaces',
+    },
+    {
+      id: 'secured-spaces',
+      label: 'Secured Spaces',
+      icon: ShieldCheck,
+      href: '/secured-spaces',
     },
     {
       id: 'classa',
