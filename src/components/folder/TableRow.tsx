@@ -315,12 +315,12 @@ export function TableRow({
         {/* Placement Badge */}
         <td className="p-4">
           {(() => {
-            const wsId = isFolder ? (item as FolderResDto).workspaceId : undefined;
-            const wsName = isFolder ? (item as FolderResDto).workspaceName : undefined;
-            const wsType = isFolder ? (item as FolderResDto).workspaceType : undefined;
+            const wsCtx = item.type === 'folder'
+              ? (item as FolderResDto).workspaceContext
+              : (item as DocumentResponseDto).workspaceContext;
             const path = item.path || '';
-            const isWorkspace = !!wsId || path.startsWith('ws.');
-            const isSecured = wsType === 'SECURED';
+            const isWorkspace = !!wsCtx || path.startsWith('ws.');
+            const isSecured = wsCtx?.workspaceType === 'SECURED';
 
             if (isWorkspace && isSecured) {
               return (
@@ -331,8 +331,8 @@ export function TableRow({
             }
             if (isWorkspace) {
               return (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800" title={wsName || undefined}>
-                  <Globe className="h-3 w-3" />{wsName || 'Workspace'}
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800" title={wsCtx?.workspaceName || undefined}>
+                  <Globe className="h-3 w-3" />{wsCtx?.workspaceName || 'Workspace'}
                 </span>
               );
             }

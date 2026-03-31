@@ -365,6 +365,7 @@ export interface DocumentResponseDto {
   stamp?: StampResponse; // Stamp applied to the active version
   composedChildren?: DocumentResponseDto[]; // Child documents linked via INHERIT/CASCADE
   relationType?: string; // Only set for composed children (e.g. CHILD_DOCUMENT, ATTACHMENT)
+  workspaceContext?: WorkspaceContextDto; // Workspace context (null if not in a workspace)
 }
 
 // Bulk upload response types
@@ -732,10 +733,30 @@ export interface FolderResDto {
   updatedAt: string;
   path: string;
   userPermissions: FolderPermissionResDto;
-  // Workspace placement
-  workspaceId?: string;
-  workspaceName?: string;
-  workspaceType?: string;
+  // Workspace context (null if not in a workspace)
+  workspaceContext?: WorkspaceContextDto;
+}
+
+/** Workspace info, policies, and user role embedded in folder/document responses. */
+export interface WorkspaceContextDto {
+  workspaceId: string;
+  workspaceName: string;
+  workspaceCode: string;
+  workspaceType: string;   // STANDARD, SECURED
+  workspaceStatus: string; // ACTIVE, ARCHIVED, SUSPENDED
+  userWorkspaceRole?: string; // OWNER, MANAGER, CONTRIBUTOR, READER, AUDITOR
+  // Policy flags
+  canCreateFolders: boolean;
+  canUploadDocuments: boolean;
+  canEditDocuments: boolean;
+  canEditFolders: boolean;
+  canMoveDocumentsOrFolders: boolean;
+  canUploadDocumentVersions: boolean;
+  canUpdateDocumentMetadata: boolean;
+  aclSharingAllowed: boolean;
+  exportFolderEnabled: boolean;
+  versioningRequired: boolean;
+  viewAuditRequired: boolean;
 }
 
 export interface FolderWithOwnerDto extends FolderResDto {

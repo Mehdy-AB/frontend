@@ -59,10 +59,19 @@ export function TableActionMenu({
 }: TableActionMenuProps) {
     const isFolder = item.type === 'folder';
 
-    const canRename = item.userPermissions?.canEdit;
-    const canMove = item.userPermissions?.canEdit;
+    // Get workspace context from the item (available on both folders and documents)
+    const wsCtx = isFolder
+        ? (item as FolderResDto).workspaceContext
+        : (item as DocumentResponseDto).workspaceContext;
+
+    // Combine ACL permissions with workspace policy constraints
+    const canRename = (item.userPermissions?.canEdit ?? true)
+        && (isFolder ? (wsCtx?.canEditFolders ?? true) : (wsCtx?.canEditDocuments ?? true));
+    const canMove = (item.userPermissions?.canEdit ?? true)
+        && (wsCtx?.canMoveDocumentsOrFolders ?? true);
     const canDelete = item.userPermissions?.canDelete;
-    const canManagePermissions = item.userPermissions?.canManagePermissions;
+    const canManagePermissions = (item.userPermissions?.canManagePermissions ?? true)
+        && (wsCtx?.aclSharingAllowed ?? true);
     const canView = item.userPermissions?.canView;
     const canShare = isFolder ? (item.userPermissions as any)?.canShare : false;
 

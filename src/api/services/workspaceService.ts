@@ -8,7 +8,7 @@ import { PageResponse } from '../../types/api';
 export type WorkspaceType = 'STANDARD' | 'SECURED';
 export type WorkspaceStatus = 'ACTIVE' | 'ARCHIVED' | 'SUSPENDED';
 export type WorkspaceRole = 'OWNER' | 'MANAGER' | 'CONTRIBUTOR' | 'READER' | 'AUDITOR';
-export type PrincipalType = 'USER' | 'ROLE' | 'GROUP';
+export type PrincipalType = 'USER' | 'ROLE' | 'GROUP' | 'ORG_UNIT';
 export type RequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export type OcrMode = 'OFF' | 'CONDITIONAL' | 'REQUIRED';
 export type ArchiveHandling = 'BLOCK' | 'ALLOW' | 'QUARANTINE';
@@ -22,6 +22,14 @@ export interface WorkspaceDto {
   status: WorkspaceStatus;
   ownerOuId: string | null;
   createdById: string;
+  createdBy?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    displayName: string;
+    imageUrl?: string;
+  };
   rootFolderId: number | null;
   createdAt: string;
   updatedAt: string;
@@ -39,6 +47,13 @@ export interface WorkspaceMemberDto {
   removedAt: string | null;
   removedById: string | null;
   removalReason: string | null;
+  // Enriched user info (populated by backend for USER-type principals)
+  userFirstName?: string;
+  userLastName?: string;
+  userEmail?: string;
+  userUsername?: string;
+  userImageUrl?: string;
+  userDisplayName?: string;
 }
 
 export interface WorkspacePolicyDto {
@@ -58,10 +73,24 @@ export interface WorkspacePolicyDto {
   watermarkRequired: boolean;
   viewAuditRequired: boolean;
   breakGlassRequired: boolean;
+  exportFolderEnabled: boolean;
+  canEditDocuments: boolean;
+  canEditFolders: boolean;
+  canCreateFolders: boolean;
+  canUploadDocuments: boolean;
+  canMoveDocumentsOrFolders: boolean;
+  canUploadDocumentVersions: boolean;
+  canUpdateDocumentMetadata: boolean;
   // Access control
   crossWorkspaceAclAllowed: boolean;
   directUserAclAllowed: boolean;
   inheritanceEnforced: boolean;
+  aclSharingAllowed: boolean;
+  allowUsers: boolean;
+  allowGroups: boolean;
+  allowRoles: boolean;
+  allowOrgUnits: boolean;
+  abacAccessEnabled: boolean;
   // Classification
   classificationDefault: string | null;
   // Version
@@ -108,7 +137,22 @@ export interface WorkspaceStatsDto {
   memberCount: number;
   folderCount: number;
   documentCount: number;
+  totalSizeBytes: number;
   status: WorkspaceStatus;
+}
+
+export interface WorkspaceAnalyticsDto {
+  documentCount: number;
+  folderCount: number;
+  memberCount: number;
+  totalSizeBytes: number;
+  documentsByMimeType: { label: string; count: number }[];
+  documentsByFilingCategory: { label: string; count: number }[];
+  membersByRole: Record<string, number>;
+  membersByPrincipalType: Record<string, number>;
+  topFoldersBySize: { folderId: number; folderName: string; sizeBytes: number; documentCount: number }[];
+  recentActivity: any[];
+  dailyActivity: any[];
 }
 
 export interface IngestionValidationResult {
@@ -136,6 +180,14 @@ export interface CreateWorkspaceRequest {
   watermarkRequired?: boolean;
   viewAuditRequired?: boolean;
   breakGlassRequired?: boolean;
+  exportFolderEnabled?: boolean;
+  canEditDocuments?: boolean;
+  canEditFolders?: boolean;
+  canCreateFolders?: boolean;
+  canUploadDocuments?: boolean;
+  canMoveDocumentsOrFolders?: boolean;
+  canUploadDocumentVersions?: boolean;
+  canUpdateDocumentMetadata?: boolean;
   maxFileSizeBytes?: number;
   virusScanRequired?: boolean;
   ocrMode?: string;
@@ -143,8 +195,19 @@ export interface CreateWorkspaceRequest {
   crossWorkspaceAclAllowed?: boolean;
   directUserAclAllowed?: boolean;
   inheritanceEnforced?: boolean;
+  aclSharingAllowed?: boolean;
+  allowUsers?: boolean;
+  allowGroups?: boolean;
+  allowRoles?: boolean;
+  allowOrgUnits?: boolean;
+  abacAccessEnabled?: boolean;
   classificationDefault?: string;
   versioningRequired?: boolean;
+  // Content governance
+  allowedFilingCategoryIds?: number[];
+  defaultFilingCategoryId?: number;
+  allowedFileTypeIds?: number[];
+  allowedWorkflowIds?: number[];
 }
 
 export interface UpdateWorkspaceRequest {
@@ -163,6 +226,14 @@ export interface UpdatePolicyRequest {
   watermarkRequired?: boolean;
   viewAuditRequired?: boolean;
   breakGlassRequired?: boolean;
+  exportFolderEnabled?: boolean;
+  canEditDocuments?: boolean;
+  canEditFolders?: boolean;
+  canCreateFolders?: boolean;
+  canUploadDocuments?: boolean;
+  canMoveDocumentsOrFolders?: boolean;
+  canUploadDocumentVersions?: boolean;
+  canUpdateDocumentMetadata?: boolean;
   maxFileSizeBytes?: number;
   virusScanRequired?: boolean;
   ocrMode?: string;
@@ -170,6 +241,12 @@ export interface UpdatePolicyRequest {
   crossWorkspaceAclAllowed?: boolean;
   directUserAclAllowed?: boolean;
   inheritanceEnforced?: boolean;
+  aclSharingAllowed?: boolean;
+  allowUsers?: boolean;
+  allowGroups?: boolean;
+  allowRoles?: boolean;
+  allowOrgUnits?: boolean;
+  abacAccessEnabled?: boolean;
   classificationDefault?: string;
   versioningRequired?: boolean;
   allowedFileTypeIds?: number[];
@@ -310,6 +387,10 @@ class WorkspaceService {
   /** Get workspace statistics (member, folder, document counts). */
   async getStats(workspaceId: string): Promise<WorkspaceStatsDto> {
     return apiClient.get<WorkspaceStatsDto>(`${this.baseUrl}/${workspaceId}/stats`);
+  }
+
+  async getAnalytics(workspaceId: string): Promise<WorkspaceAnalyticsDto> {
+    return apiClient.get<WorkspaceAnalyticsDto>(`${this.baseUrl}/${workspaceId}/analytics`);
   }
 
   // ---- Create ----

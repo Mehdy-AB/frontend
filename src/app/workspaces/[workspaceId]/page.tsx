@@ -10,6 +10,7 @@ import {
     X, AlertTriangle, Archive, Pause, Play, Edit3,
     Upload, Folder, File, Lock, Globe as GlobeIcon,
     ChevronDown, Home, BarChart3, Activity, HardDrive,
+    MoreVertical, Download,
 } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -21,17 +22,17 @@ import {
 } from '@/components/ui/select';
 import {
     workspaceService, WorkspaceDto, WorkspaceMemberDto, WorkspacePolicyDto,
-    WorkspaceRole, PrincipalType, WorkspaceStatsDto, UpdatePolicyRequest,
+    WorkspaceRole, PrincipalType, WorkspaceAnalyticsDto, UpdatePolicyRequest,
 } from '@/api/services/workspaceService';
 import { folderService } from '@/api/services/folderService';
 import { fileTypeService } from '@/api/services/fileTypeService';
 import { filingCategoryService } from '@/api/services/filingCategoryService';
 import { workflowAdminService } from '@/api/services/workflowAdminService';
 import { FolderResDto, FolderRepoResDto, DocumentResponseDto } from '@/types/api';
-import { WorkspaceStatsBanner, WorkspacePolicyBadges, AddMemberModal } from '@/components/workspace';
+import { WorkspaceStatsBanner, WorkspacePolicyBadges, AddMemberModal, WorkspaceContentTab, WorkspaceAnalyticsTab } from '@/components/workspace';
+import EditRoleModal from '@/components/workspace/EditRoleModal';
 import PolicyEditor, { PolicyFormState, defaultPolicyForm, AvailableModel } from '@/components/workspace/PolicyEditor';
 import UserAvatar from '@/components/main/UserAvatar';
-import FileUploadModal from '@/components/modals/FileUploadModal';
 
 type TabView = 'content' | 'overview' | 'members' | 'policy' | 'analytics';
 
@@ -61,12 +62,13 @@ export default function WorkspaceDetailPage() {
     const [workspace, setWorkspace] = useState<WorkspaceDto | null>(null);
     const [members, setMembers] = useState<WorkspaceMemberDto[]>([]);
     const [policy, setPolicy] = useState<WorkspacePolicyDto | null>(null);
-    const [stats, setStats] = useState<WorkspaceStatsDto | null>(null);
+    const [analytics, setAnalytics] = useState<WorkspaceAnalyticsDto | null>(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<TabView>('content');
 
     // Members
     const [showAddMember, setShowAddMember] = useState(false);
+    const [editingMember, setEditingMember] = useState<WorkspaceMemberDto | null>(null);
 
     // Policy edit
     const [editingPolicy, setEditingPolicy] = useState(false);
@@ -100,12 +102,12 @@ export default function WorkspaceDetailPage() {
                 workspaceService.getWorkspace(workspaceId),
                 workspaceService.listMembers(workspaceId).catch(() => []),
                 workspaceService.getPolicy(workspaceId).catch(() => null),
-                workspaceService.getStats(workspaceId).catch(() => null),
+                workspaceService.getAnalytics(workspaceId).catch(() => null),
             ]);
             setWorkspace(ws);
             setMembers(mbrs);
             setPolicy(pol);
-            setStats(st);
+            setAnalytics(st);
             setEditName(ws.name);
             setEditDesc(ws.description || '');
             // Set the root folder for content browsing
@@ -187,7 +189,7 @@ export default function WorkspaceDetailPage() {
     };
 
     // Format helpers
-    const formatDate = (d: string) => new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    const formatDate = (d: string) => new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
     const formatFileSize = (bytes: number) => {
         if (!bytes) return '—';
         if (bytes < 1024) return bytes + ' B';
@@ -210,11 +212,28 @@ export default function WorkspaceDetailPage() {
             downloadAllowed: policy.downloadAllowed, printAllowed: policy.printAllowed, exportAllowed: policy.exportAllowed,
             externalSharingAllowed: policy.externalSharingAllowed, externalLinkAllowed: policy.externalLinkAllowed,
             watermarkRequired: policy.watermarkRequired, viewAuditRequired: policy.viewAuditRequired, breakGlassRequired: policy.breakGlassRequired,
+            exportFolderEnabled: policy.exportFolderEnabled ?? false,
+            canEditDocuments: policy.canEditDocuments ?? true,
+            canEditFolders: policy.canEditFolders ?? true,
+            canCreateFolders: policy.canCreateFolders ?? true,
+            canUploadDocuments: policy.canUploadDocuments ?? true,
+            canMoveDocumentsOrFolders: policy.canMoveDocumentsOrFolders ?? true,
+            canUploadDocumentVersions: policy.canUploadDocumentVersions ?? true,
+            canUpdateDocumentMetadata: policy.canUpdateDocumentMetadata ?? true,
             maxFileSizeMb: policy.maxFileSizeBytes ? String(Math.round(policy.maxFileSizeBytes / 1048576)) : '',
             virusScanRequired: policy.virusScanRequired, ocrMode: policy.ocrMode, archiveHandling: policy.archiveHandling,
             crossWorkspaceAclAllowed: policy.crossWorkspaceAclAllowed, directUserAclAllowed: policy.directUserAclAllowed,
             inheritanceEnforced: policy.inheritanceEnforced, classificationDefault: policy.classificationDefault || '',
             versioningRequired: policy.versioningRequired,
+            aclSharingAllowed: policy.aclSharingAllowed ?? true,
+            allowUsers: policy.allowUsers ?? true,
+            allowGroups: policy.allowGroups ?? true,
+            allowRoles: policy.allowRoles ?? true,
+            allowOrgUnits: policy.allowOrgUnits ?? true,
+            abacAccessEnabled: policy.abacAccessEnabled ?? false,
+            restrictFileTypes: (policy.allowedFileTypes || []).length > 0,
+            restrictDocumentModels: (policy.allowedFilingCategories || []).length > 0,
+            restrictWorkflows: (policy.allowedWorkflows || []).length > 0,
             // Model selections
             allowedFileTypeIds: (policy.allowedFileTypes || []).map(ft => ft.id),
             allowedFilingCategoryIds: (policy.allowedFilingCategories || []).map(c => c.id),
@@ -333,7 +352,30 @@ export default function WorkspaceDetailPage() {
             </div>
 
             {/* ── Stats Banner ── */}
-            {stats && <WorkspaceStatsBanner stats={stats} />}
+            <div className="flex items-center gap-3 flex-wrap">
+                <Badge variant="secondary" className={`text-xs px-3 py-1 rounded-full font-semibold ${workspace.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700' :
+                    workspace.status === 'SUSPENDED' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'
+                    }`}>{workspace.status}</Badge>
+                {analytics && (
+                    <>
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-xl border border-gray-100 shadow-sm">
+                            <Users className="h-3.5 w-3.5 text-blue-500" />
+                            <span className="text-sm font-semibold text-gray-900">{analytics.memberCount}</span>
+                            <span className="text-xs text-gray-400">Members</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-xl border border-gray-100 shadow-sm">
+                            <FolderOpen className="h-3.5 w-3.5 text-amber-500" />
+                            <span className="text-sm font-semibold text-gray-900">{analytics.folderCount}</span>
+                            <span className="text-xs text-gray-400">Folders</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-xl border border-gray-100 shadow-sm">
+                            <FileText className="h-3.5 w-3.5 text-purple-500" />
+                            <span className="text-sm font-semibold text-gray-900">{analytics.documentCount}</span>
+                            <span className="text-xs text-gray-400">Documents</span>
+                        </div>
+                    </>
+                )}
+            </div>
 
             {/* ── Tabs ── */}
             <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-xl w-fit">
@@ -347,179 +389,26 @@ export default function WorkspaceDetailPage() {
 
             {/* ════════════ CONTENT TAB (Full Repo) ════════════ */}
             {activeTab === 'content' && (
-                <div className="space-y-4">
-                    {/* Breadcrumbs */}
-                    <div className="flex items-center gap-1 text-sm">
-                        <button onClick={() => navigateToBreadcrumb(-1)}
-                            className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-blue-50 text-blue-600 transition-colors">
-                            <Home className="h-3.5 w-3.5" /><span className="font-medium">{workspace.name}</span>
-                        </button>
-                        {breadcrumbs.map((bc, i) => (
-                            <div key={bc.id} className="flex items-center gap-1">
-                                <ChevronRight className="h-3.5 w-3.5 text-gray-300" />
-                                <button onClick={() => navigateToBreadcrumb(i)}
-                                    className="px-2 py-1 rounded-lg hover:bg-blue-50 text-blue-600 font-medium transition-colors">
-                                    {bc.name}
-                                </button>
-                            </div>
-                        ))}
-                        {breadcrumbs.length > 0 && folderData?.folder && (
-                            <div className="flex items-center gap-1">
-                                <ChevronRight className="h-3.5 w-3.5 text-gray-300" />
-                                <span className="px-2 py-1 font-medium text-gray-900">{folderData.folder.name}</span>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Content Toolbar */}
-                    <div className="flex items-center gap-3">
-                        <div className="flex-1 relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                            <Input value={contentSearch} onChange={e => setContentSearch(e.target.value)}
-                                placeholder="Search files and folders..."
-                                className="pl-10 h-10 rounded-xl border-gray-200" />
-                        </div>
-                        <Button size="sm" variant="outline" onClick={fetchContent}
-                            className="rounded-xl h-10 px-4 border-blue-200 text-blue-600">
-                            <RefreshCw className="h-4 w-4 mr-1" />Refresh
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={() => setShowCreateFolder(true)}
-                            className="rounded-xl h-10 px-4 border-blue-200 text-blue-600">
-                            <Plus className="h-4 w-4 mr-1" />New Folder
-                        </Button>
-                        <Button size="sm" onClick={() => setShowUploadModal(true)}
-                            className="bg-blue-500 hover:bg-blue-600 text-white rounded-xl h-10 px-4">
-                            <Upload className="h-4 w-4 mr-1" />Upload
-                        </Button>
-                    </div>
-
-                    {/* Create Folder Inline */}
-                    {showCreateFolder && (
-                        <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-xl border border-blue-100">
-                            <Folder className="h-5 w-5 text-blue-500" />
-                            <Input value={newFolderName} onChange={e => setNewFolderName(e.target.value)}
-                                placeholder="Folder name..."
-                                className="flex-1 h-9 rounded-lg border-blue-200"
-                                onKeyDown={e => e.key === 'Enter' && handleCreateFolder()} />
-                            <Button size="sm" onClick={handleCreateFolder}
-                                className="bg-blue-500 text-white rounded-lg text-xs h-9">Create</Button>
-                            <Button size="sm" variant="outline" onClick={() => { setShowCreateFolder(false); setNewFolderName(''); }}
-                                className="rounded-lg text-xs h-9">Cancel</Button>
-                        </div>
-                    )}
-
-                    {/* Folder + Document Table */}
-                    {contentLoading ? (
-                        <div className="space-y-2">{[...Array(5)].map((_, i) => <div key={i} className="h-14 bg-gray-100 rounded-xl animate-pulse" />)}</div>
-                    ) : (
-                        <Card>
-                            <CardContent className="p-0">
-                                <table className="w-full">
-                                    <thead>
-                                        <tr className="border-b border-gray-100">
-                                            <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Name</th>
-                                            <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Owner</th>
-                                            <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Size</th>
-                                            <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Modified</th>
-                                            <th className="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Action</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {subFolders.map((f) => (
-                                            <tr key={`f-${f.id}`} className="border-b border-gray-50 hover:bg-blue-50/30 cursor-pointer transition-colors"
-                                                onClick={() => navigateToFolder(f.id, f.name)}>
-                                                <td className="px-4 py-3">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="relative h-10 w-10 bg-blue-50 rounded-xl flex items-center justify-center">
-                                                            <Folder className="h-5 w-5 text-blue-500" />
-                                                            <div className="absolute -bottom-0.5 -right-0.5 rounded-full p-0.5">
-                                                                {f.public ? <GlobeIcon className="h-2.5 w-2.5 text-emerald-500" /> : <Lock className="h-2.5 w-2.5 text-gray-400" />}
-                                                            </div>
-                                                        </div>
-                                                        <div className="min-w-0">
-                                                            <span className="font-medium text-gray-900 truncate block">{f.name}</span>
-                                                            {f.description && <span className="text-xs text-gray-400 truncate block">{f.description}</span>}
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    {f.ownedBy && (
-                                                        <div className="flex items-center gap-2">
-                                                            <UserAvatar user={f.ownedBy} size="sm" />
-                                                            <span className="text-sm text-gray-500">{f.ownedBy.firstName}</span>
-                                                        </div>
-                                                    )}
-                                                </td>
-                                                <td className="px-4 py-3"><span className="text-sm text-gray-500">{formatFileSize(f.size || 0)}</span></td>
-                                                <td className="px-4 py-3"><span className="text-sm text-gray-400">{formatDate(f.updatedAt)}</span></td>
-                                                <td className="px-4 py-3 text-right"><ChevronRight className="h-4 w-4 text-gray-300 inline" /></td>
-                                            </tr>
-                                        ))}
-                                        {documents.map((d) => (
-                                            <tr key={`d-${d.documentId}`} className="border-b border-gray-50 hover:bg-gray-50/50 cursor-pointer transition-colors"
-                                                onClick={() => router.push(`/documents/${d.documentId}`)}>
-                                                <td className="px-4 py-3">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="relative h-10 w-10 bg-gray-50 rounded-xl flex items-center justify-center">
-                                                            <File className="h-5 w-5 text-gray-400" />
-                                                            <div className="absolute -bottom-0.5 -right-0.5 rounded-full p-0.5">
-                                                                {d.isPublic ? <GlobeIcon className="h-2.5 w-2.5 text-emerald-500" /> : <Lock className="h-2.5 w-2.5 text-gray-400" />}
-                                                            </div>
-                                                        </div>
-                                                        <div className="min-w-0">
-                                                            <span className="font-medium text-gray-900 truncate block">{d.name}</span>
-                                                            <span className="text-xs text-gray-400">{d.mimeType?.split('/')[1]?.toUpperCase() || 'FILE'} &bull; v{d.versionNumber}</span>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    {d.ownedBy && (
-                                                        <div className="flex items-center gap-2">
-                                                            <UserAvatar user={d.ownedBy} size="sm" />
-                                                            <span className="text-sm text-gray-500">{d.ownedBy.firstName}</span>
-                                                        </div>
-                                                    )}
-                                                </td>
-                                                <td className="px-4 py-3"><span className="text-sm text-gray-500">{formatFileSize(d.sizeBytes || 0)}</span></td>
-                                                <td className="px-4 py-3"><span className="text-sm text-gray-400">{formatDate(d.updatedAt)}</span></td>
-                                                <td className="px-4 py-3 text-right"><ChevronRight className="h-4 w-4 text-gray-300 inline" /></td>
-                                            </tr>
-                                        ))}
-                                        {subFolders.length === 0 && documents.length === 0 && (
-                                            <tr>
-                                                <td colSpan={5} className="px-4 py-16 text-center">
-                                                    <FolderOpen className="h-12 w-12 text-gray-200 mx-auto mb-4" />
-                                                    <h3 className="text-sm font-semibold text-gray-900 mb-1">No content yet</h3>
-                                                    <p className="text-sm text-gray-400 mb-4">Upload documents or create folders to get started</p>
-                                                    <div className="flex items-center justify-center gap-3">
-                                                        <Button size="sm" variant="outline" onClick={() => setShowCreateFolder(true)}
-                                                            className="rounded-xl text-xs">
-                                                            <Plus className="h-3.5 w-3.5 mr-1" />New Folder
-                                                        </Button>
-                                                        <Button size="sm" onClick={() => setShowUploadModal(true)}
-                                                            className="bg-blue-500 text-white rounded-xl text-xs">
-                                                            <Upload className="h-3.5 w-3.5 mr-1" />Upload
-                                                        </Button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        )}
-                                    </tbody>
-                                </table>
-                            </CardContent>
-                        </Card>
-                    )}
-
-                    {/* Upload Modal */}
-                    {showUploadModal && currentFolderId && (
-                        <FileUploadModal
-                            isOpen={showUploadModal}
-                            onClose={() => setShowUploadModal(false)}
-                            folderId={currentFolderId}
-                            onSuccess={() => { setShowUploadModal(false); fetchContent(); }}
-                        />
-                    )}
-                </div>
+                <WorkspaceContentTab
+                    workspaceName={workspace.name}
+                    folders={subFolders}
+                    documents={documents}
+                    currentFolderId={currentFolderId}
+                    breadcrumbs={breadcrumbs}
+                    contentSearch={contentSearch}
+                    contentLoading={contentLoading}
+                    showCreateFolder={showCreateFolder}
+                    newFolderName={newFolderName}
+                    onContentSearchChange={setContentSearch}
+                    onRefresh={fetchContent}
+                    onCreateFolder={handleCreateFolder}
+                    onSetShowCreateFolder={setShowCreateFolder}
+                    onNewFolderNameChange={setNewFolderName}
+                    onNavigateToFolder={navigateToFolder}
+                    onNavigateToBreadcrumb={navigateToBreadcrumb}
+                    folderData={folderData}
+                    onUploadSuccess={fetchContent}
+                />
             )}
 
             {/* ════════════ OVERVIEW TAB ════════════ */}
@@ -572,7 +461,7 @@ export default function WorkspaceDetailPage() {
                             <table className="w-full">
                                 <thead>
                                     <tr className="border-b border-gray-100">
-                                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Principal</th>
+                                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Member</th>
                                         <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Type</th>
                                         <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Role</th>
                                         <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Added</th>
@@ -580,34 +469,92 @@ export default function WorkspaceDetailPage() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {members.map(member => (
-                                        <tr key={member.id} className="border-b border-gray-50 hover:bg-gray-50/50">
-                                            <td className="px-4 py-3"><span className="text-sm font-medium text-gray-900 font-mono">{member.principalId}</span></td>
-                                            <td className="px-4 py-3"><Badge variant="outline" className="text-xs">{member.principalType}</Badge></td>
-                                            <td className="px-4 py-3">
-                                                <Select value={member.workspaceRole} onValueChange={(v) => handleChangeRole(member.id, v as WorkspaceRole)}>
-                                                    <SelectTrigger className="w-36 h-8 rounded-lg border-0 bg-transparent hover:bg-gray-100 text-sm">
-                                                        <div className="flex items-center gap-1.5">
-                                                            {roleIcons[member.workspaceRole]}
-                                                            <Badge variant="outline" className={`text-xs ${roleColors[member.workspaceRole]}`}>{member.workspaceRole}</Badge>
+                                    {members.map(member => {
+                                        const isUser = member.principalType === 'USER';
+                                        const isGroup = member.principalType === 'GROUP';
+                                        const isRole = member.principalType === 'ROLE';
+                                        const isOrgUnit = member.principalType === 'ORG_UNIT';
+                                        const displayName = isUser
+                                            ? (member.userFirstName ? `${member.userFirstName} ${member.userLastName || ''}`.trim() : (member.userDisplayName || member.principalId))
+                                            : (member.userDisplayName || member.principalId);
+
+                                        return (
+                                            <tr key={member.id} className="border-b border-gray-50 hover:bg-gray-50/50">
+                                                <td className="px-4 py-3">
+                                                    <div className="flex items-center gap-3">
+                                                        {isUser ? (
+                                                            <UserAvatar
+                                                                user={member.userFirstName ? {
+                                                                    firstName: member.userFirstName,
+                                                                    lastName: member.userLastName,
+                                                                    email: member.userEmail,
+                                                                    imgUrl: member.userImageUrl,
+                                                                } : null}
+                                                                size="sm" showTooltip
+                                                            />
+                                                        ) : (
+                                                            <div className={`h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0 ${isGroup ? 'bg-violet-100 text-violet-600' :
+                                                                isRole ? 'bg-amber-100 text-amber-600' :
+                                                                    'bg-emerald-100 text-emerald-600'
+                                                                }`}>
+                                                                {isGroup && <Users className="h-4 w-4" />}
+                                                                {isRole && <Shield className="h-4 w-4" />}
+                                                                {isOrgUnit && <Home className="h-4 w-4" />}
+                                                            </div>
+                                                        )}
+                                                        <div className="min-w-0">
+                                                            <p className="text-sm font-medium text-gray-900 truncate">{displayName}</p>
+                                                            {isUser && (
+                                                                <div className="flex items-center gap-1.5">
+                                                                    {member.userUsername && (
+                                                                        <p className="text-xs text-gray-400">@{member.userUsername}</p>
+                                                                    )}
+                                                                    {member.userEmail && (
+                                                                        <>
+                                                                            <span className="text-xs text-gray-300">&bull;</span>
+                                                                            <p className="text-xs text-gray-400 truncate">{member.userEmail}</p>
+                                                                        </>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                            {!isUser && (
+                                                                <p className="text-xs text-gray-400 truncate">{member.principalId.substring(0, 8)}...</p>
+                                                            )}
                                                         </div>
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        {(['OWNER', 'MANAGER', 'CONTRIBUTOR', 'READER', 'AUDITOR'] as WorkspaceRole[]).map(r => (
-                                                            <SelectItem key={r} value={r}>{r}</SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
-                                            </td>
-                                            <td className="px-4 py-3 text-xs text-gray-400">{formatDate(member.createdAt)}</td>
-                                            <td className="px-4 py-3 text-right">
-                                                <Button size="sm" variant="ghost" onClick={() => handleRemoveMember(member.id)}
-                                                    className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg">
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
-                                            </td>
-                                        </tr>
-                                    ))}
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <Badge variant="outline" className={`text-xs ${isUser ? 'border-blue-200 text-blue-600 bg-blue-50' :
+                                                        isGroup ? 'border-violet-200 text-violet-600 bg-violet-50' :
+                                                            isRole ? 'border-amber-200 text-amber-600 bg-amber-50' :
+                                                                'border-emerald-200 text-emerald-600 bg-emerald-50'
+                                                        }`}>
+                                                        {member.principalType === 'ORG_UNIT' ? 'Org Unit' : member.principalType.charAt(0) + member.principalType.slice(1).toLowerCase()}
+                                                    </Badge>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <div className="flex items-center gap-1.5">
+                                                        {roleIcons[member.workspaceRole]}
+                                                        <Badge variant="outline" className={`text-xs ${roleColors[member.workspaceRole]}`}>{member.workspaceRole}</Badge>
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3 text-xs text-gray-400">{formatDate(member.createdAt)}</td>
+                                                <td className="px-4 py-3 text-right">
+                                                    <div className="flex items-center justify-end gap-1">
+                                                        <Button size="sm" variant="ghost"
+                                                            onClick={() => setEditingMember(member)}
+                                                            className="h-8 w-8 p-0 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg">
+                                                            <Edit3 className="h-4 w-4" />
+                                                        </Button>
+                                                        <Button size="sm" variant="ghost" onClick={() => handleRemoveMember(member.id)}
+                                                            className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg">
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
                                     {members.length === 0 && (
                                         <tr><td colSpan={5} className="px-4 py-12 text-center"><Users className="h-10 w-10 text-gray-300 mx-auto mb-3" /><p className="text-sm text-gray-400">No members yet</p></td></tr>
                                     )}
@@ -616,6 +563,17 @@ export default function WorkspaceDetailPage() {
                         </CardContent>
                     </Card>
                     <AddMemberModal workspaceId={workspaceId} open={showAddMember} onClose={() => setShowAddMember(false)} onAdded={handleAddMember} />
+                    {editingMember && (
+                        <EditRoleModal
+                            workspaceId={workspaceId}
+                            member={editingMember}
+                            open={!!editingMember}
+                            onClose={() => setEditingMember(null)}
+                            onUpdated={(memberId, newRole) => {
+                                setMembers(prev => prev.map(m => m.id === memberId ? { ...m, workspaceRole: newRole } : m));
+                            }}
+                        />
+                    )}
                 </div>
             )}
 
@@ -660,150 +618,13 @@ export default function WorkspaceDetailPage() {
                 </div>
             )}
 
-            {/* ════════════ ANALYTICS TAB ════════════ */}
             {activeTab === 'analytics' && (
-                <div className="space-y-6">
-                    <h3 className="text-lg font-semibold text-gray-900">Workspace Analytics</h3>
-
-                    {/* Stat Cards */}
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                        <Card>
-                            <CardContent className="p-5">
-                                <div className="flex items-center gap-3">
-                                    <div className="h-10 w-10 rounded-xl bg-blue-100 flex items-center justify-center">
-                                        <FileText className="h-5 w-5 text-blue-600" />
-                                    </div>
-                                    <div>
-                                        <p className="text-2xl font-bold text-gray-900">{stats?.documentCount ?? 0}</p>
-                                        <p className="text-xs text-gray-500">Documents</p>
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
-                        <Card>
-                            <CardContent className="p-5">
-                                <div className="flex items-center gap-3">
-                                    <div className="h-10 w-10 rounded-xl bg-amber-100 flex items-center justify-center">
-                                        <FolderOpen className="h-5 w-5 text-amber-600" />
-                                    </div>
-                                    <div>
-                                        <p className="text-2xl font-bold text-gray-900">{stats?.folderCount ?? 0}</p>
-                                        <p className="text-xs text-gray-500">Folders</p>
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
-                        <Card>
-                            <CardContent className="p-5">
-                                <div className="flex items-center gap-3">
-                                    <div className="h-10 w-10 rounded-xl bg-emerald-100 flex items-center justify-center">
-                                        <Users className="h-5 w-5 text-emerald-600" />
-                                    </div>
-                                    <div>
-                                        <p className="text-2xl font-bold text-gray-900">{members.length}</p>
-                                        <p className="text-xs text-gray-500">Members</p>
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
-                        <Card>
-                            <CardContent className="p-5">
-                                <div className="flex items-center gap-3">
-                                    <div className="h-10 w-10 rounded-xl bg-purple-100 flex items-center justify-center">
-                                        <HardDrive className="h-5 w-5 text-purple-600" />
-                                    </div>
-                                    <div>
-                                        <p className="text-2xl font-bold text-gray-900">
-                                            {stats?.documentCount ?? 0}
-                                        </p>
-                                        <p className="text-xs text-gray-500">Total Items</p>
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
-                    </div>
-
-                    {/* Policy Summary */}
-                    {policy && (
-                        <Card>
-                            <CardContent className="p-6">
-                                <h4 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
-                                    <Shield className="h-4 w-4" />Active Policy Rules
-                                </h4>
-                                <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-                                    {policy.maxFileSizeBytes && (
-                                        <div className="p-3 bg-gray-50 rounded-lg">
-                                            <p className="text-xs text-gray-400">Max File Size</p>
-                                            <p className="text-sm font-medium text-gray-700">
-                                                {(policy.maxFileSizeBytes / 1048576).toFixed(0)} MB
-                                            </p>
-                                        </div>
-                                    )}
-                                    <div className="p-3 bg-gray-50 rounded-lg">
-                                        <p className="text-xs text-gray-400">Virus Scan</p>
-                                        <p className="text-sm font-medium text-gray-700">{policy.virusScanRequired ? 'Required' : 'Optional'}</p>
-                                    </div>
-                                    <div className="p-3 bg-gray-50 rounded-lg">
-                                        <p className="text-xs text-gray-400">Downloads</p>
-                                        <p className="text-sm font-medium text-gray-700">{policy.downloadAllowed ? 'Allowed' : 'Restricted'}</p>
-                                    </div>
-                                    <div className="p-3 bg-gray-50 rounded-lg">
-                                        <p className="text-xs text-gray-400">External Sharing</p>
-                                        <p className="text-sm font-medium text-gray-700">{policy.externalSharingAllowed ? 'Allowed' : 'Restricted'}</p>
-                                    </div>
-                                    {policy.allowedFileTypes && policy.allowedFileTypes.length > 0 && (
-                                        <div className="p-3 bg-gray-50 rounded-lg col-span-2">
-                                            <p className="text-xs text-gray-400">Allowed File Types</p>
-                                            <div className="flex flex-wrap gap-1 mt-1">
-                                                {policy.allowedFileTypes.map((t) => (
-                                                    <span key={t.id} className="px-2 py-0.5 bg-white border rounded text-xs">{t.label}</span>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            </CardContent>
-                        </Card>
-                    )}
-
-                    {/* Activity Timeline */}
-                    <Card>
-                        <CardContent className="p-6">
-                            <h4 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
-                                <Activity className="h-4 w-4" />Recent Activity
-                            </h4>
-                            <div className="space-y-3">
-                                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                                    <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
-                                        <Calendar className="h-4 w-4 text-blue-600" />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm text-gray-700">Workspace created</p>
-                                        <p className="text-xs text-gray-400">{workspace.createdAt ? new Date(workspace.createdAt).toLocaleDateString() : 'N/A'}</p>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                                    <div className="h-8 w-8 rounded-full bg-emerald-100 flex items-center justify-center">
-                                        <Users className="h-4 w-4 text-emerald-600" />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm text-gray-700">{members.length} member(s) assigned</p>
-                                        <p className="text-xs text-gray-400">Across {Object.keys(members.reduce((acc, m) => { acc[m.workspaceRole] = true; return acc; }, {} as Record<string, boolean>)).length} role(s)</p>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                                    <div className="h-8 w-8 rounded-full bg-purple-100 flex items-center justify-center">
-                                        <FileText className="h-4 w-4 text-purple-600" />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm text-gray-700">{stats?.documentCount ?? 0} documents uploaded</p>
-                                        <p className="text-xs text-gray-400">Total workspace content</p>
-                                    </div>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
+                <WorkspaceAnalyticsTab
+                    analytics={analytics}
+                    members={members}
+                    policy={policy}
+                    createdAt={workspace.createdAt}
+                />
             )}
         </div>
     );
