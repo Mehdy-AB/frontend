@@ -1,5 +1,5 @@
 import { apiClient } from '../client';
-import type { OrgUnitMemberResponse, OrgUnitGroupResponse, OrgUnitResponse, GroupMemberResponse, OrgPositionResponse, PositionAssignmentResponse, CreateOrgUnitGroupRequest, UpdateOrgUnitGroupRequest } from './orgUnitService';
+import type { OrgUnitMemberResponse, OrgUnitGroupResponse, OrgUnitResponse, GroupMemberResponse, OrgPositionResponse, PositionAssignmentResponse, CreateOrgUnitGroupRequest, UpdateOrgUnitGroupRequest, MemberDetailResponse, OrgUnitGroupTypeResponse } from './orgUnitService';
 
 // ==================== Types ====================
 
@@ -11,6 +11,7 @@ export interface MyScopeUnitDto {
     orgUnitTypeName: string | null;
     orgUnitTypeColor: string | null;
     leadershipRole: string;
+    headUserId: string | null;
     memberCount: number;
     childCount: number;
     resolvedPermissions: string[];
@@ -82,7 +83,19 @@ class MyScopeService {
         });
     }
 
+    async getMemberDetails(ouId: string, userId: string): Promise<MemberDetailResponse> {
+        return apiClient.get<MemberDetailResponse>(`${this.baseUrl}/units/${ouId}/members/${userId}/details`);
+    }
+
+    async setManagerBatch(ouId: string, userIds: string[], managerUserId: string): Promise<{ successCount: number; failCount: number; errors: string[] }> {
+        return apiClient.put(`${this.baseUrl}/units/${ouId}/members/manager/batch`, { userIds, managerUserId });
+    }
+
     // ==================== Groups ====================
+
+    async getGroupTypes(activeOnly: boolean = true): Promise<OrgUnitGroupTypeResponse[]> {
+        return apiClient.get<OrgUnitGroupTypeResponse[]>(`${this.baseUrl}/reference/group-types?activeOnly=${activeOnly}`);
+    }
 
     async getMyGroups(ouId: string): Promise<OrgUnitGroupResponse[]> {
         return apiClient.get<OrgUnitGroupResponse[]>(`${this.baseUrl}/units/${ouId}/groups`);

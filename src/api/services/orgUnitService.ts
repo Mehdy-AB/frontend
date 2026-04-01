@@ -254,6 +254,20 @@ export interface MemberDetailResponse {
     managerImageUrl: string | null;
     positionAssignments: PositionAssignmentResponse[];
     groupMemberships: GroupMembershipInfo[];
+    scopedRoles?: {
+        id: string;
+        roleCode: string;
+        roleName: string;
+        roleDescription: string;
+        isDefault: boolean;
+        status: string;
+        grantedBy: string | null;
+        grantedByDisplayName: string | null;
+        effectiveFrom: string | null;
+        effectiveTo: string | null;
+        assignmentReason: string | null;
+        source: string;
+    }[];
 }
 
 export interface UserOrgUnitResponse {
@@ -434,6 +448,13 @@ export class OrgUnitService {
 
     async setHead(orgUnitId: string, headUserId: string): Promise<OrgUnitResponse> {
         return apiClient.put<OrgUnitResponse>(`${this.baseUrl}/${orgUnitId}/head`, { headUserId }).then(res => {
+            if (typeof window !== 'undefined') window.dispatchEvent(new Event('leadership:updated'));
+            return res;
+        });
+    }
+
+    async removeHead(orgUnitId: string): Promise<OrgUnitResponse> {
+        return apiClient.delete<OrgUnitResponse>(`${this.baseUrl}/${orgUnitId}/head`).then(res => {
             if (typeof window !== 'undefined') window.dispatchEvent(new Event('leadership:updated'));
             return res;
         });

@@ -17,7 +17,8 @@ import {
   User,
   FileCheck,
   Archive,
-  Crown
+  Crown,
+  Handshake
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -109,6 +110,12 @@ export default function Sidebar() {
       icon: Crown,
       href: '/my-scope',
     }] : []),
+    {
+      id: 'delegations',
+      label: 'Delegations',
+      icon: Handshake,
+      href: '/delegations',
+    },
     {
       id: 'myrepo',
       label: 'My Repository',

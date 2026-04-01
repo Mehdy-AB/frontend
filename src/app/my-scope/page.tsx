@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     Shield, LayoutDashboard, Users, UsersRound, Briefcase, Building2,
-    ChevronDown, RefreshCw, AlertCircle,
+    ChevronDown, RefreshCw, AlertCircle, Handshake,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +21,7 @@ import MembersTab from './MembersTab';
 import ScopeGroupsTab from './ScopeGroupsTab';
 import PositionsTab from './PositionsTab';
 import ChildrenTab from './ChildrenTab';
+import DelegationTab from './DelegationTab';
 
 // ==================== Tab Config ====================
 
@@ -37,6 +38,7 @@ const ALL_TABS: TabConfig[] = [
     { id: 'groups', label: 'Groups', icon: <UsersRound className="h-4 w-4" />, requiredPermissions: ['scope:view-groups'] },
     { id: 'positions', label: 'Positions', icon: <Briefcase className="h-4 w-4" />, requiredPermissions: ['scope:view-positions'] },
     { id: 'children', label: 'Children', icon: <Building2 className="h-4 w-4" />, requiredPermissions: ['scope:view-children'] },
+    { id: 'delegations', label: 'Delegations', icon: <Handshake className="h-4 w-4" />, requiredPermissions: ['scope:view-delegations'] },
 ];
 
 // ==================== Notification System ====================
@@ -85,9 +87,9 @@ export default function MyScopePage() {
     const perms = new Set(selectedUnit?.resolvedPermissions || []);
     const typeColorClass = getTypeColorClass(selectedUnit?.orgUnitTypeColor);
 
-    const visibleTabs = ALL_TABS.filter(tab =>
-        tab.requiredPermissions.length === 0 || tab.requiredPermissions.some(p => perms.has(p))
-    );
+    const visibleTabs = ALL_TABS.filter(tab => {
+        return tab.requiredPermissions.length === 0 || tab.requiredPermissions.some(p => perms.has(p));
+    });
 
     // Ensure active tab is valid
     useEffect(() => {
@@ -134,7 +136,7 @@ export default function MyScopePage() {
                         <Shield className="h-16 w-16 text-muted-foreground mx-auto mb-4 opacity-30" />
                         <h2 className="text-lg font-semibold mb-2">No Scope Assigned</h2>
                         <p className="text-sm text-muted-foreground">
-                            You are not currently assigned as a head or leader of any organizational unit.
+                            You are not currently assigned as a head or unit administrator of any organizational unit.
                         </p>
                     </CardContent>
                 </Card>
@@ -172,6 +174,13 @@ export default function MyScopePage() {
                                                     {u.orgUnitTypeName}
                                                 </Badge>
                                             )}
+                                            <Badge variant="secondary" className={`text-[10px] px-1 py-0 h-4 ${
+                                                u.leadershipRole === 'ROLE_ASSIGNED'
+                                                    ? 'bg-blue-100 text-blue-700 border-blue-200'
+                                                    : 'bg-amber-100 text-amber-700 border-amber-200'
+                                            }`}>
+                                                {u.leadershipRole === 'ROLE_ASSIGNED' ? 'Unit Admin' : u.leadershipRole === 'HEAD' ? 'Head' : u.leadershipRole}
+                                            </Badge>
                                         </div>
                                     </SelectItem>
                                 ))}
@@ -224,6 +233,7 @@ export default function MyScopePage() {
                                 canSetManager={perms.has('scope:manage-members')}
                                 addNotification={addNotification}
                                 refreshTrigger={refreshTrigger}
+                                headUserId={selectedUnit.headUserId}
                             />
                         )}
                         {activeTab === 'groups' && (
@@ -249,6 +259,15 @@ export default function MyScopePage() {
                                 canViewChildMembers={perms.has('scope:view-child-members')}
                                 canViewDescendants={perms.has('scope:view-descendants')}
                                 canManageChildMembers={perms.has('scope:manage-child-members')}
+                                addNotification={addNotification}
+                                refreshTrigger={refreshTrigger}
+                            />
+                        )}
+                        {activeTab === 'delegations' && (
+                            <DelegationTab
+                                ouId={selectedUnit.orgUnitId}
+                                ouName={selectedUnit.orgUnitName}
+                                canManage={perms.has('scope:manage-delegations')}
                                 addNotification={addNotification}
                                 refreshTrigger={refreshTrigger}
                             />

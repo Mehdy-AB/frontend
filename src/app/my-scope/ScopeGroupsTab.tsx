@@ -46,7 +46,6 @@ import {
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { myScopeService } from '@/api/services/myScopeService';
-import { orgUnitService } from '@/api/services/orgUnitService';
 import type {
     OrgUnitGroupResponse,
     GroupMemberResponse,
@@ -142,7 +141,7 @@ export default function ScopeGroupsTab({ ouId, canCreate, canManage, addNotifica
 
     const fetchGroupTypes = useCallback(async () => {
         try {
-            const types = await orgUnitService.getOrgUnitGroupTypes(true);
+            const types = await myScopeService.getGroupTypes(true);
             setGroupTypes(types);
         } catch { /* ignore */ }
     }, []);

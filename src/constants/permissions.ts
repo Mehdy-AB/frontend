@@ -150,6 +150,9 @@ export const Permissions = {
   POSITION_UPDATE: 'position:update',
   POSITION_DELETE: 'position:delete',
   POSITION_ASSIGN: 'position:assign',
+
+  // Delegation Admin
+  DELEGATION_ADMIN: 'delegation:admin',
 } as const;
 
 /**
@@ -334,6 +337,13 @@ export const AdminPagePermissions: Record<string, {
   '/admin/forms/edit': {
     view: Permissions.FORM_UPDATE,
     update: Permissions.FORM_UPDATE,
+  },
+
+  // Delegation Admin
+  '/admin/delegations': {
+    view: Permissions.DELEGATION_ADMIN,
+    create: Permissions.DELEGATION_ADMIN,
+    update: Permissions.DELEGATION_ADMIN,
   },
 };
 

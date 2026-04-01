@@ -35,6 +35,7 @@ import {
     Pencil,
     Eye,
     UserCog,
+    Handshake,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -93,6 +94,124 @@ interface SimpleUser {
     imgUrl?: string;
 }
 
+// ==================== Grant Role Dialog ====================
+
+function GrantRoleDialog({ ouId, userId, displayName, open, onOpenChange, onGranted, addNotification }: {
+    ouId: string;
+    userId: string;
+    displayName: string;
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    onGranted: () => void;
+    addNotification: (n: any) => void;
+}) {
+    const [availableRoles, setAvailableRoles] = React.useState<any[]>([]);
+    const [loading, setLoading] = React.useState(true);
+    const [granting, setGranting] = React.useState<string | null>(null);
+
+    React.useEffect(() => {
+        if (!open) return;
+        (async () => {
+            try {
+                setLoading(true);
+                const data: any = await apiClient.get(`/api/v1/admin/org-units/${ouId}/members/${userId}/scoped-roles/available`);
+                setAvailableRoles(data || []);
+            } catch {
+                setAvailableRoles([]);
+            } finally {
+                setLoading(false);
+            }
+        })();
+    }, [ouId, userId, open]);
+
+    const handleGrant = async (role: any) => {
+        try {
+            setGranting(role.id);
+            await apiClient.post(`/api/v1/admin/org-units/${ouId}/members/${userId}/scoped-roles`, {
+                roleCode: role.code,
+                reason: 'Granted via admin UI',
+            });
+            addNotification({ type: 'success', title: 'Role Granted', message: `Assigned "${role.name}" to ${displayName}` });
+            onGranted();
+            onOpenChange(false);
+        } catch (err: any) {
+            addNotification({ type: 'error', title: 'Grant Failed', message: err?.response?.data?.message || err?.message || 'Failed to grant role' });
+        } finally {
+            setGranting(null);
+        }
+    };
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="sm:max-w-[500px] max-h-[80vh] overflow-y-auto">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                        <Shield className="h-5 w-5 text-primary" />
+                        Assign Unit Role
+                    </DialogTitle>
+                    <DialogDescription>
+                        Select a role to assign to <strong>{displayName}</strong> in this organizational unit. The role will grant scoped permissions within this unit only.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-2 py-2">
+                    {loading ? (
+                        <div className="flex items-center justify-center py-8">
+                            <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
+                            <span className="ml-2 text-sm text-muted-foreground">Loading available roles...</span>
+                        </div>
+                    ) : availableRoles.length === 0 ? (
+                        <div className="text-center py-8">
+                            <Shield className="h-10 w-10 text-muted-foreground mx-auto mb-2 opacity-20" />
+                            <p className="text-sm text-muted-foreground">All available roles are already assigned to this member.</p>
+                        </div>
+                    ) : (
+                        availableRoles.map((role: any) => (
+                            <Card
+                                key={role.id}
+                                className={`cursor-pointer transition-all hover:border-primary/50 hover:bg-primary/5 ${granting === role.id ? 'opacity-60 pointer-events-none' : ''}`}
+                                onClick={() => handleGrant(role)}
+                            >
+                                <CardContent className="p-4">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <Shield className="h-4 w-4 text-primary shrink-0" />
+                                                <span className="font-semibold text-sm">{role.name}</span>
+                                            </div>
+                                            {role.description && (
+                                                <p className="text-xs text-muted-foreground ml-6 mb-2">{role.description}</p>
+                                            )}
+                                            {role.permissionKeys && role.permissionKeys.length > 0 && (
+                                                <div className="flex flex-wrap gap-1 ml-6">
+                                                    {role.permissionKeys.map((pk: string) => (
+                                                        <Badge key={pk} variant="secondary" className="text-[10px] px-1.5 py-0 h-[16px]">
+                                                            {pk.replace('scope:', '')}
+                                                        </Badge>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="shrink-0 mt-0.5">
+                                            {granting === role.id ? (
+                                                <RefreshCw className="h-4 w-4 animate-spin text-primary" />
+                                            ) : (
+                                                <Plus className="h-4 w-4 text-muted-foreground" />
+                                            )}
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        ))
+                    )}
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 // ==================== Main Page ====================
 
 export default function OrgUnitDetailPage() {
@@ -137,6 +256,7 @@ export default function OrgUnitDetailPage() {
     const [isSetHeadOpen, setIsSetHeadOpen] = useState(false);
     const [headSearchQuery, setHeadSearchQuery] = useState('');
     const [headSearchResults, setHeadSearchResults] = useState<SimpleUser[]>([]);
+    const [showRemoveHeadConfirm, setShowRemoveHeadConfirm] = useState(false);
 
     // Move modal
     const [isMoveOpen, setIsMoveOpen] = useState(false);
@@ -163,6 +283,9 @@ export default function OrgUnitDetailPage() {
     // View member detail dialog
     const [viewingMember, setViewingMember] = useState<MemberDetailResponse | null>(null);
     const [viewingMemberLoading, setViewingMemberLoading] = useState(false);
+
+    // Grant role dialog
+    const [grantRoleTarget, setGrantRoleTarget] = useState<{ userId: string; displayName: string } | null>(null);
 
     // Set manager dialog
     const [isSetManagerOpen, setIsSetManagerOpen] = useState(false);
@@ -384,6 +507,21 @@ export default function OrgUnitDetailPage() {
         } finally {
             setActionLoading(false);
             setShowDeleteConfirm(false);
+        }
+    };
+
+    const handleRemoveHead = async () => {
+        if (!detail?.id) return;
+        try {
+            setActionLoading(true);
+            await orgUnitService.removeHead(detail.id);
+            addNotification({ type: 'success', title: 'Head Removed', message: `Unit head has been removed successfully` });
+            await fetchDetail();
+        } catch (err: any) {
+            addNotification({ type: 'error', title: 'Failed to remove head', message: err?.message || 'Failed to remove unit head' });
+        } finally {
+            setActionLoading(false);
+            setShowRemoveHeadConfirm(false);
         }
     };
 
@@ -1479,16 +1617,24 @@ export default function OrgUnitDetailPage() {
                                             Unit Head
                                         </CardTitle>
                                         {canAssignHead && (
-                                            <Button variant="outline" size="sm" onClick={() => setIsSetHeadOpen(true)} className="gap-1.5">
-                                                <UserPlus className="h-3.5 w-3.5" />
-                                                {detail.headUserId ? 'Change Head' : 'Assign Head'}
-                                            </Button>
+                                            <div className="flex items-center gap-2">
+                                                {detail.headUserId && (
+                                                    <Button variant="outline" size="sm" onClick={() => setShowRemoveHeadConfirm(true)} className="gap-1.5 text-destructive border-transparent hover:border-destructive/30 hover:bg-destructive/10">
+                                                        <UserMinus className="h-3.5 w-3.5" />
+                                                        Remove Head
+                                                    </Button>
+                                                )}
+                                                <Button variant="outline" size="sm" onClick={() => setIsSetHeadOpen(true)} className="gap-1.5">
+                                                    <UserPlus className="h-3.5 w-3.5" />
+                                                    {detail.headUserId ? 'Change Head' : 'Assign Head'}
+                                                </Button>
+                                            </div>
                                         )}
                                     </div>
                                 </CardHeader>
                                 <CardContent>
                                     {detail.headUserId && detail.headUserDisplayName ? (
-                                        <div className="flex items-center gap-4 p-5 rounded-xl border bg-card shadow-sm transition-all hover:shadow-md">
+                                        <div className="flex items-center gap-4 p-5 rounded-xl border bg-card">
                                             <UserAvatar
                                                 user={{ displayName: detail.headUserDisplayName }}
                                                 size="xl"
@@ -2593,6 +2739,17 @@ export default function OrgUnitDetailPage() {
                                                             </TooltipTrigger>
                                                             <TooltipContent>View details</TooltipContent>
                                                         </Tooltip>
+                                                        {hasPermission(Permissions.ORG_ASSIGN_HEAD) && (
+                                                            <Tooltip>
+                                                                <TooltipTrigger asChild>
+                                                                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                        onClick={(e) => { e.stopPropagation(); setGrantRoleTarget({ userId: member.userId, displayName: member.displayName }); }}>
+                                                                        <Shield className="h-3.5 w-3.5" />
+                                                                    </Button>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent>Assign unit role</TooltipContent>
+                                                            </Tooltip>
+                                                        )}
                                                         {canAssignUser && (
                                                             <Tooltip>
                                                                 <TooltipTrigger asChild>
@@ -2804,6 +2961,63 @@ export default function OrgUnitDetailPage() {
                                                     <p className="text-sm text-muted-foreground italic px-3 py-2 rounded-lg border border-dashed">Not in any operational groups in this unit</p>
                                                 )}
                                             </div>
+
+                                            {/* Scoped Roles in this OU */}
+                                            <div>
+                                                <h4 className="text-sm font-semibold flex items-center gap-1.5 mb-2"><Shield className="h-3.5 w-3.5 text-amber-500" /> Unit Roles ({viewingMember.scopedRoles?.length || 0})</h4>
+                                                {viewingMember.scopedRoles && viewingMember.scopedRoles.length > 0 ? (
+                                                    <div className="space-y-2">
+                                                        {viewingMember.scopedRoles.map(sr => (
+                                                            <div key={sr.id} className="p-3 rounded-lg border text-sm space-y-1">
+                                                                <div className="flex items-center justify-between gap-2">
+                                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                                        <span className="font-medium">{sr.roleName}</span>
+                                                                        {sr.source === 'delegation' ? (
+                                                                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-[16px] gap-1"><Handshake className="h-2.5 w-2.5 text-muted-foreground" /> Delegated</Badge>
+                                                                        ) : (
+                                                                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-[16px]">{sr.source === 'admin' ? 'Admin Assigned' : sr.source === 'system' ? 'Auto-granted' : 'Granted'}</Badge>
+                                                                        )}
+                                                                    </div>
+                                                                    {hasPermission(Permissions.ORG_ASSIGN_HEAD) && (
+                                                                        <Button variant="ghost" size="sm" className="h-7 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                                            onClick={async () => {
+                                                                                try {
+                                                                                    await apiClient.delete(`/api/v1/admin/org-units/${ouId}/members/${viewingMember.userId}/scoped-roles/${sr.roleCode}`);
+                                                                                    addNotification({ type: 'success', title: 'Role Revoked', message: `Revoked "${sr.roleName}" from ${viewingMember.displayName}` });
+                                                                                    // Refresh member details
+                                                                                    const updated = await orgUnitService.getMemberDetails(ouId as string, viewingMember.userId);
+                                                                                    setViewingMember(updated);
+                                                                                } catch (err: any) {
+                                                                                    addNotification({ type: 'error', title: 'Revoke Failed', message: err?.response?.data?.message || err?.message || 'Failed to revoke role' });
+                                                                                }
+                                                                            }}
+                                                                        >
+                                                                            <X className="h-3.5 w-3.5" />
+                                                                        </Button>
+                                                                    )}
+                                                                </div>
+                                                                {sr.roleDescription && <p className="text-xs text-muted-foreground">{sr.roleDescription}</p>}
+                                                                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                                                    {sr.grantedByDisplayName && <span>Granted by: {sr.grantedByDisplayName}</span>}
+                                                                    {sr.effectiveFrom && <span>Since: {new Date(sr.effectiveFrom).toLocaleDateString()}</span>}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-sm text-muted-foreground italic px-3 py-2 rounded-lg border border-dashed">No unit roles assigned</p>
+                                                )}
+
+                                                {/* Grant Role Button */}
+                                                {hasPermission(Permissions.ORG_ASSIGN_HEAD) && (
+                                                    <div className="mt-3">
+                                                        <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8"
+                                                            onClick={() => setGrantRoleTarget({ userId: viewingMember.userId, displayName: viewingMember.displayName })}>
+                                                            <Plus className="h-3.5 w-3.5" /> Assign Role
+                                                        </Button>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                     )}
                                 </DialogContent>
@@ -2873,6 +3087,35 @@ export default function OrgUnitDetailPage() {
                 </Tabs>
             </div>
 
+            {/* ==================== Remove Head Confirmation Modal ==================== */}
+            {showRemoveHeadConfirm && detail && (
+                <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center">
+                    <Card className="w-full max-w-md mx-4 shadow-lg border-destructive/20 ring-1 ring-destructive/10">
+                        <CardHeader>
+                            <CardTitle className="text-base flex items-center gap-2">
+                                <AlertTriangle className="h-5 w-5 text-destructive" />
+                                Confirm Remove Head
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <p className="text-sm text-muted-foreground">
+                                Are you sure you want to remove <strong>{detail.headUserDisplayName}</strong> as the head of <strong>{detail.name}</strong>?
+                            </p>
+                            <div className="bg-destructive/5 text-destructive border border-destructive/10 rounded-md p-3 text-sm">
+                                This will also revoke their leadership-associated scoped roles.
+                            </div>
+                            <div className="flex justify-end gap-2 pt-2">
+                                <Button variant="outline" onClick={() => setShowRemoveHeadConfirm(false)} disabled={actionLoading}>Cancel</Button>
+                                <Button variant="destructive" onClick={handleRemoveHead} disabled={actionLoading} className="gap-2">
+                                    {actionLoading && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+                                    Remove Head
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+            )}
+
             {/* ==================== Delete Confirmation Modal ==================== */}
             {showDeleteConfirm && (
                 <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center">
@@ -2941,11 +3184,30 @@ export default function OrgUnitDetailPage() {
                             <Button variant="outline" onClick={() => setIsMoveOpen(false)}>Cancel</Button>
                             <Button onClick={handleMove} disabled={!moveTargetId || actionLoading} className="gap-1.5">
                                 {actionLoading && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
-                                Move Here
+                                                Move Here
                             </Button>
                         </div>
                     </Card>
                 </div>
+            )}
+
+            {/* ==================== Grant Role Dialog ==================== */}
+            {grantRoleTarget && (
+                <GrantRoleDialog
+                    ouId={ouId as string}
+                    userId={grantRoleTarget.userId}
+                    displayName={grantRoleTarget.displayName}
+                    open={!!grantRoleTarget}
+                    onOpenChange={(open) => { if (!open) setGrantRoleTarget(null); }}
+                    onGranted={async () => {
+                        fetchMembers();
+                        if (viewingMember && viewingMember.userId === grantRoleTarget.userId) {
+                            const updated = await orgUnitService.getMemberDetails(ouId as string, grantRoleTarget.userId);
+                            setViewingMember(updated);
+                        }
+                    }}
+                    addNotification={addNotification}
+                />
             )}
         </div>
     );

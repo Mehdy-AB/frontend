@@ -30,6 +30,7 @@ import {
   CheckSquare,
   Clock,
   ScrollText,
+  Handshake,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -123,6 +124,7 @@ const SECTIONS: Section[] = [
       { label: 'Alias', href: '/admin/users/alias', description: 'Manage address aliases.', Icon: MessageSquare },
       { label: 'Notifications', href: '/admin/users/notifications', description: 'User notification rules.', Icon: Bell },
       { label: 'Extranet', href: '/admin/users/extranet', description: 'Public/external user settings.', Icon: Globe },
+      { label: 'Delegations', href: '/admin/delegations', description: 'Approval queue, governance, and analytics.', Icon: Handshake },
     ],
   },
   {

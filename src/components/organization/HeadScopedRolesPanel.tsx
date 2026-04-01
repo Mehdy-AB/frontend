@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { orgUnitService, ScopedRoleAssignmentDto, ScopedRoleDto } from '@/api/services/orgUnitService';
-import { Shield, Plus, X, ChevronDown, Loader2, Lock, Info } from 'lucide-react';
+import { Shield, Plus, X, ChevronDown, Loader2, Info } from 'lucide-react';
 import { useNotification } from '@/contexts/NotificationContext';
 
 interface HeadScopedRolesPanelProps {
@@ -168,11 +168,7 @@ export default function HeadScopedRolesPanel({ orgUnitId, headUserId, headDispla
               className="flex items-center justify-between p-2.5 rounded-lg border bg-background/50 group"
             >
               <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                {a.isDefault ? (
-                  <Lock className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-                ) : (
-                  <Shield className="w-3.5 h-3.5 text-purple-500 flex-shrink-0" />
-                )}
+                <Shield className="w-3.5 h-3.5 text-primary flex-shrink-0" />
                 <div className="min-w-0">
                   <p className="text-sm font-medium truncate">{a.roleName}</p>
                   <p className="text-[11px] text-muted-foreground truncate">
@@ -184,12 +180,7 @@ export default function HeadScopedRolesPanel({ orgUnitId, headUserId, headDispla
                 </div>
               </div>
               <div className="flex items-center gap-1.5 flex-shrink-0">
-                {a.isDefault && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100  dark:bg-amber-900/30  font-medium">
-                    Default
-                  </span>
-                )}
-                {canEdit && !a.isDefault && (
+                {canEdit && (
                   <button
                     onClick={() => handleRevoke(a.roleCode)}
                     disabled={revoking === a.roleCode}
@@ -210,13 +201,10 @@ export default function HeadScopedRolesPanel({ orgUnitId, headUserId, headDispla
       )}
 
       {/* Info Footer */}
-      <div className="flex items-start gap-2 mt-3 p-2.5 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/30">
-        <Info className="w-3.5 h-3.5 text-blue-500 mt-0.5 flex-shrink-0" />
-        <p className="text-[11px] text-blue-700 dark:text-blue-400">
-          Default roles are auto-granted with leadership and cannot be removed individually.
-          Extra roles can be added or revoked as needed.
-        </p>
-      </div>
+      <p className="text-[11px] text-muted-foreground mt-3 px-1">
+        <Info className="w-3 h-3 inline mr-1 -mt-0.5" />
+        Roles marked <span className="font-medium">Auto-granted</span> were provisioned with leadership. All roles can be added or revoked.
+      </p>
     </div>
   );
 }

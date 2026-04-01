@@ -3,9 +3,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     Users, Search, UserPlus, UserMinus, RefreshCw, Check, Eye, UserCog, Crown,
-    Briefcase, UsersRound, ExternalLink,
+    Briefcase, UsersRound, Handshake,
 } from 'lucide-react';
-import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -21,7 +20,7 @@ import {
 import UserAvatar from '@/components/main/UserAvatar';
 import Pagination from '@/components/main/Pagination';
 import { myScopeService } from '@/api/services/myScopeService';
-import { orgUnitService, type MemberDetailResponse, getTypeColorClass } from '@/api/services/orgUnitService';
+import { type MemberDetailResponse, getTypeColorClass } from '@/api/services/orgUnitService';
 import { apiClient } from '@/api/client';
 import type { OrgUnitMemberResponse } from '@/api/services/orgUnitService';
 
@@ -34,6 +33,7 @@ interface MembersTabProps {
     canSetManager?: boolean;
     addNotification: (n: { type: 'success' | 'error' | 'warning' | 'info'; title: string; message: string }) => void;
     refreshTrigger?: number;
+    headUserId?: string | null;
 }
 
 interface SimpleUser {
@@ -47,7 +47,7 @@ interface SimpleUser {
 
 // ==================== Component ====================
 
-export default function MembersTab({ ouId, ouName, canManage, canSetManager = true, addNotification, refreshTrigger = 0 }: MembersTabProps) {
+export default function MembersTab({ ouId, ouName, canManage, canSetManager = true, addNotification, refreshTrigger = 0, headUserId = null }: MembersTabProps) {
     // Members state
     const [members, setMembers] = useState<OrgUnitMemberResponse[]>([]);
     const [loading, setLoading] = useState(false);
@@ -166,6 +166,7 @@ export default function MembersTab({ ouId, ouName, canManage, canSetManager = tr
     // ==================== Handlers ====================
 
     const toggleSelect = (userId: string) => {
+        if (userId === headUserId) return;
         setSelected(prev => {
             const next = new Set(prev);
             if (next.has(userId)) next.delete(userId);
@@ -175,8 +176,9 @@ export default function MembersTab({ ouId, ouName, canManage, canSetManager = tr
     };
 
     const toggleSelectAll = () => {
-        if (selected.size === members.length && members.length > 0) setSelected(new Set());
-        else setSelected(new Set(members.map(m => m.userId)));
+        const selectableMembers = members.filter(m => m.userId !== headUserId);
+        if (selected.size === selectableMembers.length && selectableMembers.length > 0) setSelected(new Set());
+        else setSelected(new Set(selectableMembers.map(m => m.userId)));
     };
 
     const toggleAddSelect = (userId: string) => {
@@ -238,7 +240,7 @@ export default function MembersTab({ ouId, ouName, canManage, canSetManager = tr
     const handleViewMemberDetails = async (userId: string) => {
         try {
             setViewingMemberLoading(true);
-            const data = await orgUnitService.getMemberDetails(ouId, userId);
+            const data = await myScopeService.getMemberDetails(ouId, userId);
             setViewingMember(data);
         } catch (err: any) {
             addNotification({ type: 'error', title: 'Failed to load member details', message: err?.message || 'Unknown error' });
@@ -252,7 +254,7 @@ export default function MembersTab({ ouId, ouName, canManage, canSetManager = tr
         if (selected.size === 0 || !selectedManagerId) return;
         try {
             setActionLoading(true);
-            const result = await orgUnitService.setManagerBatch(ouId, Array.from(selected), selectedManagerId);
+            const result = await myScopeService.setManagerBatch(ouId, Array.from(selected), selectedManagerId);
             if (result.failCount > 0) {
                 addNotification({ type: 'warning', title: 'Partial Success', message: `Assigned manager for ${result.successCount} member(s). ${result.failCount} failed: ${result.errors.join('; ')}` });
             } else {
@@ -337,12 +339,12 @@ export default function MembersTab({ ouId, ouName, canManage, canSetManager = tr
                     ) : (
                         <div className="space-y-1">
                             {/* Select all */}
-                            {canManage && members.length > 0 && (
+                            {canManage && members.filter(m => m.userId !== headUserId).length > 0 && (
                                 <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground">
                                     <input
                                         type="checkbox"
                                         className="h-3.5 w-3.5 rounded border-gray-300"
-                                        checked={selected.size === members.length && members.length > 0}
+                                        checked={selected.size === members.filter(m => m.userId !== headUserId).length && members.filter(m => m.userId !== headUserId).length > 0}
                                         onChange={toggleSelectAll}
                                     />
                                     <span>Select all on this page</span>
@@ -364,9 +366,10 @@ export default function MembersTab({ ouId, ouName, canManage, canSetManager = tr
                                         {canManage && (
                                             <input
                                                 type="checkbox"
-                                                className="h-4 w-4 rounded border-gray-300 shrink-0"
+                                                className="h-4 w-4 rounded border-gray-300 shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
                                                 checked={selected.has(member.userId)}
                                                 onChange={() => toggleSelect(member.userId)}
+                                                disabled={member.userId === headUserId}
                                             />
                                         )}
                                         <div className="relative shrink-0">
@@ -374,10 +377,9 @@ export default function MembersTab({ ouId, ouName, canManage, canSetManager = tr
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center gap-2 flex-wrap">
-                                                <Link href={`/admin/users/${member.userId}`}
-                                                    className="font-semibold text-sm hover:text-primary hover:underline transition-colors truncate">
+                                                <span className="font-semibold text-sm truncate">
                                                     {member.displayName}
-                                                </Link>
+                                                </span>
                                                 {member.isPrimary && (
                                                     <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-[18px] shrink-0">
                                                         Primary
@@ -395,12 +397,6 @@ export default function MembersTab({ ouId, ouName, canManage, canSetManager = tr
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2 shrink-0 ml-4">
-                                        <Link href={`/admin/users/${member.userId}`}>
-                                            <Button variant="ghost" size="sm"
-                                                className="h-7 w-7 p-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <ExternalLink className="h-3.5 w-3.5" />
-                                            </Button>
-                                        </Link>
                                         <Tooltip>
                                             <TooltipTrigger asChild>
                                                 <Button variant="ghost" size="sm"
@@ -414,17 +410,19 @@ export default function MembersTab({ ouId, ouName, canManage, canSetManager = tr
                                         {canManage && (
                                             <Tooltip>
                                                 <TooltipTrigger asChild>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                                                        onClick={() => setRemoveConfirm({ userId: member.userId, name: member.displayName })}
-                                                        disabled={actionLoading}
-                                                    >
-                                                        <UserMinus className="h-3.5 w-3.5" />
-                                                    </Button>
+                                                    <div>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive disabled:opacity-30"
+                                                            onClick={(e) => { e.stopPropagation(); setRemoveConfirm({ userId: member.userId, name: member.displayName }); }}
+                                                            disabled={actionLoading || member.userId === headUserId}
+                                                        >
+                                                            <UserMinus className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    </div>
                                                 </TooltipTrigger>
-                                                <TooltipContent>Remove member</TooltipContent>
+                                                <TooltipContent>{member.userId === headUserId ? 'Cannot remove the unit head' : 'Remove member'}</TooltipContent>
                                             </Tooltip>
                                         )}
                                     </div>
@@ -660,6 +658,32 @@ export default function MembersTab({ ouId, ouName, canManage, canSetManager = tr
                                     <p className="text-sm text-muted-foreground italic px-3 py-2 rounded-lg border border-dashed">Not in any operational groups in this unit</p>
                                 )}
                             </div>
+
+                            {/* Scoped Roles in this OU */}
+                            {viewingMember.scopedRoles && viewingMember.scopedRoles.length > 0 && (
+                                <div>
+                                    <h4 className="text-sm font-semibold flex items-center gap-1.5 mb-2"><Crown className="h-3.5 w-3.5 text-amber-500" /> Unit Roles ({viewingMember.scopedRoles.length})</h4>
+                                    <div className="space-y-2">
+                                        {viewingMember.scopedRoles.map((sr: any) => (
+                                            <div key={sr.id} className="p-3 rounded-lg border text-sm space-y-1">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className="font-medium">{sr.roleName}</span>
+                                                    {sr.source === 'delegation' ? (
+                                                        <Badge className="text-[10px] px-1.5 py-0 h-[16px] gap-0.5 bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-400 dark:border-amber-800"><Handshake className="h-2.5 w-2.5" /> Delegated</Badge>
+                                                    ) : (
+                                                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-[16px]">{sr.source === 'admin' ? 'Admin Assigned' : sr.source === 'system' ? 'Auto-granted' : 'Granted'}</Badge>
+                                                    )}
+                                                </div>
+                                                {sr.roleDescription && <p className="text-xs text-muted-foreground">{sr.roleDescription}</p>}
+                                                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                                    {sr.grantedByDisplayName && <span>Granted by: {sr.grantedByDisplayName}</span>}
+                                                    {sr.effectiveFrom && <span>Since: {new Date(sr.effectiveFrom).toLocaleDateString()}</span>}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
                 </DialogContent>
