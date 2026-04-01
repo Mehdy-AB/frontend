@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Folder, File, ChevronRight, Search, Check, Home, Share2, Loader2 } from 'lucide-react';
+import { Folder, File, ChevronRight, Search, Check, Home, Share2, Loader2, Globe } from 'lucide-react';
 import { notificationApiClient } from '@/api/notificationClient';
 import { FolderResDto, DocumentResponseDto, FolderRepoResDto, SortFields, UserDto } from '@/types/api';
 import Pagination from '../main/Pagination';
@@ -37,7 +37,7 @@ export default function MoveModal({
     const [loading, setLoading] = useState(false);
 
     // Tab management
-    const [activeTab, setActiveTab] = useState<'folders' | 'shared'>('folders');
+    const [activeTab, setActiveTab] = useState<'folders' | 'shared' | 'workspace'>('folders');
 
     // My Folders tab state
     const [myFoldersData, setMyFoldersData] = useState<FolderRepoResDto | null>(null);
@@ -60,6 +60,20 @@ export default function MoveModal({
     const [sharedCurrentFolderId, setSharedCurrentFolderId] = useState<number | null>(null);
     const [sharedBreadcrumbs, setSharedBreadcrumbs] = useState<BreadcrumbItem[]>([]);
     const isNavigatingViaBreadcrumb = useRef(false);
+
+    // Workspace tab state
+    const [workspaces, setWorkspaces] = useState<any[]>([]);
+    const [wsLoading, setWsLoading] = useState(false);
+    const [wsSelectedWorkspace, setWsSelectedWorkspace] = useState<any | null>(null);
+    const [wsFolderData, setWsFolderData] = useState<FolderRepoResDto | null>(null);
+    const [wsFoldersLoading, setWsFoldersLoading] = useState(false);
+    const [wsCurrentFolderId, setWsCurrentFolderId] = useState<number | null>(null);
+    const [wsBreadcrumbs, setWsBreadcrumbs] = useState<BreadcrumbItem[]>([]);
+    const [wsSearchQuery, setWsSearchQuery] = useState('');
+    const [wsDebouncedQuery, setWsDebouncedQuery] = useState('');
+    const [wsCurrentPage, setWsCurrentPage] = useState(0);
+    const [wsPageSize] = useState(20);
+    const isNavigatingViaBreadcrumbWs = useRef(false);
 
     // Path Owner State
 
@@ -84,6 +98,15 @@ export default function MoveModal({
             setSharedCurrentFolderId(null);
             setSharedBreadcrumbs([]);
             setActiveTab('folders');
+            // Reset workspace state
+            setWorkspaces([]);
+            setWsSelectedWorkspace(null);
+            setWsFolderData(null);
+            setWsCurrentFolderId(null);
+            setWsBreadcrumbs([]);
+            setWsSearchQuery('');
+            setWsDebouncedQuery('');
+            setWsCurrentPage(0);
         }
     }, [isOpen, item]);
 
@@ -408,6 +431,121 @@ export default function MoveModal({
         });
     }, [sharedData, itemType, movingItemId]);
 
+    // ---- Workspace Tab Logic ----
+
+    // Debounce ws search
+    useEffect(() => {
+        const timer = setTimeout(() => setWsDebouncedQuery(wsSearchQuery), 300);
+        return () => clearTimeout(timer);
+    }, [wsSearchQuery]);
+
+    useEffect(() => { setWsCurrentPage(0); }, [wsDebouncedQuery]);
+
+    // Load workspaces list
+    const loadWorkspaces = useCallback(async () => {
+        setWsLoading(true);
+        try {
+            const { workspaceService } = await import('@/api/services/workspaceService');
+            const res = await workspaceService.getMyWorkspaces(0, 50, 'name,asc');
+            setWorkspaces(res.content || []);
+        } catch (err) {
+            console.error('Failed to load workspaces', err);
+        } finally {
+            setWsLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (activeTab === 'workspace' && isOpen && !wsSelectedWorkspace) {
+            loadWorkspaces();
+        }
+    }, [activeTab, isOpen, wsSelectedWorkspace, loadWorkspaces]);
+
+    // Load workspace folder contents
+    const loadWsFolders = useCallback(async () => {
+        if (!wsSelectedWorkspace) return;
+        setWsFoldersLoading(true);
+        try {
+            const folderId = wsCurrentFolderId ?? wsSelectedWorkspace.rootFolderId;
+            if (!folderId) return;
+            const response = await notificationApiClient.getFolder(folderId, {
+                page: wsCurrentPage,
+                size: wsPageSize,
+                showFolder: true,
+                name: wsDebouncedQuery || undefined,
+                sort: SortFields.NAME,
+                desc: false,
+            });
+            setWsFolderData(response);
+
+            // Build breadcrumbs
+            if (wsCurrentFolderId !== null && response.folder) {
+                setWsBreadcrumbs(prev => {
+                    if (isNavigatingViaBreadcrumbWs.current) {
+                        isNavigatingViaBreadcrumbWs.current = false;
+                        return prev;
+                    }
+                    const fId = response.folder!.id;
+                    const idx = prev.findIndex(b => b.id === fId);
+                    if (idx !== -1) return prev.slice(0, idx + 1);
+                    return [...prev, { id: fId, name: response.folder!.name }];
+                });
+            }
+        } catch (err) {
+            console.error('Error loading workspace folders:', err);
+        } finally {
+            setWsFoldersLoading(false);
+        }
+    }, [wsSelectedWorkspace, wsCurrentFolderId, wsCurrentPage, wsPageSize, wsDebouncedQuery]);
+
+    useEffect(() => {
+        if (activeTab === 'workspace' && isOpen && wsSelectedWorkspace) {
+            loadWsFolders();
+        }
+    }, [activeTab, isOpen, wsSelectedWorkspace, loadWsFolders]);
+
+    const selectWorkspace = (ws: any) => {
+        setWsSelectedWorkspace(ws);
+        setWsCurrentFolderId(null);
+        setWsBreadcrumbs([]);
+        setWsCurrentPage(0);
+        setWsSearchQuery('');
+    };
+
+    const navigateToWsFolder = (folderId: number, folderName: string) => {
+        setWsCurrentFolderId(folderId);
+        setWsBreadcrumbs(prev => [...prev, { id: folderId, name: folderName }]);
+        setWsCurrentPage(0);
+    };
+
+    const navigateWsBreadcrumb = (folderId: number | null) => {
+        if (folderId === null) {
+            // Go back to workspace root
+            setWsCurrentFolderId(null);
+            setWsBreadcrumbs([]);
+            isNavigatingViaBreadcrumbWs.current = false;
+        } else {
+            isNavigatingViaBreadcrumbWs.current = true;
+            setWsCurrentFolderId(folderId);
+            const idx = wsBreadcrumbs.findIndex(b => b.id === folderId);
+            if (idx !== -1) setWsBreadcrumbs(prev => prev.slice(0, idx + 1));
+        }
+        setWsCurrentPage(0);
+    };
+
+    const wsMoveableFolders = useMemo(() => {
+        if (!wsFolderData) return [];
+        return (wsFolderData.folders || []).map(f => {
+            let isSelectable = true;
+            let disableReason = '';
+            if (itemType === 'folder' && f.id === movingItemId) {
+                isSelectable = false;
+                disableReason = 'Cannot move folder to its current location';
+            }
+            return { ...f, isSelectable, disableReason };
+        });
+    }, [wsFolderData, itemType, movingItemId]);
+
     const handleSubmit = async () => {
         if (!item || selectedFolderId === null) return;
 
@@ -532,6 +670,18 @@ export default function MoveModal({
                                     Shared with Me
                                 </div>
                             </button>
+                            <button
+                                onClick={() => setActiveTab('workspace')}
+                                className={`px-4 py-2 font-medium text-sm transition-colors border-b-2 ${activeTab === 'workspace'
+                                    ? 'border-blue-600 text-blue-600'
+                                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                                    }`}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <Globe className="h-4 w-4" />
+                                    Workspaces
+                                </div>
+                            </button>
                         </div>
 
                         {/* Tab Content */}
@@ -624,10 +774,10 @@ export default function MoveModal({
                                                             <div className={`text-sm truncate select-text ${!folder.isSelectable ? 'text-gray-400' : ''}`}>
                                                                 {folder.name}
                                                             </div>
-                                                            
+
                                                             {folder.path && (
                                                                 <div className="text-xs text-gray-500 mt-1 truncate select-text">
-                                                                    {folder.ownedBy.displayName|| folder.ownedBy.username}/{folder.path.split('.').slice(1).join(' / ')}
+                                                                    {folder.ownedBy.displayName || folder.ownedBy.username}/{folder.path.split('.').slice(1).join(' / ')}
                                                                 </div>
                                                             )}
                                                         </div>
@@ -673,7 +823,7 @@ export default function MoveModal({
                                     </div>
                                 )}
                             </div>
-                        ) : (
+                        ) : activeTab === 'shared' ? (
                             <div className="flex flex-col border rounded-lg overflow-hidden flex-1 min-h-0">
                                 {/* Search Bar */}
                                 <div className="p-3 border-b bg-gray-50">
@@ -814,7 +964,132 @@ export default function MoveModal({
                                     </div>
                                 )}
                             </div>
-                        )}
+                        ) : activeTab === 'workspace' ? (
+                            /* ===== WORKSPACE TAB ===== */
+                            <div className="flex flex-col border rounded-lg overflow-hidden flex-1 min-h-0">
+                                {!wsSelectedWorkspace ? (
+                                    /* Workspace List */
+                                    <div className="flex-1 overflow-y-auto bg-white min-h-0">
+                                        {wsLoading ? (
+                                            <div className="flex items-center justify-center p-8">
+                                                <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+                                            </div>
+                                        ) : workspaces.length === 0 ? (
+                                            <div className="p-4 text-center text-gray-500">No workspaces available</div>
+                                        ) : (
+                                            <div className="p-2">
+                                                {workspaces.map((ws) => (
+                                                    <div key={ws.id}
+                                                        onClick={() => selectWorkspace(ws)}
+                                                        className="flex items-center py-3 px-3 rounded-md hover:bg-gray-100 cursor-pointer transition-colors">
+                                                        <Globe className="h-4 w-4 mr-3 text-blue-500" />
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="text-sm font-medium">{ws.name}</div>
+                                                            <div className="text-xs text-gray-400">{ws.code} • {ws.type}</div>
+                                                        </div>
+                                                        <ChevronRight className="h-4 w-4 text-gray-400" />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    /* Workspace Folder Browser */
+                                    <>
+                                        {/* Search */}
+                                        <div className="p-3 border-b bg-gray-50">
+                                            <div className="relative">
+                                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                                                <Input
+                                                    value={wsSearchQuery}
+                                                    onChange={(e) => setWsSearchQuery(e.target.value)}
+                                                    placeholder="Search folders..."
+                                                    className="pl-10"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Breadcrumbs */}
+                                        <div className="p-3 border-b bg-white flex items-center gap-2 text-sm overflow-x-auto">
+                                            <button
+                                                onClick={() => { setWsSelectedWorkspace(null); setWsFolderData(null); }}
+                                                className="flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-100 text-gray-700 flex-shrink-0">
+                                                <Globe className="h-4 w-4" /><span>All</span>
+                                            </button>
+                                            <ChevronRight className="h-4 w-4 text-gray-400" />
+                                            <button
+                                                onClick={() => navigateWsBreadcrumb(null)}
+                                                className={`px-2 py-1 rounded flex-shrink-0 ${wsBreadcrumbs.length === 0 ? 'font-medium text-blue-600' : 'hover:bg-gray-100 text-gray-700'}`}>
+                                                {wsSelectedWorkspace.name}
+                                            </button>
+                                            {wsBreadcrumbs.map((crumb, idx) => (
+                                                <div key={crumb.id} className="flex items-center gap-2 flex-shrink-0">
+                                                    <ChevronRight className="h-4 w-4 text-gray-400" />
+                                                    <button
+                                                        onClick={() => navigateWsBreadcrumb(crumb.id)}
+                                                        className={`px-2 py-1 rounded truncate max-w-[150px] ${idx === wsBreadcrumbs.length - 1 ? 'font-medium text-blue-600' : 'hover:bg-gray-100 text-gray-700'}`}
+                                                        title={crumb.name}>
+                                                        {crumb.name}
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        {/* Folder List */}
+                                        <div className="flex-1 overflow-y-auto bg-white min-h-0">
+                                            {wsFoldersLoading ? (
+                                                <div className="flex items-center justify-center p-8">
+                                                    <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+                                                </div>
+                                            ) : wsMoveableFolders.length === 0 ? (
+                                                <div className="p-4 text-center text-gray-500">No folders found</div>
+                                            ) : (
+                                                <div className="p-2">
+                                                    {wsMoveableFolders.map(folder => {
+                                                        const isSelected = selectedFolderId === folder.id;
+                                                        return (
+                                                            <div key={folder.id}
+                                                                className={`flex items-center py-2 px-3 rounded-md transition-colors ${!folder.isSelectable ? 'opacity-50 bg-gray-50'
+                                                                    : isSelected ? 'bg-blue-100 border border-blue-300'
+                                                                        : 'hover:bg-gray-100'
+                                                                    }`}>
+                                                                <Folder className={`h-4 w-4 mr-2 ${!folder.isSelectable ? 'text-gray-400' : 'text-blue-500'}`} />
+                                                                <div
+                                                                    className={`flex-1 min-w-0 ${folder.isSelectable ? 'cursor-pointer' : ''}`}
+                                                                    onClick={() => folder.isSelectable && selectFolder(folder.id, folder.name)}
+                                                                    onDoubleClick={(e) => { e.stopPropagation(); navigateToWsFolder(folder.id, folder.name); }}>
+                                                                    <div className={`text-sm truncate ${!folder.isSelectable ? 'text-gray-400' : ''}`}>{folder.name}</div>
+                                                                </div>
+                                                                {isSelected && folder.isSelectable && <Check className="h-4 w-4 text-blue-600 flex-shrink-0 mr-2" />}
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); navigateToWsFolder(folder.id, folder.name); }}
+                                                                    className="ml-2 p-1 hover:bg-gray-200 rounded transition-colors"
+                                                                    title="Navigate into folder">
+                                                                    <ChevronRight className="h-4 w-4 text-gray-600" />
+                                                                </button>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Pagination */}
+                                        {wsFolderData && wsFolderData.totalPages > 1 && (
+                                            <div className="p-3 border-t bg-gray-50">
+                                                <Pagination
+                                                    currentPage={wsCurrentPage}
+                                                    totalPages={wsFolderData.totalPages}
+                                                    totalElements={wsFolderData.totalElements || 0}
+                                                    pageSize={wsPageSize}
+                                                    onPageChange={setWsCurrentPage}
+                                                />
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+                        ) : null}
                     </div>
                 </div>
 

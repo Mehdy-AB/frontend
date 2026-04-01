@@ -17,7 +17,8 @@ import {
   User,
   FileCheck,
   Archive,
-  Crown,
+  Globe,
+  ShieldCheck,
   Handshake
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
@@ -107,7 +108,7 @@ export default function Sidebar() {
     ...(showMyScope ? [{
       id: 'my-scope',
       label: 'My Scope',
-      icon: Crown,
+      icon: Globe,
       href: '/my-scope',
     }] : []),
     {
@@ -121,6 +122,18 @@ export default function Sidebar() {
       label: 'My Repository',
       icon: Folder,
       href: '/folders',
+    },
+    {
+      id: 'workspaces',
+      label: 'Workspaces',
+      icon: Globe,
+      href: '/workspaces',
+    },
+    {
+      id: 'secured-spaces',
+      label: 'Secured Spaces',
+      icon: ShieldCheck,
+      href: '/secured-spaces',
     },
     {
       id: 'classa',

@@ -10,7 +10,8 @@ import {
     Eye,
     Copy,
     MoreVertical,
-    FileText
+    FileText,
+    Globe
 } from 'lucide-react';
 import { DocumentResponseDto, FolderResDto } from '@/types/api';
 import {
@@ -30,6 +31,7 @@ interface TableActionMenuProps {
     onEditPermissions?: (document: DocumentResponseDto) => void;
     onEditFolderPermissions?: (folder: FolderResDto) => void;
     onMove?: (item: TableItem) => void;
+    onMoveToWorkspace?: (item: TableItem) => void;
     onRename?: (item: TableItem) => void;
     onDelete?: (item: TableItem) => void;
     onShowComments?: (item: TableItem) => void;
@@ -45,6 +47,7 @@ export function TableActionMenu({
     onEditPermissions,
     onEditFolderPermissions,
     onMove,
+    onMoveToWorkspace,
     onRename,
     onDelete,
     onShowComments,
@@ -56,10 +59,19 @@ export function TableActionMenu({
 }: TableActionMenuProps) {
     const isFolder = item.type === 'folder';
 
-    const canRename = item.userPermissions?.canEdit;
-    const canMove = item.userPermissions?.canEdit;
+    // Get workspace context from the item (available on both folders and documents)
+    const wsCtx = isFolder
+        ? (item as FolderResDto).workspaceContext
+        : (item as DocumentResponseDto).workspaceContext;
+
+    // Combine ACL permissions with workspace policy constraints
+    const canRename = (item.userPermissions?.canEdit ?? true)
+        && (isFolder ? (wsCtx?.canEditFolders ?? true) : (wsCtx?.canEditDocuments ?? true));
+    const canMove = (item.userPermissions?.canEdit ?? true)
+        && (wsCtx?.canMoveDocumentsOrFolders ?? true);
     const canDelete = item.userPermissions?.canDelete;
-    const canManagePermissions = item.userPermissions?.canManagePermissions;
+    const canManagePermissions = (item.userPermissions?.canManagePermissions ?? true)
+        && (wsCtx?.aclSharingAllowed ?? true);
     const canView = item.userPermissions?.canView;
     const canShare = isFolder ? (item.userPermissions as any)?.canShare : false;
 
@@ -144,6 +156,17 @@ export function TableActionMenu({
                     >
                         <Folder className="mr-2 h-4 w-4" />
                         <span>Move</span>
+                    </DropdownMenuItem>
+                )}
+
+                {onMoveToWorkspace && (
+                    <DropdownMenuItem
+                        onClick={() => onMoveToWorkspace(item)}
+                        disabled={!canMove}
+                        className="cursor-pointer"
+                    >
+                        <Globe className="mr-2 h-4 w-4" />
+                        <span>Move to Workspace</span>
                     </DropdownMenuItem>
                 )}
 

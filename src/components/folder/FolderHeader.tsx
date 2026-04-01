@@ -52,6 +52,22 @@ export function FolderHeader({
   onDownload,
   onChangeDescription,
 }: FolderHeaderProps) {
+  // Combine ACL permissions with workspace policy constraints
+  const wsCtx = folder.workspaceContext;
+  const canUpload = (folder.userPermissions?.canUpload ?? true) && (wsCtx?.canUploadDocuments ?? true);
+  const canCreateSub = (folder.userPermissions?.canCreateSubFolders ?? true) && (wsCtx?.canCreateFolders ?? true);
+  const canEdit = (folder.userPermissions?.canEdit ?? true) && (wsCtx?.canEditFolders ?? true);
+  const canMove = (folder.userPermissions?.canEdit ?? true) && (wsCtx?.canMoveDocumentsOrFolders ?? true);
+  const canExport = wsCtx?.exportFolderEnabled ?? true;
+  const canShareAcl = (folder.userPermissions?.canManagePermissions ?? true) && (wsCtx?.aclSharingAllowed ?? true);
+
+  // Helper to build tooltip messages
+  const getDisabledReason = (aclOk: boolean, policyOk: boolean, aclMsg: string, policyMsg: string) => {
+    if (!policyOk) return policyMsg;
+    if (!aclOk) return aclMsg;
+    return '';
+  };
+
   return (
     <div className="bg-white border-b border-gray-200">
       <div className="px-6 py-6">
@@ -85,16 +101,16 @@ export function FolderHeader({
                   <TooltipTrigger asChild>
                     <button
                       onClick={onUpload}
-                      disabled={!folder.userPermissions?.canUpload}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${folder.userPermissions?.canUpload ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                      disabled={!canUpload}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${canUpload ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
                     >
                       <Upload className="h-4 w-4" />
                       Upload
                     </button>
                   </TooltipTrigger>
-                  {!folder.userPermissions?.canUpload && (
+                  {!canUpload && (
                     <TooltipContent>
-                      <p>You don't have permission to upload documents</p>
+                      <p>{!(wsCtx?.canUploadDocuments ?? true) ? 'Uploading is disabled by workspace policy' : "You don't have permission to upload documents"}</p>
                     </TooltipContent>
                   )}
                 </Tooltip>
@@ -102,16 +118,16 @@ export function FolderHeader({
                   <TooltipTrigger asChild>
                     <button
                       onClick={onCreateFolder}
-                      disabled={!folder.userPermissions?.canCreateSubFolders}
-                      className={`flex items-center gap-2 border px-3 py-2 rounded-md text-sm font-medium transition-colors ${folder.userPermissions?.canCreateSubFolders ? 'border-gray-300 text-gray-700 hover:bg-gray-50' : 'border-gray-200 text-gray-400 cursor-not-allowed bg-gray-50'}`}
+                      disabled={!canCreateSub}
+                      className={`flex items-center gap-2 border px-3 py-2 rounded-md text-sm font-medium transition-colors ${canCreateSub ? 'border-gray-300 text-gray-700 hover:bg-gray-50' : 'border-gray-200 text-gray-400 cursor-not-allowed bg-gray-50'}`}
                     >
                       <Plus className="h-4 w-4" />
                       New Folder
                     </button>
                   </TooltipTrigger>
-                  {!folder.userPermissions?.canCreateSubFolders && (
+                  {!canCreateSub && (
                     <TooltipContent>
-                      <p>You don't have permission to create subfolders</p>
+                      <p>{!(wsCtx?.canCreateFolders ?? true) ? 'Creating folders is disabled by workspace policy' : "You don't have permission to create subfolders"}</p>
                     </TooltipContent>
                   )}
                 </Tooltip>
@@ -135,8 +151,8 @@ export function FolderHeader({
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onClick={onEditPermissions}
-                      disabled={!folder.userPermissions?.canManagePermissions}
-                      className={`cursor-pointer ${!folder.userPermissions?.canManagePermissions ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      disabled={!canShareAcl}
+                      className={`cursor-pointer ${!canShareAcl ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       <Share2 className="h-4 w-4 mr-2" />
                       Permissions
@@ -154,7 +170,7 @@ export function FolderHeader({
                     {onRename && (
                       <DropdownMenuItem
                         onClick={onRename}
-                        disabled={!folder.userPermissions?.canEdit}
+                        disabled={!canEdit}
                         className="cursor-pointer"
                       >
                         <Edit className="h-4 w-4 mr-2" />
@@ -165,7 +181,7 @@ export function FolderHeader({
                     {onMove && (
                       <DropdownMenuItem
                         onClick={onMove}
-                        disabled={!folder.userPermissions?.canEdit}
+                        disabled={!canMove}
                         className="cursor-pointer"
                       >
                         <FolderIcon className="h-4 w-4 mr-2" />

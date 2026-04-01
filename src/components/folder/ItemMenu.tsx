@@ -1,15 +1,16 @@
 import React, { useState, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { 
-  MessageSquare, 
-  Edit, 
-  Folder, 
-  Settings, 
+import {
+  MessageSquare,
+  Edit,
+  Folder,
+  Settings,
   Trash2,
   Download,
   Share2,
   Eye,
-  Copy
+  Copy,
+  Globe
 } from 'lucide-react';
 import { DocumentResponseDto, FolderResDto } from '@/types/api';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -21,6 +22,7 @@ interface ItemMenuProps {
   onEditPermissions?: (document: DocumentResponseDto) => void;
   onEditFolderPermissions?: (folder: FolderResDto) => void;
   onMove?: (item: TableItem) => void;
+  onMoveToWorkspace?: (item: TableItem) => void;
   onRename?: (item: TableItem) => void;
   onDelete?: (item: TableItem) => void;
   onShowComments?: (item: TableItem) => void;
@@ -32,20 +34,21 @@ interface ItemMenuProps {
   buttonRef?: React.RefObject<HTMLButtonElement | null>;
 }
 
-export function ItemMenu({ 
-  item, 
-  onEditPermissions, 
-  onEditFolderPermissions, 
-  onMove, 
-  onRename, 
-  onDelete, 
+export function ItemMenu({
+  item,
+  onEditPermissions,
+  onEditFolderPermissions,
+  onMove,
+  onMoveToWorkspace,
+  onRename,
+  onDelete,
   onShowComments,
   onDownload,
   onShare,
   onCopyLink,
   onView,
-  onClose, 
-  buttonRef 
+  onClose,
+  buttonRef
 }: ItemMenuProps) {
   const isFolder = item.type === 'folder';
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
@@ -115,11 +118,10 @@ export function ItemMenu({
                 }
               }}
               disabled={!canView}
-              className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
-                canView
-                  ? 'text-gray-700 hover:bg-gray-100'
-                  : 'text-gray-400 cursor-not-allowed'
-              }`}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${canView
+                ? 'text-gray-700 hover:bg-gray-100'
+                : 'text-gray-400 cursor-not-allowed'
+                }`}
             >
               <Eye className="h-4 w-4" />
               View
@@ -145,11 +147,10 @@ export function ItemMenu({
                 }
               }}
               disabled={!canView}
-              className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
-                canView
-                  ? 'text-gray-700 hover:bg-gray-100'
-                  : 'text-gray-400 cursor-not-allowed'
-              }`}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${canView
+                ? 'text-gray-700 hover:bg-gray-100'
+                : 'text-gray-400 cursor-not-allowed'
+                }`}
             >
               <Download className="h-4 w-4" />
               Download
@@ -175,11 +176,10 @@ export function ItemMenu({
                 }
               }}
               disabled={!canShare}
-              className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
-                canShare
-                  ? 'text-gray-700 hover:bg-gray-100'
-                  : 'text-gray-400 cursor-not-allowed'
-              }`}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${canShare
+                ? 'text-gray-700 hover:bg-gray-100'
+                : 'text-gray-400 cursor-not-allowed'
+                }`}
             >
               <Share2 className="h-4 w-4" />
               Share
@@ -207,7 +207,7 @@ export function ItemMenu({
         </button>
       )}
 
-      <button 
+      <button
         onClick={(e) => {
           e.stopPropagation();
           onShowComments?.(item);
@@ -231,11 +231,10 @@ export function ItemMenu({
                 }
               }}
               disabled={!canRename}
-              className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
-                canRename
-                  ? 'text-gray-700 hover:bg-gray-100'
-                  : 'text-gray-400 cursor-not-allowed'
-              }`}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${canRename
+                ? 'text-gray-700 hover:bg-gray-100'
+                : 'text-gray-400 cursor-not-allowed'
+                }`}
             >
               <Edit className="h-4 w-4" />
               Rename
@@ -261,14 +260,42 @@ export function ItemMenu({
                 }
               }}
               disabled={!canMove}
-              className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
-                canMove
-                  ? 'text-gray-700 hover:bg-gray-100'
-                  : 'text-gray-400 cursor-not-allowed'
-              }`}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${canMove
+                ? 'text-gray-700 hover:bg-gray-100'
+                : 'text-gray-400 cursor-not-allowed'
+                }`}
             >
               <Folder className="h-4 w-4" />
               Move
+            </button>
+          </TooltipTrigger>
+          {!canMove && (
+            <TooltipContent>
+              <p>You don't have permission to move this item</p>
+            </TooltipContent>
+          )}
+        </Tooltip>
+      )}
+
+      {onMoveToWorkspace && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (canMove) {
+                  onMoveToWorkspace(item);
+                  onClose();
+                }
+              }}
+              disabled={!canMove}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${canMove
+                ? 'text-blue-600 hover:bg-blue-50'
+                : 'text-gray-400 cursor-not-allowed'
+                }`}
+            >
+              <Globe className="h-4 w-4" />
+              Move to Workspace
             </button>
           </TooltipTrigger>
           {!canMove && (
@@ -291,11 +318,10 @@ export function ItemMenu({
                 }
               }}
               disabled={!canManagePermissions}
-              className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
-                canManagePermissions
-                  ? 'text-gray-700 hover:bg-gray-100'
-                  : 'text-gray-400 cursor-not-allowed'
-              }`}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${canManagePermissions
+                ? 'text-gray-700 hover:bg-gray-100'
+                : 'text-gray-400 cursor-not-allowed'
+                }`}
             >
               <Settings className="h-4 w-4" />
               Edit Permissions
@@ -321,11 +347,10 @@ export function ItemMenu({
                 }
               }}
               disabled={!canManagePermissions}
-              className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
-                canManagePermissions
-                  ? 'text-gray-700 hover:bg-gray-100'
-                  : 'text-gray-400 cursor-not-allowed'
-              }`}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${canManagePermissions
+                ? 'text-gray-700 hover:bg-gray-100'
+                : 'text-gray-400 cursor-not-allowed'
+                }`}
             >
               <Settings className="h-4 w-4" />
               Edit Permissions
@@ -353,11 +378,10 @@ export function ItemMenu({
                   }
                 }}
                 disabled={!canDelete}
-                className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
-                  canDelete
-                    ? 'text-red-600 hover:bg-red-50'
-                    : 'text-gray-400 cursor-not-allowed'
-                }`}
+                className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${canDelete
+                  ? 'text-red-600 hover:bg-red-50'
+                  : 'text-gray-400 cursor-not-allowed'
+                  }`}
               >
                 <Trash2 className="h-4 w-4" />
                 Move to Trash
