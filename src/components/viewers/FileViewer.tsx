@@ -27,6 +27,9 @@ import UnsupportedViewer from './tier2/UnsupportedViewer';
 import VideoViewer from './tier3/VideoViewer';
 import AudioViewer from './tier3/AudioViewer';
 
+// Specialized viewers
+import EmailDocumentViewer from './EmailDocumentViewer';
+
 interface FileViewerProps {
   document: DocumentResponseDto;
   downloadUrl: string;
@@ -36,7 +39,7 @@ interface FileViewerProps {
   onRef?: (refreshFn: () => void) => void;
 }
 
-type ViewerType = 'pdf' | 'image' | 'text' | 'docx' | 'xlsx' | 'csv' | 'video' | 'audio' | 'unsupported';
+type ViewerType = 'pdf' | 'image' | 'text' | 'docx' | 'xlsx' | 'csv' | 'video' | 'audio' | 'email' | 'unsupported';
 
 interface FileContent {
   type: ViewerType;
@@ -85,6 +88,9 @@ function getViewerType(mimeType: string): ViewerType {
 
   // RTF — treat as text
   if (mime.includes('rtf')) return 'text';
+
+  // Email files (.eml / .msg)
+  if (mime.includes('message/rfc822') || mime.includes('vnd.ms-outlook')) return 'email';
 
   // Archives, CAD, eBook, PostScript, binary — no preview
   return 'unsupported';
@@ -231,6 +237,13 @@ export default function FileViewer({
 
       if (viewerType === 'audio') {
         setFileContent({ type: 'audio', content: downloadUrl });
+        setLoading(false);
+        return;
+      }
+
+      // Email — EmailDocumentViewer fetches its own data via the email capture API
+      if (viewerType === 'email') {
+        setFileContent({ type: 'email', content: null });
         setLoading(false);
         return;
       }
@@ -395,6 +408,12 @@ export default function FileViewer({
             document={document}
             content={fileContent.content}
             mimeType={document.mimeType}
+          />
+        )}
+
+        {fileContent.type === 'email' && (
+          <EmailDocumentViewer
+            documentId={document.documentId}
           />
         )}
 

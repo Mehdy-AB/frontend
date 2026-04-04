@@ -30,6 +30,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 import { profileService, type UpdateProfileRequest, type ChangePasswordRequest } from '@/api/services/profileService';
 import { ImageCropDialog } from '@/components/ui/image-crop-dialog';
+import EmailCaptureSettingsTab from './EmailCaptureSettingsTab';
 
 // --- Password strength calculator ---
 function getPasswordStrength(password: string): { level: number; label: string; color: string } {
@@ -341,7 +342,7 @@ export default function SettingsPage() {
 
 
         <Tabs defaultValue="profile" className="space-y-8">
-          <TabsList className="grid w-full grid-cols-2 rounded-xl bg-muted/50 dark:bg-muted/30 p-1 border border-border/40">
+          <TabsList className="grid w-full grid-cols-3 rounded-xl bg-muted/50 dark:bg-muted/30 p-1 border border-border/40">
             <TabsTrigger
               value="profile"
               className="gap-2 rounded-lg data-[state=active]:bg-card dark:data-[state=active]:bg-card data-[state=active]:shadow-sm transition-all duration-150 text-sm font-medium"
@@ -355,6 +356,13 @@ export default function SettingsPage() {
             >
               <Shield className="h-4 w-4" />
               Security
+            </TabsTrigger>
+            <TabsTrigger
+              value="email-capture"
+              className="gap-2 rounded-lg data-[state=active]:bg-card dark:data-[state=active]:bg-card data-[state=active]:shadow-sm transition-all duration-150 text-sm font-medium"
+            >
+              <Mail className="h-4 w-4" />
+              Email Capture
             </TabsTrigger>
           </TabsList>
 
@@ -730,6 +738,11 @@ export default function SettingsPage() {
                 </form>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* ============ EMAIL CAPTURE TAB ============ */}
+          <TabsContent value="email-capture" className="space-y-6 settings-section-enter">
+            <EmailCaptureSettingsTab />
           </TabsContent>
         </Tabs>
       </div>
