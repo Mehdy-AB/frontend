@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Star, Download, Share2, MoreVertical, Copy, Trash2, Move, MessageSquare, Edit3, Upload } from 'lucide-react';
+import { Star, Download, Share2, MoreVertical, Copy, Trash2, Move, MessageSquare, Edit3, Upload, Lock, Unlock, Loader2 } from 'lucide-react';
 import { DocumentViewDto } from '../../types/documentView';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
@@ -17,6 +17,13 @@ interface DocumentActionsProps {
   onDelete?: () => void;
   onRename?: () => void;
   onUploadVersion?: () => void;
+  // Checkout
+  isCheckedOut?: boolean;
+  checkedOutByName?: string | null;
+  isCheckedOutByMe?: boolean;
+  checkoutLoading?: boolean;
+  onCheckout?: () => void;
+  onCheckin?: () => void;
 }
 
 export default function DocumentActions({
@@ -30,7 +37,13 @@ export default function DocumentActions({
   onMove,
   onDelete,
   onRename,
-  onUploadVersion
+  onUploadVersion,
+  isCheckedOut,
+  checkedOutByName,
+  isCheckedOutByMe,
+  checkoutLoading,
+  onCheckout,
+  onCheckin
 }: DocumentActionsProps) {
   const [showMoreActions, setShowMoreActions] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -79,12 +92,56 @@ export default function DocumentActions({
 
   return (
     <div className="flex items-center gap-2">
+      {/* Checkout/Checkin Button */}
+      {(onCheckout || onCheckin) && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={() => {
+                if (checkoutLoading) return;
+                if (isCheckedOut && isCheckedOutByMe && onCheckin) {
+                  onCheckin();
+                } else if (!isCheckedOut && onCheckout) {
+                  onCheckout();
+                }
+              }}
+              disabled={checkoutLoading || (isCheckedOut && !isCheckedOutByMe)}
+              className={`p-2 rounded-lg transition-colors flex items-center gap-1 ${checkoutLoading
+                  ? 'text-gray-400 cursor-wait'
+                  : isCheckedOut && isCheckedOutByMe
+                    ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                    : isCheckedOut
+                      ? 'bg-red-50 text-red-400 cursor-not-allowed'
+                      : 'text-neutral-text-light hover:text-emerald-600 hover:bg-emerald-50'
+                }`}
+            >
+              {checkoutLoading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : isCheckedOut ? (
+                <Lock className="h-5 w-5" />
+              ) : (
+                <Unlock className="h-5 w-5" />
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>
+            {checkoutLoading
+              ? 'Processing...'
+              : isCheckedOut && isCheckedOutByMe
+                ? 'Check in (unlock) this document'
+                : isCheckedOut
+                  ? `Locked by ${checkedOutByName || 'another user'}`
+                  : 'Check out (lock) for editing'}
+          </TooltipContent>
+        </Tooltip>
+      )}
+
       {/* Favorite Button */}
       <button
         onClick={onToggleFavorite}
         className={`p-2 rounded-lg transition-colors ${isFavorite
-            ? 'bg-yellow-100 text-yellow-600 hover:bg-yellow-200'
-            : 'text-neutral-text-light hover:text-yellow-600 hover:bg-yellow-50'
+          ? 'bg-yellow-100 text-yellow-600 hover:bg-yellow-200'
+          : 'text-neutral-text-light hover:text-yellow-600 hover:bg-yellow-50'
           }`}
         title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
       >
@@ -98,8 +155,8 @@ export default function DocumentActions({
             onClick={onDownload}
             disabled={!document.userPermissions?.canView}
             className={`p-2 rounded-lg transition-colors ${document.userPermissions?.canView
-                ? 'text-neutral-text-light hover:text-primary hover:bg-primary/10'
-                : 'text-gray-300 cursor-not-allowed'
+              ? 'text-neutral-text-light hover:text-primary hover:bg-primary/10'
+              : 'text-gray-300 cursor-not-allowed'
               }`}
             title={document.userPermissions?.canView ? "Download document" : "You don't have permission to download this document"}
           >
@@ -120,8 +177,8 @@ export default function DocumentActions({
             onClick={onShare}
             disabled={!document.userPermissions?.canManagePermissions}
             className={`p-2 rounded-lg transition-colors ${document.userPermissions?.canManagePermissions
-                ? 'text-neutral-text-light hover:text-primary hover:bg-primary/10'
-                : 'text-gray-300 cursor-not-allowed'
+              ? 'text-neutral-text-light hover:text-primary hover:bg-primary/10'
+              : 'text-gray-300 cursor-not-allowed'
               }`}
             title={document.userPermissions?.canManagePermissions ? "Share document" : "You don't have permission to manage permissions"}
           >
@@ -187,8 +244,8 @@ export default function DocumentActions({
                       }}
                       disabled={!document.userPermissions?.canEdit}
                       className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${document.userPermissions?.canEdit
-                          ? 'text-neutral-text-light hover:text-neutral-text-dark hover:bg-neutral-background'
-                          : 'text-gray-400 cursor-not-allowed'
+                        ? 'text-neutral-text-light hover:text-neutral-text-dark hover:bg-neutral-background'
+                        : 'text-gray-400 cursor-not-allowed'
                         }`}
                     >
                       <Edit3 className="h-4 w-4" />
@@ -214,8 +271,8 @@ export default function DocumentActions({
                       }}
                       disabled={!document.userPermissions?.canEdit}
                       className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${document.userPermissions?.canEdit
-                          ? 'text-neutral-text-light hover:text-neutral-text-dark hover:bg-neutral-background'
-                          : 'text-gray-400 cursor-not-allowed'
+                        ? 'text-neutral-text-light hover:text-neutral-text-dark hover:bg-neutral-background'
+                        : 'text-gray-400 cursor-not-allowed'
                         }`}
                     >
                       <Upload className="h-4 w-4" />
@@ -242,8 +299,8 @@ export default function DocumentActions({
                       }}
                       disabled={!document.userPermissions?.canEdit}
                       className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${document.userPermissions?.canEdit
-                          ? 'text-neutral-text-light hover:text-neutral-text-dark hover:bg-neutral-background'
-                          : 'text-gray-400 cursor-not-allowed'
+                        ? 'text-neutral-text-light hover:text-neutral-text-dark hover:bg-neutral-background'
+                        : 'text-gray-400 cursor-not-allowed'
                         }`}
                     >
                       <Move className="h-4 w-4" />
@@ -269,8 +326,8 @@ export default function DocumentActions({
                       }}
                       disabled={!document.userPermissions?.canDelete}
                       className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${document.userPermissions?.canDelete
-                          ? 'text-error hover:bg-error/10'
-                          : 'text-gray-400 cursor-not-allowed'
+                        ? 'text-error hover:bg-error/10'
+                        : 'text-gray-400 cursor-not-allowed'
                         }`}
                     >
                       <Trash2 className="h-4 w-4" />

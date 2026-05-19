@@ -42,7 +42,7 @@ export default function AuditDetailDrawer({ eventId, onClose }: AuditDetailDrawe
     const [event, setEvent] = useState<AuditLogResponseDto | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [jsonExpanded, setJsonExpanded] = useState(false);
+    const [jsonExpanded, setJsonExpanded] = useState<false | 'changes' | 'raw'>(false);
     const [copiedField, setCopiedField] = useState<string | null>(null);
     const drawerRef = useRef<HTMLDivElement>(null);
 
@@ -95,22 +95,47 @@ export default function AuditDetailDrawer({ eventId, onClose }: AuditDetailDrawe
     const fields: { label: string; value: string | null; copyable?: boolean }[] = event ? [
         { label: 'Event ID', value: String(event.id), copyable: true },
         { label: 'Timestamp', value: event.timestamp ? new Date(event.timestamp).toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'medium' }) : null },
+        // Action context
         { label: 'Action', value: event.action },
-        { label: 'Action Description', value: event.actionDescription },
+        { label: 'Description', value: event.actionDescription },
+        { label: 'Category', value: event.actionCategoryDisplayName || event.actionCategory },
+        { label: 'Channel', value: event.channel },
+        // Entity
         { label: 'Entity Type', value: event.entityType },
         { label: 'Entity ID', value: event.entityId, copyable: true },
         { label: 'Entity Name', value: event.entityName },
-        { label: 'User', value: event.user ? `${event.user.displayName || event.user.username} (${event.user.email})` : event.username },
+        // Scope
+        { label: 'Workspace', value: event.workspaceName },
+        { label: 'Workspace ID', value: event.workspaceId, copyable: true },
+        { label: 'Folder Path', value: event.folderPath },
+        // Actor
+        { label: 'User', value: event.user ? `${event.user.displayName || event.user.username} (${event.user.email})` : event.displayName || event.username },
         { label: 'User ID', value: event.user?.id || null, copyable: true },
-        { label: 'User Email', value: event.userEmail },
+        { label: 'Actor Type', value: event.actorType },
+        // HTTP
         { label: 'HTTP Method', value: event.httpMethod },
         { label: 'Endpoint', value: event.endpoint },
         { label: 'IP Address', value: event.ipAddress },
+        { label: 'User Agent', value: event.userAgent },
+        // Result
         { label: 'Response Status', value: event.responseStatus !== null ? String(event.responseStatus) : null },
         { label: 'Duration', value: event.durationMs !== null ? `${event.durationMs}ms` : null },
         { label: 'Success', value: event.success !== null ? (event.success ? 'Yes' : 'No') : null },
+        { label: 'Result Code', value: event.resultCode },
         { label: 'Error Message', value: event.errorMessage },
+        // Correlation
+        { label: 'Request ID', value: event.requestId, copyable: true },
+        { label: 'Session ID', value: event.sessionId, copyable: true },
+        // Reason
+        { label: 'Message', value: event.message },
+        { label: 'Reason', value: event.reason },
     ] : [];
+
+    // Build old/new diff keys
+    const changeKeys = event ? Array.from(new Set([
+        ...Object.keys(event.oldValues || {}),
+        ...Object.keys(event.newValues || {}),
+    ])) : [];
 
     return (
         <>
@@ -168,18 +193,57 @@ export default function AuditDetailDrawer({ eventId, onClose }: AuditDetailDrawe
                                 })}
                             </div>
 
+                            {/* Change tracking diff table */}
+                            {changeKeys.length > 0 && (
+                                <div className="audit-drawer__json-section">
+                                    <button
+                                        className="audit-label audit-label--collapsible"
+                                        onClick={() => setJsonExpanded(jsonExpanded === 'changes' ? false : 'changes')}
+                                        type="button"
+                                    >
+                                        Changes ({changeKeys.length} fields)
+                                        {jsonExpanded === 'changes' ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                    </button>
+                                    {jsonExpanded === 'changes' && (
+                                        <div className="audit-drawer__diff-table">
+                                            <div className="audit-drawer__diff-header">
+                                                <span>Field</span>
+                                                <span>Old Value</span>
+                                                <span>New Value</span>
+                                            </div>
+                                            {changeKeys.map(key => {
+                                                const oldVal = event.oldValues?.[key];
+                                                const newVal = event.newValues?.[key];
+                                                const changed = JSON.stringify(oldVal) !== JSON.stringify(newVal);
+                                                return (
+                                                    <div key={key} className={`audit-drawer__diff-row ${changed ? 'audit-drawer__diff-row--changed' : ''}`}>
+                                                        <span className="audit-drawer__diff-key">{key}</span>
+                                                        <span className={`audit-drawer__diff-old ${changed ? 'audit-drawer__diff-old--removed' : ''}`}>
+                                                            {oldVal !== undefined ? (typeof oldVal === 'object' ? JSON.stringify(oldVal) : String(oldVal)) : '—'}
+                                                        </span>
+                                                        <span className={`audit-drawer__diff-new ${changed ? 'audit-drawer__diff-new--added' : ''}`}>
+                                                            {newVal !== undefined ? (typeof newVal === 'object' ? JSON.stringify(newVal) : String(newVal)) : '—'}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             {/* Raw JSON */}
                             {maskedDetails && (
                                 <div className="audit-drawer__json-section">
                                     <button
                                         className="audit-label audit-label--collapsible"
-                                        onClick={() => setJsonExpanded(!jsonExpanded)}
+                                        onClick={() => setJsonExpanded(jsonExpanded === 'raw' ? false : 'raw')}
                                         type="button"
                                     >
                                         Raw Details (JSON)
-                                        {jsonExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                        {jsonExpanded === 'raw' ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                                     </button>
-                                    {jsonExpanded && (
+                                    {jsonExpanded === 'raw' && (
                                         <pre className="audit-drawer__json">
                                             {JSON.stringify(maskedDetails, null, 2)}
                                         </pre>

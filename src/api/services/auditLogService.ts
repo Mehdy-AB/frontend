@@ -7,22 +7,47 @@ import { PageResponse } from '../../types/api';
 
 export interface AuditLogResponseDto {
   id: number;
+  // Identity / Actor
   user: { id: string; username: string; email: string; displayName: string; firstName?: string; lastName?: string; imgUrl?: string } | null;
   userEmail: string | null;
   username: string | null;
+  displayName: string | null;
+  actorType: string | null;
+  sessionId: string | null;
+  requestId: string | null;
+  // Action
   action: string | null;
   actionDescription: string | null;
+  actionCategory: string | null;
+  actionCategoryDisplayName: string | null;
+  // Entity
   entityType: string | null;
   entityId: string | null;
   entityName: string | null;
+  // Scope
+  workspaceId: string | null;
+  workspaceName: string | null;
+  folderPath: string | null;
+  channel: string | null;
+  // HTTP
   httpMethod: string | null;
   endpoint: string | null;
   ipAddress: string | null;
+  userAgent: string | null;
+  // Result
   responseStatus: number | null;
   durationMs: number | null;
   success: boolean | null;
+  resultCode: string | null;
   errorMessage: string | null;
+  // Change tracking
+  oldValues: Record<string, unknown> | null;
+  newValues: Record<string, unknown> | null;
   details: string | null;
+  // Reason
+  message: string | null;
+  reason: string | null;
+  // Timestamp
   timestamp: string;
 }
 
@@ -121,6 +146,26 @@ export const auditLogService = {
   /** GET /options/http-methods — distinct HTTP methods */
   async getHttpMethodOptions(): Promise<string[]> {
     return apiClient.get<string[]>(`${BASE}/options/http-methods`);
+  },
+
+  /** GET /options/action-categories — all action categories */
+  async getActionCategoryOptions(): Promise<FilterOption[]> {
+    return apiClient.get<FilterOption[]>(`${BASE}/options/action-categories`);
+  },
+
+  /** GET /options/channels — distinct channels */
+  async getChannelOptions(): Promise<string[]> {
+    return apiClient.get<string[]>(`${BASE}/options/channels`);
+  },
+
+  /** GET /options/actor-types — distinct actor types */
+  async getActorTypeOptions(): Promise<string[]> {
+    return apiClient.get<string[]>(`${BASE}/options/actor-types`);
+  },
+
+  /** GET /options/result-codes — distinct result codes */
+  async getResultCodeOptions(): Promise<string[]> {
+    return apiClient.get<string[]>(`${BASE}/options/result-codes`);
   },
 
   // ==========================================================================

@@ -256,9 +256,9 @@ export default function NotificationBell() {
                                 <p className="text-sm">No notifications yet</p>
                             </div>
                         ) : (
-                            notifications.slice(0, 20).map((notification) => (
+                            notifications.slice(0, 20).map((notification, index) => (
                                 <NotificationListItem
-                                    key={notification.id}
+                                    key={`${notification.id}-${index}`}
                                     notification={notification}
                                     onRead={markAsRead}
                                     onClick={handleNotificationClick}

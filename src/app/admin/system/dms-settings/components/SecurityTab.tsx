@@ -14,9 +14,9 @@ interface SecurityTabProps {
   onSecuritySettingsChange: (settings: SecuritySettings) => void;
 }
 
-export default function SecurityTab({ 
+export default function SecurityTab({
   securitySettings,
-  onSecuritySettingsChange 
+  onSecuritySettingsChange
 }: SecurityTabProps) {
   const updateAuthentication = (updates: Partial<typeof securitySettings.authentication>) => {
     onSecuritySettingsChange({
@@ -69,9 +69,9 @@ export default function SecurityTab({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="jwt">JWT</SelectItem>
-                  <SelectItem value="oauth2">OAuth 2.0</SelectItem>
-                  <SelectItem value="saml">SAML</SelectItem>
+                  <SelectItem value="JWT">JWT</SelectItem>
+                  <SelectItem value="OAUTH2">OAuth 2.0</SelectItem>
+                  <SelectItem value="SAML">SAML</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -118,6 +118,21 @@ export default function SecurityTab({
               onCheckedChange={(checked) => updateAuthentication({ requireMFA: checked })}
             />
           </div>
+
+          {!securitySettings.authentication.requireMFA && (
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label>Conditional MFA</Label>
+                <p className="text-sm text-muted-foreground">
+                  Require MFA only for external network access
+                </p>
+              </div>
+              <Switch
+                checked={securitySettings.authentication.conditionalMFA}
+                onCheckedChange={(checked) => updateAuthentication({ conditionalMFA: checked })}
+              />
+            </div>
+          )}
 
           <Separator />
 

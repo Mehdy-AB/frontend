@@ -242,15 +242,20 @@ export default function RelatedDocumentsSection({
                             <span className={`inline-flex items-center px-1 py-0.5 rounded text-xs font-medium ${getLinkTypeColor(doc.relationType)}`}>
                               {getContextualRelationLabel(doc.relationType)}
                             </span>
-                            {doc.manual ? (
-                              <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                                <Settings className="h-2.5 w-2.5" />
-                                Manual
-                              </span>
-                            ) : (
+                            {!doc.manual ? (
                               <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
                                 <CheckCircle className="h-2.5 w-2.5" />
                                 Auto
+                              </span>
+                            ) : doc.systemGenerated ? (
+                              <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">
+                                <Settings className="h-2.5 w-2.5" />
+                                System
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                <Settings className="h-2.5 w-2.5" />
+                                Manual
                               </span>
                             )}
                           </div>
@@ -370,8 +375,8 @@ export default function RelatedDocumentsSection({
                 <div className="flex items-start gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800 mb-4">
                   <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
                   <div>
-                    <p className="font-medium">This is an automatic link</p>
-                    <p className="text-xs mt-1">It was created by a link rule and may be recreated automatically.</p>
+                    <p className="font-medium">This is a system-managed link</p>
+                    <p className="text-xs mt-1">It was created automatically and may be recreated by the system.</p>
                   </div>
                 </div>
               )}

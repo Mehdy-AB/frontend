@@ -9,6 +9,9 @@ export type {
     LdapSyncResult,
     LdapStatistics,
     PageResponse,
+    DepartmentOrgUnitMappingDto,
+    GroupOrgUnitMappingDto,
+    OrgUnitSearchResult,
 } from '@/api/services/ldapServerService';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -59,6 +62,7 @@ export const SYNC_SCHEDULE_OPTIONS = [
 // ─── DMS User Fields (real User.java entity fields) ─────────────────────────
 
 /** DMS user fields available for attribute mapping — matches User.java entity */
+/** Fallback field list — overridden at runtime by backend GET /user-fields */
 export const DMS_USER_FIELDS = [
     { value: 'username', label: 'Username' },
     { value: 'email', label: 'Email' },
@@ -67,6 +71,7 @@ export const DMS_USER_FIELDS = [
     { value: 'displayName', label: 'Display Name' },
     { value: 'jobTitle', label: 'Job Title' },
     { value: 'imageUrl', label: 'Profile Image URL' },
+    { value: 'employeeNumber', label: 'Employee Number' },
 ] as const;
 
 // ─── Per-type default attribute mappings ─────────────────────────────────────
@@ -142,6 +147,8 @@ export const TYPE_FILTER_DEFAULTS: Record<string, { userFilter: string; groupFil
 export interface AttributeMapping {
     dmsField: string;
     ldapAttribute: string;
+    /** Stable unique key for React rendering — not sent to backend */
+    _uid?: string;
 }
 
 export interface GroupRoleMapping {
@@ -161,6 +168,77 @@ export interface GroupGroupMapping {
     ldapGroupName: string;
     groupId: string;
     groupName: string;
+}
+
+export interface DepartmentOrgUnitMapping {
+    departmentValue: string;
+    orgUnitId: string;
+    orgUnitName: string;
+    orgUnitCode: string;
+    isPrimary: boolean;
+}
+
+export interface GroupOrgUnitMapping {
+    ldapGroupDn: string;
+    ldapGroupName: string;
+    orgUnitId: string;
+    orgUnitName: string;
+    orgUnitCode: string;
+    isPrimary: boolean;
+}
+
+// ─── Enterprise: Sync Run Audit ─────────────────────────────────────────────
+
+export interface DirectorySyncRun {
+    id: string;
+    ldapServerId: string;
+    triggeredBy: string;
+    triggerType: 'MANUAL' | 'SCHEDULED' | 'JIT';
+    mode: 'FULL' | 'INCREMENTAL' | 'DRY_RUN';
+    status: 'RUNNING' | 'COMPLETED' | 'FAILED' | 'BLOCKED_BY_THRESHOLD' | 'CANCELLED';
+    startedAt: string;
+    completedAt: string | null;
+    usersCreated: number;
+    usersUpdated: number;
+    usersDisabled: number;
+    usersRestored: number;
+    usersSkipped: number;
+    groupsProcessed: number;
+    rolesAssigned: number;
+    rolesRevoked: number;
+    managersResolved: number;
+    managersUnresolved: number;
+    errorsCount: number;
+    errorSummary: string | null;
+    dryRun: boolean;
+    thresholdTriggered: number | null;
+}
+
+export interface IdentityReviewData {
+    orphanedUsers: Array<{
+        id: string;
+        username: string;
+        email: string;
+        displayName: string;
+        externalImmutableId: string;
+        ldapDn: string;
+        lastLdapSync: string;
+    }>;
+    unresolvedManagers: Array<{
+        id: string;
+        username: string;
+        displayName: string;
+        ldapManagerDn: string;
+    }>;
+    syncErrorUsers: Array<{
+        id: string;
+        username: string;
+        displayName: string;
+        status: string;
+    }>;
+    totalOrphans: number;
+    totalUnresolvedManagers: number;
+    totalSyncErrors: number;
 }
 
 export interface LdapServer {
@@ -199,6 +277,16 @@ export interface LdapServer {
     syncSchedule: string;
     autoDisableUsers: boolean;
     nextSyncAt: string;
+    syncManagers: boolean;
+    syncDepartment: boolean;
+    managerAttribute: string;
+    departmentAttribute: string;
+    // Enterprise: Safety & Governance
+    deletionThresholdPercent: number;
+    resolveNestedGroups: boolean;
+    jitProvisioning: boolean;
+    immutableIdAttribute: string;
+    fieldOwnership: Record<string, 'directory' | 'ecm' | 'hybrid'>;
     // Role mapping
     defaultRoleName: string;
 }
@@ -247,6 +335,13 @@ export const ldapServerFormSchema = z.object({
     // Tab 5: Sync Settings
     syncSchedule: z.string().default('DAILY'),
     autoDisableUsers: z.boolean().default(true),
+    syncManagers: z.boolean().default(true),
+    managerAttribute: z.string().default('manager'),
+    syncDepartment: z.boolean().default(true),
+    departmentAttribute: z.string().default('department'),
+    immutableIdAttribute: z.string().default('objectGUID'),
+    jitProvisioning: z.boolean().default(false),
+    deletionThresholdPercent: z.coerce.number().int().min(1).max(100).default(20),
 });
 
 export type LdapServerFormValues = z.infer<typeof ldapServerFormSchema>;

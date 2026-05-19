@@ -14,9 +14,9 @@ interface PerformanceTabProps {
   onPerformanceSettingsChange: (settings: PerformanceSettings) => void;
 }
 
-export default function PerformanceTab({ 
+export default function PerformanceTab({
   performanceSettings,
-  onPerformanceSettingsChange 
+  onPerformanceSettingsChange
 }: PerformanceTabProps) {
   const updateCaching = (updates: Partial<typeof performanceSettings.caching>) => {
     onPerformanceSettingsChange({
@@ -48,6 +48,59 @@ export default function PerformanceTab({
 
   return (
     <div className="space-y-6">
+      {/* Async Processing */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Zap className="h-5 w-5" />
+            Async Processing
+          </CardTitle>
+          <CardDescription>Enable background processing for OCR, antivirus scanning, and indexing</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label>Enable Async Processing</Label>
+              <p className="text-sm text-muted-foreground">
+                Process OCR, AV scans, and indexing in the background
+              </p>
+            </div>
+            <Switch
+              checked={performanceSettings.asyncProcessingEnabled}
+              onCheckedChange={(checked) => onPerformanceSettingsChange({
+                ...performanceSettings,
+                asyncProcessingEnabled: checked
+              })}
+            />
+          </div>
+
+          {performanceSettings.asyncProcessingEnabled && (
+            <>
+              <Separator />
+              <div className="space-y-2">
+                <Label>Max Concurrent Jobs</Label>
+                <div className="flex items-center gap-4">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={32}
+                    value={performanceSettings.maxConcurrentJobs}
+                    onChange={(e) => onPerformanceSettingsChange({
+                      ...performanceSettings,
+                      maxConcurrentJobs: Math.max(1, Math.min(32, parseInt(e.target.value) || 4))
+                    })}
+                    className="w-24"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Number of background jobs that run simultaneously (1-32)
+                  </p>
+                </div>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Caching Settings */}
       <Card>
         <CardHeader>
@@ -85,9 +138,9 @@ export default function PerformanceTab({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="redis">Redis</SelectItem>
-                      <SelectItem value="memory">In-Memory</SelectItem>
-                      <SelectItem value="file">File-based</SelectItem>
+                      <SelectItem value="LRU">LRU (Least Recently Used)</SelectItem>
+                      <SelectItem value="LFU">LFU (Least Frequently Used)</SelectItem>
+                      <SelectItem value="FIFO">FIFO (First In First Out)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

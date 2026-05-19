@@ -109,6 +109,12 @@ const SECTIONS: Section[] = [
         description: 'Real-time application log viewer and stream.',
         Icon: ScrollText,
       },
+      {
+        label: 'Email Governance',
+        href: '/admin/system/email-governance',
+        description: 'Email capture policies, security, and compliance rules.',
+        Icon: Shield,
+      },
     ],
   },
   {

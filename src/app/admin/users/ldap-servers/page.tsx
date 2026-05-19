@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Plus, Upload, ChevronLeft, ChevronRight } from 'lucide-react';
-import { toast } from 'sonner';
+import { Plus, Upload, ChevronLeft, ChevronRight, Server } from 'lucide-react';
+import { useNotifications } from '@/hooks/useNotifications';
 import { Button } from '@/components/ui/button';
 import { notificationApiClient } from '@/api/notificationClient';
 import { useGlobalNotifications } from '@/contexts/GlobalNotificationContext';
@@ -14,11 +14,12 @@ import type {
 } from './_components/ldap-types';
 import { getSecurityLabel } from './_components/ldap-types';
 import type { LdapServerDto } from '@/api/services/ldapServerService';
-import LdapMetricCards from './_components/LdapMetricCards';
+
 import LdapToolbar from './_components/LdapToolbar';
 import LdapServerTable from './_components/LdapServerTable';
 import LdapServerModal from './_components/LdapServerModal';
 import DeleteServerDialog from './_components/DeleteServerDialog';
+import SyncDashboardPanel from './_components/SyncDashboardPanel';
 
 // ─── API → UI mapping ───────────────────────────────────────────────────────
 
@@ -66,12 +67,23 @@ function mapDtoToServer(dto: LdapServerDto): LdapServer {
     syncSchedule: dto.syncSchedule || 'DAILY',
     autoDisableUsers: dto.autoDisableUsers ?? true,
     nextSyncAt: dto.nextSyncAt || '',
+    syncManagers: dto.syncManagers ?? true,
+    syncDepartment: dto.syncDepartment ?? false,
+    managerAttribute: dto.managerAttribute || 'manager',
+    departmentAttribute: dto.departmentAttribute || 'department',
+    deletionThresholdPercent: dto.deletionThresholdPercent ?? 20,
+    resolveNestedGroups: dto.resolveNestedGroups ?? true,
+    jitProvisioning: dto.jitProvisioning ?? false,
+    immutableIdAttribute: dto.immutableIdAttribute || 'objectGUID',
+    fieldOwnership: (dto.fieldOwnership || {}) as Record<string, 'directory' | 'ecm' | 'hybrid'>,
   };
 }
 
 // ─── Page component ──────────────────────────────────────────────────────────
 
 export default function LdapServersPage() {
+  const { showSuccess, showError, showWarning, showInfo } = useNotifications();
+
   // ── Data state ──
   const [servers, setServers] = useState<LdapServer[]>([]);
   const [statistics, setStatistics] = useState<LdapStatistics | null>(null);
@@ -138,9 +150,7 @@ export default function LdapServersPage() {
       setTotalPages(response.totalPages || 0);
     } catch (error) {
       console.error('Failed to fetch LDAP servers:', error);
-      toast.error('Failed to load LDAP servers', {
-        description: 'Please try refreshing the page.',
-      });
+      showError('Failed to load LDAP servers', 'Please try refreshing the page.');
       setServers([]);
     } finally {
       setLoading(false);
@@ -290,28 +300,31 @@ export default function LdapServersPage() {
       enabled: true,
       syncSchedule: values.syncSchedule,
       autoDisableUsers: values.autoDisableUsers,
+      syncManagers: values.syncManagers ?? true,
+      syncDepartment: values.syncDepartment ?? false,
+      managerAttribute: values.managerAttribute || 'manager',
+      departmentAttribute: values.departmentAttribute || 'department',
+      deletionThresholdPercent: values.deletionThresholdPercent ?? 20,
+      resolveNestedGroups: editingServer?.resolveNestedGroups ?? true,
+      jitProvisioning: values.jitProvisioning ?? false,
+      immutableIdAttribute: values.immutableIdAttribute,
+      fieldOwnership: editingServer?.fieldOwnership || {},
     };
 
     try {
       if (editingServer) {
         await notificationApiClient.updateLdapServer(editingServer.id, request);
-        toast.success('Server updated successfully', {
-          description: `"${values.name}" configuration has been saved.`,
-        });
+        showSuccess('Server updated successfully', `"${values.name}" configuration has been saved.`);
       } else {
         await notificationApiClient.createLdapServer(request);
-        toast.success('Server added successfully', {
-          description: `"${values.name}" has been added to your LDAP servers.`,
-        });
+        showSuccess('Server added successfully', `"${values.name}" has been added to your LDAP servers.`);
       }
       setIsModalOpen(false);
       fetchServers();
       fetchStatistics();
     } catch (error: any) {
       const message = error?.response?.data?.message || error?.message || 'An error occurred';
-      toast.error(editingServer ? 'Failed to update server' : 'Failed to add server', {
-        description: message,
-      });
+      showError(editingServer ? 'Failed to update server' : 'Failed to add server', message);
       throw error; // Let the modal handle its own loading state
     }
   };
@@ -322,13 +335,9 @@ export default function LdapServersPage() {
       if (editingServer) {
         const result = await notificationApiClient.testLdapConnection(editingServer.id);
         if (result.success) {
-          toast.success('Connection successful', {
-            description: result.message || `Connected to ${values.hostname}`,
-          });
+          showSuccess('Connection successful', result.message || `Connected to ${values.hostname}`);
         } else {
-          toast.error('Connection failed', {
-            description: result.message || 'Could not connect to the LDAP server.',
-          });
+          showError('Connection failed', result.message || 'Could not connect to the LDAP server.');
         }
         return result.success;
       }
@@ -348,19 +357,13 @@ export default function LdapServersPage() {
       });
 
       if (result.success) {
-        toast.success('Connection successful', {
-          description: `Successfully connected to ${values.hostname}:${values.port}`,
-        });
+        showSuccess('Connection successful', `Successfully connected to ${values.hostname}:${values.port}`);
       } else {
-        toast.error('Connection failed', {
-          description: result.message || `Could not reach ${values.hostname}:${values.port}. Check your settings.`,
-        });
+        showError('Connection failed', result.message || `Could not reach ${values.hostname}:${values.port}. Check your settings.`);
       }
       return result.success;
     } catch (error: any) {
-      toast.error('Connection test failed', {
-        description: error?.message || 'An unexpected error occurred during the test.',
-      });
+      showError('Connection test failed', error?.message || 'An unexpected error occurred during the test.');
       return false;
     }
   };
@@ -375,44 +378,34 @@ export default function LdapServersPage() {
     setIsDeleting(true);
     try {
       await notificationApiClient.deleteLdapServer(deletingServer.id);
-      toast.success('Server deleted', {
-        description: `"${deletingServer.name}" has been permanently removed.`,
-      });
+      showSuccess('Server deleted', `"${deletingServer.name}" has been permanently removed.`);
       setIsDeleteOpen(false);
       setDeletingServer(null);
       setSelectedItems((prev) => prev.filter((id) => id !== deletingServer.id));
       fetchServers();
       fetchStatistics();
     } catch (error: any) {
-      toast.error('Failed to delete server', {
-        description: error?.message || 'An error occurred while deleting.',
-      });
+      showError('Failed to delete server', error?.message || 'An error occurred while deleting.');
     } finally {
       setIsDeleting(false);
     }
   };
 
   // ── Sync handler ──
-  const handleSync = async (serverId: string) => {
+  const handleSync = async (serverId: string, mode: string = 'FULL') => {
     setSyncingServers((prev) => [...prev, serverId]);
     const server = servers.find((s) => s.id === serverId);
     try {
-      const result = await notificationApiClient.syncLdapUsers(serverId);
+      const result = await notificationApiClient.syncLdapUsers(serverId, mode);
       if (result.success) {
-        toast.success('Synchronization complete', {
-          description: `${result.imported} users imported, ${result.updated} updated from "${server?.name}".`,
-        });
+        showSuccess('Synchronization complete', `${result.imported} users imported, ${result.updated} updated from "${server?.name}".`);
       } else {
-        toast.warning('Synchronization completed with errors', {
-          description: result.errorMessage || `${result.errors} errors occurred.`,
-        });
+        showWarning('Synchronization completed with errors', result.errorMessage || `${result.errors} errors occurred.`);
       }
       fetchServers();
       fetchStatistics();
     } catch (error: any) {
-      toast.error('Synchronization failed', {
-        description: error?.message || `Failed to sync users from "${server?.name}".`,
-      });
+      showError('Synchronization failed', error?.message || `Failed to sync users from "${server?.name}".`);
     } finally {
       setSyncingServers((prev) => prev.filter((id) => id !== serverId));
     }
@@ -425,19 +418,13 @@ export default function LdapServersPage() {
     try {
       const result = await notificationApiClient.testLdapConnection(serverId);
       if (result.success) {
-        toast.success('Connection successful', {
-          description: `"${server?.name}" is reachable.`,
-        });
+        showSuccess('Connection successful', `"${server?.name}" is reachable.`);
       } else {
-        toast.error('Connection failed', {
-          description: result.message || `"${server?.name}" is unreachable.`,
-        });
+        showError('Connection failed', result.message || `"${server?.name}" is unreachable.`);
       }
       fetchServers();
     } catch (error: any) {
-      toast.error('Connection test failed', {
-        description: error?.message || 'An unexpected error occurred.',
-      });
+      showError('Connection test failed', error?.message || 'An unexpected error occurred.');
     } finally {
       setTestingServers((prev) => prev.filter((id) => id !== serverId));
     }
@@ -449,16 +436,12 @@ export default function LdapServersPage() {
       const server = servers.find((s) => s.id === selectedItems[0]);
       if (server) handleDeleteClick(server);
     } else {
-      toast.info(`Bulk delete ${selectedItems.length} servers`, {
-        description: 'Bulk deletion is not yet implemented. Please delete servers individually.',
-      });
+      showInfo(`Bulk delete ${selectedItems.length} servers`, 'Bulk deletion is not yet implemented. Please delete servers individually.');
     }
   };
 
   const handleBulkTest = async () => {
-    toast.info('Testing connections...', {
-      description: `Running connection tests for ${selectedItems.length} servers.`,
-    });
+    showInfo('Testing connections...', `Running connection tests for ${selectedItems.length} servers.`);
     for (const serverId of selectedItems) {
       await handleTestFromTable(serverId);
     }
@@ -478,9 +461,7 @@ export default function LdapServersPage() {
 
         // Validate required fields
         if (!json.name || !json.hostname || !json.port || !json.baseDn) {
-          toast.error('Invalid config file', {
-            description: 'Missing required fields: name, hostname, port, or baseDn.',
-          });
+          showError('Invalid config file', 'Missing required fields: name, hostname, port, or baseDn.');
           return;
         }
 
@@ -504,23 +485,26 @@ export default function LdapServersPage() {
           enabled: json.enabled ?? true,
           syncSchedule: json.syncSchedule || 'MANUAL',
           autoDisableUsers: json.autoDisableUsers ?? true,
+          syncManagers: json.syncManagers ?? true,
+          syncDepartment: json.syncDepartment ?? false,
+          managerAttribute: json.managerAttribute || 'manager',
+          departmentAttribute: json.departmentAttribute || 'department',
+          deletionThresholdPercent: json.deletionThresholdPercent ?? 20,
+          resolveNestedGroups: json.resolveNestedGroups ?? true,
+          jitProvisioning: json.jitProvisioning ?? false,
+          immutableIdAttribute: json.immutableIdAttribute || 'objectGUID',
+          fieldOwnership: json.fieldOwnership || {},
         };
 
         await notificationApiClient.createLdapServer(request);
-        toast.success('Server imported successfully', {
-          description: `"${json.name}" has been created from the config file.`,
-        });
+        showSuccess('Server imported successfully', `"${json.name}" has been created from the config file.`);
         fetchServers();
         fetchStatistics();
       } catch (err: any) {
         if (err instanceof SyntaxError) {
-          toast.error('Invalid JSON file', {
-            description: 'The file could not be parsed as valid JSON.',
-          });
+          showError('Invalid JSON file', 'The file could not be parsed as valid JSON.');
         } else {
-          toast.error('Import failed', {
-            description: err?.response?.data?.message || err?.message || 'An unexpected error occurred.',
-          });
+          showError('Import failed', err?.response?.data?.message || err?.message || 'An unexpected error occurred.');
         }
       } finally {
         // Reset file input so the same file can be re-imported
@@ -533,14 +517,19 @@ export default function LdapServersPage() {
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">LDAP Servers</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage LDAP server connections and synchronization
-          </p>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-100 pb-6">
+        <div className="flex items-center gap-4">
+          <div className="h-14 w-14 bg-gradient-to-br from-violet-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg shadow-violet-500/20">
+            <Server className="h-7 w-7 text-white" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">LDAP Servers</h1>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Manage directory connections and user synchronization
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <input
@@ -552,21 +541,21 @@ export default function LdapServersPage() {
           />
           <Button
             variant="outline"
-            className="gap-2"
+            className="gap-2 rounded-xl border-gray-200"
             onClick={() => fileInputRef.current?.click()}
           >
             <Upload className="h-4 w-4" />
             Import Config
           </Button>
-          <Button onClick={handleAddServer} className="gap-2">
+          <Button onClick={handleAddServer} className="gap-2 bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 text-white rounded-xl shadow-md hover:shadow-lg transition-all">
             <Plus className="h-4 w-4" />
             Add Server
           </Button>
         </div>
       </div>
 
-      {/* Metric Cards */}
-      <LdapMetricCards statistics={displayStats} loading={loading && statsLoading} />
+      {/* Sync Health Dashboard — single source for all stats */}
+      <SyncDashboardPanel />
 
       {/* Toolbar */}
       <LdapToolbar
@@ -605,8 +594,8 @@ export default function LdapServersPage() {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between border-t pt-4">
-          <p className="text-sm text-muted-foreground">
+        <div className="flex items-center justify-between pt-4">
+          <p className="text-sm text-gray-500">
             Showing {currentPage * pageSize + 1}–{Math.min((currentPage + 1) * pageSize, totalElements)} of {totalElements} servers
           </p>
           <div className="flex items-center gap-2">
@@ -615,14 +604,13 @@ export default function LdapServersPage() {
               size="sm"
               onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
               disabled={currentPage === 0 || loading}
-              className="gap-1"
+              className="gap-1 rounded-xl"
             >
               <ChevronLeft className="h-4 w-4" />
               Previous
             </Button>
             <div className="flex items-center gap-1">
               {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
-                // Show pages around current page
                 let page: number;
                 if (totalPages <= 5) {
                   page = i;
@@ -638,7 +626,9 @@ export default function LdapServersPage() {
                     key={page}
                     variant={page === currentPage ? 'default' : 'outline'}
                     size="sm"
-                    className="h-8 w-8 p-0"
+                    className={`h-8 w-8 p-0 rounded-lg ${
+                      page === currentPage ? 'bg-violet-600 hover:bg-violet-700' : ''
+                    }`}
                     onClick={() => setCurrentPage(page)}
                     disabled={loading}
                   >
@@ -652,7 +642,7 @@ export default function LdapServersPage() {
               size="sm"
               onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
               disabled={currentPage >= totalPages - 1 || loading}
-              className="gap-1"
+              className="gap-1 rounded-xl"
             >
               Next
               <ChevronRight className="h-4 w-4" />

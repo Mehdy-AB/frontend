@@ -2,6 +2,34 @@
  * Type definitions for DMS Settings module
  */
 
+// ═══════════════════════════════════════════════════════════════
+// Service Health
+// ═══════════════════════════════════════════════════════════════
+
+export interface ServiceHealth {
+  name: string;
+  status: 'UP' | 'DOWN' | 'DEGRADED';
+  responseTimeMs: number;
+  lastCheckedAt: string;
+  errorMessage?: string;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Settings Value (from API)
+// ═══════════════════════════════════════════════════════════════
+
+export interface SettingValue {
+  value: string;
+  type: string;
+  description?: string;
+  isSystem: boolean;
+  updatedAt?: string;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// System Info / Overview
+// ═══════════════════════════════════════════════════════════════
+
 export interface SystemInfo {
   version: string;
   buildDate: string;
@@ -16,6 +44,10 @@ export interface SystemInfo {
     network: number;
   };
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Storage
+// ═══════════════════════════════════════════════════════════════
 
 export interface StorageBreakdownItem {
   type: string;
@@ -42,6 +74,10 @@ export interface StorageInfo {
   locations: StorageLocation[];
 }
 
+// ═══════════════════════════════════════════════════════════════
+// Security
+// ═══════════════════════════════════════════════════════════════
+
 export interface PasswordPolicy {
   minLength: number;
   requireUppercase: boolean;
@@ -57,6 +93,7 @@ export interface AuthenticationSettings {
   maxLoginAttempts: number;
   lockoutDuration: number;
   requireMFA: boolean;
+  conditionalMFA: boolean;
   passwordPolicy: PasswordPolicy;
 }
 
@@ -87,6 +124,10 @@ export interface SecuritySettings {
   access: AccessSettings;
   audit: AuditSettings;
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Performance
+// ═══════════════════════════════════════════════════════════════
 
 export interface CachingSettings {
   enabled: boolean;
@@ -121,7 +162,13 @@ export interface PerformanceSettings {
   indexing: IndexingSettings;
   compression: CompressionSettings;
   optimization: OptimizationSettings;
+  asyncProcessingEnabled: boolean;
+  maxConcurrentJobs: number;
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Backup
+// ═══════════════════════════════════════════════════════════════
 
 export interface BackupLocation {
   id: string;
@@ -140,6 +187,10 @@ export interface BackupSettings {
   locations: BackupLocation[];
 }
 
+// ═══════════════════════════════════════════════════════════════
+// Logs
+// ═══════════════════════════════════════════════════════════════
+
 export interface LogEntry {
   id: string;
   timestamp: string;
@@ -147,4 +198,39 @@ export interface LogEntry {
   category: string;
   message: string;
   details: string;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Core Settings (from API)
+// ═══════════════════════════════════════════════════════════════
+
+export interface CoreSettings {
+  systemName: string;
+  defaultLanguage: string;
+  timezone: string;
+  dateFormat: string;
+  numberFormat: string;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Upload Rules (from API)
+// ═══════════════════════════════════════════════════════════════
+
+export interface UploadRules {
+  allowedMimeTypes: string;
+  blockedFileTypes: string;
+  archiveHandling: string;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Storage Settings (from API)
+// ═══════════════════════════════════════════════════════════════
+
+export interface StorageSettings {
+  defaultBackend: string;
+  tierHot: boolean;
+  tierWarm: boolean;
+  tierArchive: boolean;
+  maxFileSizeMb: number;
+  chunkUploadSizeMb: number;
 }

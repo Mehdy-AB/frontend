@@ -541,6 +541,26 @@ export class DocumentService {
     }
     return apiClient.put<void>(`${this.baseUrl}/${documentId}/versions/${versionId}/stamp?${params.toString()}`);
   }
+
+  // ═══════════════════════════════════════════════════════════════
+  // Document Checkout / Check-in (Lock)
+  // ═══════════════════════════════════════════════════════════════
+
+  async checkoutDocument(documentId: number): Promise<{ documentId: number; checkedOutBy: string; checkedOutByName: string; checkedOutAt: string }> {
+    return apiClient.post(`${this.baseUrl}/${documentId}/checkout`);
+  }
+
+  async checkinDocument(documentId: number): Promise<{ documentId: number; status: string }> {
+    return apiClient.post(`${this.baseUrl}/${documentId}/checkin`);
+  }
+
+  async forceCheckinDocument(documentId: number): Promise<{ documentId: number; status: string; previousHolder: string }> {
+    return apiClient.post(`${this.baseUrl}/${documentId}/force-checkin`);
+  }
+
+  async getCheckoutStatus(documentId: number): Promise<{ documentId: number; checkedOut: boolean; checkedOutBy?: string; checkedOutByName?: string; checkedOutAt?: string; isCheckedOutByMe?: boolean }> {
+    return apiClient.get(`${this.baseUrl}/${documentId}/checkout-status`);
+  }
 }
 
 export const documentService = new DocumentService();

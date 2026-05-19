@@ -258,6 +258,7 @@ export default function ViewRelatedDocumentsModal({
                   <SelectItem value="all">All Sources</SelectItem>
                   <SelectItem value="manual">Manual Only</SelectItem>
                   <SelectItem value="auto">Auto Only</SelectItem>
+                  {/* Note: System Generated links filter as 'Manual' on backend (rule==null) */}
                 </SelectContent>
               </Select>
             </div>
@@ -319,9 +320,11 @@ export default function ViewRelatedDocumentsModal({
                     <div className="flex items-start gap-4">
                       {/* Document Icon */}
                       <div className="flex-shrink-0">
-                        <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${doc.manual ? 'bg-blue-50' : 'bg-green-50'
+                        <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
+                            !doc.manual ? 'bg-green-50' : doc.systemGenerated ? 'bg-amber-50' : 'bg-blue-50'
                           }`}>
-                          <FileText className={`h-6 w-6 ${doc.manual ? 'text-blue-600' : 'text-green-600'
+                          <FileText className={`h-6 w-6 ${
+                            !doc.manual ? 'text-green-600' : doc.systemGenerated ? 'text-amber-600' : 'text-blue-600'
                             }`} />
                         </div>
                       </div>
@@ -336,18 +339,23 @@ export default function ViewRelatedDocumentsModal({
 
                             {/* Badges */}
                             <div className="flex items-center gap-2 flex-wrap mb-2">
-                              <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${getLinkTypeColor(doc.linkType)}`}>
-                                {doc.linkType}
+                              <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${getLinkTypeColor(doc.relationType)}`}>
+                                {doc.relationType}
                               </span>
-                              {doc.manual ? (
+                              {!doc.manual ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800">
+                                  <CheckCircle className="h-3 w-3" />
+                                  Automatic{doc.ruleName ? ` — ${doc.ruleName}` : ''}
+                                </span>
+                              ) : doc.systemGenerated ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-amber-100 text-amber-800">
+                                  <Settings className="h-3 w-3" />
+                                  System Generated
+                                </span>
+                              ) : (
                                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
                                   <Settings className="h-3 w-3" />
                                   Manual
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800">
-                                  <CheckCircle className="h-3 w-3" />
-                                  Auto {doc.ruleName && `- ${doc.ruleName}`}
                                 </span>
                               )}
                               {doc.filingCategoryName && (
@@ -496,8 +504,8 @@ export default function ViewRelatedDocumentsModal({
                 <div className="flex items-start gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800 mb-4">
                   <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
                   <div>
-                    <p className="font-medium">This is an automatic link</p>
-                    <p className="text-xs mt-1">It was created by a link rule and may be recreated automatically.</p>
+                    <p className="font-medium">This is a system-managed link</p>
+                    <p className="text-xs mt-1">It was created automatically and may be recreated by the system.</p>
                   </div>
                 </div>
               )}

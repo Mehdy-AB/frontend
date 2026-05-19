@@ -1,9 +1,10 @@
 'use client';
 
 import React from 'react';
-import { Search, TestTube, Trash2 } from 'lucide-react';
+import { Search, TestTube, Trash2, Filter } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
     Select,
     SelectContent,
@@ -41,96 +42,101 @@ export default function LdapToolbar({
     onBulkTest,
 }: LdapToolbarProps) {
     return (
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-            {/* Left side - Search & Filters */}
-            <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
-                {/* Search */}
-                <div className="relative w-full sm:w-72">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4 pointer-events-none" />
+        <div className="flex flex-col lg:flex-row gap-4">
+            {/* Unified Search + Filter Container */}
+            <div className="flex-1 flex gap-4 p-1.5 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300">
+                <div className="flex-1 relative">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                     <Input
                         type="text"
-                        placeholder="Search servers, hostnames..."
+                        placeholder="Search servers, hostnames, descriptions..."
                         value={searchQuery}
                         onChange={(e) => onSearchChange(e.target.value)}
-                        className="pl-10 h-9"
+                        className="h-11 pl-10 border-0 bg-transparent focus-visible:ring-0 text-base placeholder:text-gray-400"
                         aria-label="Search LDAP servers"
                     />
                 </div>
+                <div className="w-px bg-gray-200 my-2" />
+                <div className="flex items-center gap-2 pr-2">
+                    <Select value={selectedType} onValueChange={onTypeChange}>
+                        <SelectTrigger
+                            className="w-[130px] h-9 border-0 bg-gray-50 hover:bg-gray-100 text-gray-600 font-medium focus:ring-0 transition-colors rounded-xl"
+                            aria-label="Filter by server type"
+                        >
+                            <div className="flex items-center gap-2">
+                                <Filter className="h-3.5 w-3.5" />
+                                <SelectValue />
+                            </div>
+                        </SelectTrigger>
+                        <SelectContent>
+                            {SERVER_TYPES.map((type) => (
+                                <SelectItem key={type.value} value={type.value}>
+                                    {type.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
 
-                {/* Type Filter */}
-                <Select value={selectedType} onValueChange={onTypeChange}>
-                    <SelectTrigger className="w-[150px] h-9" aria-label="Filter by server type">
-                        <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {SERVER_TYPES.map((type) => (
-                            <SelectItem key={type.value} value={type.value}>
-                                {type.label}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
+                    <Select value={selectedStatus} onValueChange={onStatusChange}>
+                        <SelectTrigger
+                            className="w-[120px] h-9 border-0 bg-gray-50 hover:bg-gray-100 text-gray-600 font-medium focus:ring-0 transition-colors rounded-xl"
+                            aria-label="Filter by status"
+                        >
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {STATUS_OPTIONS.map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
 
-                {/* Status Filter */}
-                <Select value={selectedStatus} onValueChange={onStatusChange}>
-                    <SelectTrigger className="w-[140px] h-9" aria-label="Filter by status">
-                        <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {STATUS_OPTIONS.map((opt) => (
-                            <SelectItem key={opt.value} value={opt.value}>
-                                {opt.label}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-
-                {/* Security Filter */}
-                <Select value={selectedSecurity} onValueChange={onSecurityChange}>
-                    <SelectTrigger className="w-[140px] h-9" aria-label="Filter by security">
-                        <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {SECURITY_OPTIONS.map((opt) => (
-                            <SelectItem key={opt.value} value={opt.value}>
-                                {opt.label}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
+                    <Select value={selectedSecurity} onValueChange={onSecurityChange}>
+                        <SelectTrigger
+                            className="w-[120px] h-9 border-0 bg-gray-50 hover:bg-gray-100 text-gray-600 font-medium focus:ring-0 transition-colors rounded-xl"
+                            aria-label="Filter by security"
+                        >
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {SECURITY_OPTIONS.map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
             </div>
 
-            {/* Right side - Selection counter & bulk actions */}
-            <div className="flex items-center gap-2 shrink-0">
-                {selectedCount > 0 ? (
-                    <>
-                        <span className="text-sm font-medium text-primary">
-                            {selectedCount} selected
-                        </span>
-                        <div className="h-4 w-px bg-border mx-1" />
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 gap-1.5 text-xs"
-                            onClick={onBulkTest}
-                        >
-                            <TestTube className="h-3.5 w-3.5" />
-                            Test All
-                        </Button>
-                        <Button
-                            variant="destructive"
-                            size="sm"
-                            className="h-8 gap-1.5 text-xs"
-                            onClick={onBulkDelete}
-                        >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            Delete
-                        </Button>
-                    </>
-                ) : (
-                    <span className="text-sm text-muted-foreground">0 selected</span>
-                )}
-            </div>
+            {/* Bulk actions */}
+            {selectedCount > 0 && (
+                <div className="flex items-center gap-2 shrink-0">
+                    <Badge variant="secondary" className="bg-violet-100 text-violet-700 text-xs font-semibold px-3 py-1 rounded-full">
+                        {selectedCount} selected
+                    </Badge>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 gap-1.5 text-xs rounded-xl border-gray-200"
+                        onClick={onBulkTest}
+                    >
+                        <TestTube className="h-3.5 w-3.5" />
+                        Test All
+                    </Button>
+                    <Button
+                        variant="destructive"
+                        size="sm"
+                        className="h-9 gap-1.5 text-xs rounded-xl"
+                        onClick={onBulkDelete}
+                    >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Delete
+                    </Button>
+                </div>
+            )}
         </div>
     );
 }

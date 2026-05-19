@@ -508,10 +508,10 @@ class NotificationApiClient {
     )
   }
 
-  async syncLdapUsers(id: string, options?: ApiNotificationOptions) {
+  async syncLdapUsers(id: string, mode?: string, options?: ApiNotificationOptions) {
     const { ldapServerService } = await import('./services/ldapServerService');
     return this.withNotification(
-      () => ldapServerService.syncUsers(id),
+      () => ldapServerService.syncUsers(id, mode),
       { silent: true, ...options },
       'update'
     )
@@ -829,8 +829,8 @@ class NotificationApiClient {
     return this.withNotification(
       () => folderService.getFolderContents(
         id,
-        params?.page || 0,
-        params?.size || 20,
+        params?.page ?? 0,
+        params?.size ?? 20,
         params?.name,
         params?.showFolder !== undefined ? params.showFolder : true,
         params?.sort,
@@ -844,8 +844,8 @@ class NotificationApiClient {
     return this.withNotification(
       () => folderService.getUserRepository(
         userId,
-        params?.page || 0,
-        params?.size || 20,
+        params?.page ?? 0,
+        params?.size ?? 20,
         params?.name,
         params?.sort,
         params?.desc ? 'desc' : 'asc'
@@ -858,8 +858,8 @@ class NotificationApiClient {
     return this.withNotification(
       () => folderService.getFolderByPath(
         path,
-        params?.page || 0,
-        params?.size || 20,
+        params?.page ?? 0,
+        params?.size ?? 20,
         params?.name,
         params?.showFolder !== undefined ? params.showFolder : true,
         params?.sort,

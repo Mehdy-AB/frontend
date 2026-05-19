@@ -55,6 +55,7 @@ export default function FolderDetailsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>('name');
   const [sortDesc, setSortDesc] = useState(false);
+  const [pageSize, setPageSize] = useState(20);
   const [isLocalFiltering, setIsLocalFiltering] = useState(false);
   const [showCreateFolderModal, setShowCreateFolderModal] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -191,7 +192,7 @@ export default function FolderDetailsPage() {
 
       const response = await notificationApiClient.getFolder(parseInt(folderId), {
         page: currentPage - 1, // API uses 0-based pagination
-        size: 20,
+        size: pageSize,
         name: searchQuery || undefined,
         showFolder: !showDocumentsOnly, // When showDocumentsOnly is true, set showFolder to false
         sort: mapSortOptionToApiField(sortBy),
@@ -289,75 +290,59 @@ export default function FolderDetailsPage() {
   const prevSortBy = useRef(sortBy);
   const prevSortDesc = useRef(sortDesc);
   const prevShowDocumentsOnly = useRef(showDocumentsOnly);
+  const prevSearchQuery = useRef(searchQuery);
   const isFirstLoad = useRef(true);
 
-  // Fetch folder data when dependencies change (excluding searchQuery)
+  // Single unified fetch effect — handles page, sort, filter, and search changes
   useEffect(() => {
-    if (folderId) {
-      // Reset to page 1 only when sort changes or showDocumentsOnly changes (not when pagination changes)
-      const sortChanged = prevSortBy.current !== sortBy || prevSortDesc.current !== sortDesc;
-      const filterChanged = prevShowDocumentsOnly.current !== showDocumentsOnly;
+    if (!folderId) return;
 
-      if ((sortChanged || filterChanged) && currentPage !== 1) {
-        prevSortBy.current = sortBy;
-        prevSortDesc.current = sortDesc;
-        prevShowDocumentsOnly.current = showDocumentsOnly;
-        setCurrentPage(1);
-        return; // Will trigger another fetch when currentPage updates
-      }
+    const sortChanged = prevSortBy.current !== sortBy || prevSortDesc.current !== sortDesc;
+    const filterChanged = prevShowDocumentsOnly.current !== showDocumentsOnly;
+    const searchChanged = prevSearchQuery.current !== searchQuery;
 
-      // Update refs
-      prevSortBy.current = sortBy;
-      prevSortDesc.current = sortDesc;
-      prevShowDocumentsOnly.current = showDocumentsOnly;
+    // Update refs immediately
+    prevSortBy.current = sortBy;
+    prevSortDesc.current = sortDesc;
+    prevShowDocumentsOnly.current = showDocumentsOnly;
+    prevSearchQuery.current = searchQuery;
 
-      // Use full page loading only for the very first load, table loading for everything else
-      const isInitialLoad = isFirstLoad.current;
-      if (isInitialLoad) {
-        isFirstLoad.current = false;
-      }
-
-      fetchFolderData(!isInitialLoad);
+    // Reset to page 1 when sort, filter, or search changes
+    if ((sortChanged || filterChanged || searchChanged) && currentPage !== 1) {
+      setCurrentPage(1);
+      return; // Will re-trigger this effect when currentPage updates
     }
-  }, [folderId, currentPage, sortBy, sortDesc, showDocumentsOnly]);
 
-  // Handle search with local filtering first, then API fetch
-  useEffect(() => {
-    if (!searchQuery.trim()) {
-      // If search is cleared, refresh data from server
+    const isInitialLoad = isFirstLoad.current;
+    if (isInitialLoad) {
+      isFirstLoad.current = false;
+    }
+
+    // If search query changed, apply local filtering + debounced API call
+    if (searchChanged && searchQuery.trim()) {
+      setIsLocalFiltering(true);
+      const localResults = filterTableItemsLocally(searchQuery, allTableItems);
+      setLocalSearchResults(localResults);
+
+      const timer = setTimeout(() => {
+        fetchFolderData(true).finally(() => {
+          setIsLocalFiltering(false);
+          setLocalSearchResults([]);
+        });
+      }, 500);
+
+      return () => clearTimeout(timer);
+    }
+
+    // Clear local filtering when search is cleared
+    if (searchChanged && !searchQuery.trim()) {
       setIsLocalFiltering(false);
       setLocalSearchResults([]);
-      // Reset to first page if not already there
-      if (currentPage !== 1) {
-        setCurrentPage(1);
-        return; // Will trigger fetch when currentPage updates
-      }
-      // Use table loading instead of full page loading when clearing search
-      fetchFolderData(true);
-      return;
     }
 
-    // Reset to page 1 when starting a search
-    if (currentPage !== 1) {
-      setCurrentPage(1);
-      return; // Will trigger fetch when currentPage updates
-    }
-
-    // First, filter locally for immediate response
-    setIsLocalFiltering(true);
-    const localResults = filterTableItemsLocally(searchQuery, allTableItems);
-    setLocalSearchResults(localResults);
-
-    // Then, after a delay, fetch from API for more comprehensive results
-    const timer = setTimeout(() => {
-      fetchFolderData(true).finally(() => {
-        setIsLocalFiltering(false);
-        setLocalSearchResults([]); // Clear local results when API results come in
-      });
-    }, 800); // Increased delay for better UX
-
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+    // Direct API fetch for non-search changes (pagination, sort, etc.)
+    fetchFolderData(!isInitialLoad);
+  }, [folderId, currentPage, sortBy, sortDesc, showDocumentsOnly, pageSize, searchQuery]);
 
   // Fetch audit logs for the folder
   const fetchAuditLogs = async (folderId: number) => {
@@ -851,15 +836,19 @@ export default function FolderDetailsPage() {
           )}
 
           {/* Pagination */}
-          {data && data.totalPages > 1 && (
+          {data && (
             <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
               <Pagination
                 currentPage={currentPage - 1}
                 totalPages={data.totalPages}
                 totalElements={data.totalElements}
-                pageSize={data.pageable?.pageSize || 20}
+                pageSize={pageSize}
                 onPageChange={(page) => {
                   setCurrentPage(page + 1);
+                }}
+                onPageSizeChange={(size) => {
+                  setPageSize(size);
+                  setCurrentPage(1);
                 }}
               />
             </div>

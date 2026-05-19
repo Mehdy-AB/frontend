@@ -27,9 +27,12 @@ import {
 import { Button } from '@/components/ui/button';
 import { useNotifications } from '@/hooks/useNotifications';
 import { fileTypeService, AllowedFileTypeDto } from '@/api/services/fileTypeService';
+import type { UploadRules } from '../lib/types';
 
 interface FileTypesTabProps {
   canUpdate?: boolean;
+  uploadRules?: UploadRules;
+  onUploadRulesChange?: (rules: UploadRules) => void;
 }
 
 const TIER_LABELS: Record<number, { label: string; description: string; color: string }> = {
@@ -51,7 +54,7 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   RICH_TEXT: <Type className="h-4 w-4" />,
 };
 
-export default function FileTypesTab({ canUpdate = true }: FileTypesTabProps) {
+export default function FileTypesTab({ canUpdate = true, uploadRules, onUploadRulesChange }: FileTypesTabProps) {
   const [fileTypes, setFileTypes] = useState<AllowedFileTypeDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -190,6 +193,39 @@ export default function FileTypesTab({ canUpdate = true }: FileTypesTabProps) {
 
   return (
     <div className="space-y-6">
+      {/* Upload Rules (API-driven) */}
+      {uploadRules && onUploadRulesChange && (
+        <div className="bg-white border rounded-lg p-6">
+          <h3 className="text-lg font-semibold mb-4">Upload Rules</h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Blocked File Extensions</label>
+              <input
+                type="text"
+                value={uploadRules.blockedFileTypes}
+                onChange={(e) => onUploadRulesChange({ ...uploadRules, blockedFileTypes: e.target.value })}
+                placeholder="exe,bat,cmd,sh,ps1,vbs"
+                className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+              />
+              <p className="text-xs text-muted-foreground mt-1">Comma-separated list of blocked file extensions</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Archive Upload Handling</label>
+              <select
+                value={uploadRules.archiveHandling}
+                onChange={(e) => onUploadRulesChange({ ...uploadRules, archiveHandling: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+              >
+                <option value="EXTRACT_AND_INDEX">Extract &amp; Index contents</option>
+                <option value="STORE_ONLY">Store as-is (no extraction)</option>
+                <option value="REJECT">Reject archive uploads</option>
+              </select>
+              <p className="text-xs text-muted-foreground mt-1">How ZIP/RAR archives are handled on upload</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -311,9 +347,8 @@ export default function FileTypesTab({ canUpdate = true }: FileTypesTabProps) {
                             return (
                               <div
                                 key={ft.id}
-                                className={`flex items-center justify-between px-4 py-2.5 hover:bg-accent/30 transition-colors ${
-                                  hasChange ? 'bg-yellow-500/5' : ''
-                                }`}
+                                className={`flex items-center justify-between px-4 py-2.5 hover:bg-accent/30 transition-colors ${hasChange ? 'bg-yellow-500/5' : ''
+                                  }`}
                               >
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2">
@@ -339,14 +374,12 @@ export default function FileTypesTab({ canUpdate = true }: FileTypesTabProps) {
                                 <button
                                   onClick={() => toggleFileType(ft.id, isAllowed)}
                                   disabled={!canUpdate}
-                                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50 ${
-                                    isAllowed ? 'bg-green-500' : 'bg-muted-foreground/30'
-                                  } ${!canUpdate ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50 ${isAllowed ? 'bg-green-500' : 'bg-muted-foreground/30'
+                                    } ${!canUpdate ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                                 >
                                   <span
-                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                                      isAllowed ? 'translate-x-6' : 'translate-x-1'
-                                    }`}
+                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isAllowed ? 'translate-x-6' : 'translate-x-1'
+                                      }`}
                                   />
                                 </button>
                               </div>

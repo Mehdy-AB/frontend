@@ -2,16 +2,19 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  Save, 
-  RefreshCw, 
+import {
+  Save,
+  RefreshCw,
   Activity,
-  HardDrive, 
-  Shield, 
+  HardDrive,
+  Shield,
   Zap,
   Archive,
   FileText,
-  FileType
+  FileType,
+  Loader2,
+  AlertTriangle,
+  CheckCircle2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -30,57 +33,74 @@ export default function DMSSettingsPage() {
   const router = useRouter();
   const { canView, canUpdate } = useAdminPagePermissions();
   const [activeTab, setActiveTab] = useState('overview');
-  
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
   useEffect(() => {
     if (!canView) {
       router.push('/');
     }
   }, [canView, router]);
-  
+
   const {
+    loading,
     saving,
+    error,
     systemInfo,
     storageInfo,
+    coreSettings,
+    storageSettings: storageSettingsData,
+    uploadRules,
     securitySettings,
     performanceSettings,
     backupSettings,
+    serviceHealth,
+    healthLoading,
     logs,
     logFilter,
+    setCoreSettings,
+    setStorageSettings: setStorageSettingsData,
+    setUploadRules,
     setSecuritySettings,
     setPerformanceSettings,
     setBackupSettings,
     setLogFilter,
-    handleSaveSettings
+    handleSaveSettings,
+    fetchSettings,
+    triggerHealthCheck,
   } = useDMSSettings();
 
   const handleAddStorageLocation = () => {
-    // TODO: Implement add storage location modal
     console.log('Add storage location');
   };
 
   const handleEditStorageLocation = (id: string) => {
-    // TODO: Implement edit storage location modal
     console.log('Edit storage location:', id);
   };
 
   const handleDeleteStorageLocation = (id: string) => {
-    // TODO: Implement delete storage location confirmation
     console.log('Delete storage location:', id);
   };
 
   const handleAddBackupLocation = () => {
-    // TODO: Implement add backup location modal
     console.log('Add backup location');
   };
 
   const handleEditBackupLocation = (id: string) => {
-    // TODO: Implement edit backup location modal
     console.log('Edit backup location:', id);
   };
 
   const handleDeleteBackupLocation = (id: string) => {
-    // TODO: Implement delete backup location confirmation
     console.log('Delete backup location:', id);
+  };
+
+  const handleSave = async () => {
+    try {
+      await handleSaveSettings();
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch {
+      // Error is already set in the hook
+    }
   };
 
   if (!canView) {
@@ -93,27 +113,80 @@ export default function DMSSettingsPage() {
     );
   }
 
+  // Count down services for header badge
+  const downServices = serviceHealth.filter(s => s.status === 'DOWN').length;
+  const degradedServices = serviceHealth.filter(s => s.status === 'DEGRADED').length;
+
   return (
     <div className="space-y-6">
+      {/* Service Health Warning Banner */}
+      {downServices > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 flex items-center gap-3">
+          <AlertTriangle className="h-5 w-5 text-red-500 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-red-800">
+              {downServices} service{downServices > 1 ? 's are' : ' is'} currently down
+            </p>
+            <p className="text-xs text-red-600 mt-0.5">
+              Affected operations (OCR, indexing) have been queued and will resume automatically when services recover.
+            </p>
+          </div>
+          <Button size="sm" variant="outline" className="text-red-700 border-red-300 hover:bg-red-100" onClick={triggerHealthCheck} disabled={healthLoading}>
+            {healthLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Re-check
+          </Button>
+        </div>
+      )}
+
+      {/* Degraded Service Warning Banner */}
+      {degradedServices > 0 && downServices === 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-center gap-3">
+          <AlertTriangle className="h-5 w-5 text-amber-500 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-amber-800">
+              {degradedServices} service{degradedServices > 1 ? 's are' : ' is'} degraded
+            </p>
+            <p className="text-xs text-amber-600 mt-0.5">
+              System is operational but some services may respond slowly.
+            </p>
+          </div>
+          <Button size="sm" variant="outline" className="text-amber-700 border-amber-300 hover:bg-amber-100" onClick={triggerHealthCheck} disabled={healthLoading}>
+            {healthLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Re-check
+          </Button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-semibold">DMS Settings</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-semibold">DMS Settings</h1>
+            {loading && <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
+          </div>
           <p className="text-muted-foreground">Configure system settings, storage, and performance</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" className="gap-2">
-            <RefreshCw className="h-4 w-4" />
+        <div className="flex gap-2 items-center">
+          {saveSuccess && (
+            <span className="flex items-center gap-1 text-sm text-emerald-600">
+              <CheckCircle2 className="h-4 w-4" /> Saved
+            </span>
+          )}
+          {error && (
+            <span className="text-sm text-red-500">{error}</span>
+          )}
+          <Button variant="outline" className="gap-2" onClick={fetchSettings} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button 
-                onClick={handleSaveSettings} 
-                disabled={saving || !canUpdate} 
+              <Button
+                onClick={handleSave}
+                disabled={saving || !canUpdate}
                 className="gap-2"
               >
-                <Save className="h-4 w-4" />
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 {saving ? 'Saving...' : 'Save Changes'}
               </Button>
             </TooltipTrigger>
@@ -160,12 +233,21 @@ export default function DMSSettingsPage() {
         </TabsList>
 
         <TabsContent value="overview">
-          <OverviewTab systemInfo={systemInfo} />
+          <OverviewTab
+            systemInfo={systemInfo}
+            coreSettings={coreSettings}
+            onCoreSettingsChange={setCoreSettings}
+            serviceHealth={serviceHealth}
+            healthLoading={healthLoading}
+            onRefreshHealth={triggerHealthCheck}
+          />
         </TabsContent>
 
         <TabsContent value="storage">
           <StorageTab
             storageInfo={storageInfo}
+            storageSettings={storageSettingsData}
+            onStorageSettingsChange={setStorageSettingsData}
             onAddLocation={handleAddStorageLocation}
             onEditLocation={handleEditStorageLocation}
             onDeleteLocation={handleDeleteStorageLocation}
@@ -205,10 +287,13 @@ export default function DMSSettingsPage() {
         </TabsContent>
 
         <TabsContent value="filetypes">
-          <FileTypesTab canUpdate={canUpdate} />
+          <FileTypesTab
+            canUpdate={canUpdate}
+            uploadRules={uploadRules}
+            onUploadRulesChange={setUploadRules}
+          />
         </TabsContent>
       </Tabs>
     </div>
   );
 }
-

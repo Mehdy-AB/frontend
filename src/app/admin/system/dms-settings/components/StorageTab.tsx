@@ -5,18 +5,22 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { HardDrive, Plus, Edit, Trash2, Cloud, Server } from 'lucide-react';
-import type { StorageInfo } from '../lib/types';
+import type { StorageInfo, StorageSettings } from '../lib/types';
 import { formatStorageSize } from '../lib/utils';
 
 interface StorageTabProps {
   storageInfo: StorageInfo;
+  storageSettings?: StorageSettings;
+  onStorageSettingsChange?: (settings: StorageSettings) => void;
   onAddLocation?: () => void;
   onEditLocation?: (id: string) => void;
   onDeleteLocation?: (id: string) => void;
 }
 
-export default function StorageTab({ 
+export default function StorageTab({
   storageInfo,
+  storageSettings,
+  onStorageSettingsChange,
   onAddLocation,
   onEditLocation,
   onDeleteLocation
@@ -25,6 +29,74 @@ export default function StorageTab({
 
   return (
     <div className="space-y-6">
+      {/* Storage Settings (API-driven) */}
+      {storageSettings && onStorageSettingsChange && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Storage Configuration</CardTitle>
+            <CardDescription>Global storage backend and upload limits</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Default Backend</label>
+                <select
+                  value={storageSettings.defaultBackend}
+                  onChange={(e) => onStorageSettingsChange({ ...storageSettings, defaultBackend: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                >
+                  <option value="MINIO">MinIO (S3-compatible)</option>
+                  <option value="S3">Amazon S3</option>
+                  <option value="LOCAL">Local File System</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Max File Size (MB)</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={10240}
+                  value={storageSettings.maxFileSizeMb}
+                  onChange={(e) => onStorageSettingsChange({ ...storageSettings, maxFileSizeMb: parseInt(e.target.value) || 50 })}
+                  className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Chunk Upload Size (MB)</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={storageSettings.chunkUploadSizeMb}
+                  onChange={(e) => onStorageSettingsChange({ ...storageSettings, chunkUploadSizeMb: parseInt(e.target.value) || 10 })}
+                  className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Storage Tiers</label>
+                <div className="flex gap-3">
+                  {[
+                    { key: 'tierHot' as const, label: 'HOT', color: 'bg-red-100 text-red-700' },
+                    { key: 'tierWarm' as const, label: 'WARM', color: 'bg-amber-100 text-amber-700' },
+                    { key: 'tierArchive' as const, label: 'ARCHIVE', color: 'bg-blue-100 text-blue-700' },
+                  ].map(tier => (
+                    <label key={tier.key} className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={storageSettings[tier.key]}
+                        onChange={(e) => onStorageSettingsChange({ ...storageSettings, [tier.key]: e.target.checked })}
+                        className="rounded border-gray-300"
+                      />
+                      <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${tier.color}`}>{tier.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Storage Overview */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
@@ -73,14 +145,14 @@ export default function StorageTab({
               </div>
               <Progress value={usedPercentage} className="h-3" />
             </div>
-            
+
             {/* Storage Breakdown */}
             <div className="space-y-2">
               {storageInfo.breakdown.map((item) => (
                 <div key={item.type} className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div 
-                      className="w-3 h-3 rounded" 
+                    <div
+                      className="w-3 h-3 rounded"
                       style={{ backgroundColor: item.color }}
                     />
                     <span className="text-sm">{item.type}</span>

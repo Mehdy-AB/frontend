@@ -3,8 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import {
   Mail, User, Users, Clock, Paperclip, ChevronDown, ChevronUp,
-  Shield, FileText, AlertTriangle, ExternalLink, Archive,
-  ArrowUpRight, Tag
+  Shield, ShieldAlert, FileText, AlertTriangle, ExternalLink, Archive,
+  ArrowUpRight, Tag, Download
 } from 'lucide-react';
 import { emailCaptureService, EmailDocumentResponse, LinkedAttachment } from '@/api/services/emailCaptureService';
 
@@ -16,6 +16,7 @@ interface EmailDocumentViewerProps {
 /**
  * Enterprise Email Document Viewer.
  * Renders parsed email metadata, body (in sandboxed iframe), and linked attachments.
+ * Policy-driven governance badges: htmlSanitized, preserveOriginal, recordsDeclarationEligible.
  */
 export default function EmailDocumentViewer({ documentId, onAttachmentClick }: EmailDocumentViewerProps) {
   const [emailDoc, setEmailDoc] = useState<EmailDocumentResponse | null>(null);
@@ -32,11 +33,23 @@ export default function EmailDocumentViewer({ documentId, onAttachmentClick }: E
     try {
       setLoading(true);
       setError(null);
-      const doc = await emailCaptureService.getEmailDocument(documentId);
+
+      // Fetch both the document and user's capture settings
+      const [doc, settings] = await Promise.all([
+        emailCaptureService.getEmailDocument(documentId),
+        emailCaptureService.getSettings().catch(() => null)
+      ]);
+
       setEmailDoc(doc);
-      // Default to text view if no HTML body
-      if (!doc.bodyHtml || doc.bodyHtml.trim() === '') {
+
+      const preferHtml = settings?.preferHtmlBody ?? true;
+      const hasHtml = doc.bodyHtml && doc.bodyHtml.trim() !== '';
+
+      // Enforce user's HTML/text preference, fallback to text if no HTML exists
+      if (!hasHtml || !preferHtml) {
         setBodyView('text');
+      } else {
+        setBodyView('html');
       }
     } catch (err: any) {
       setError(err?.message || 'Failed to load email document');
@@ -95,6 +108,27 @@ export default function EmailDocumentViewer({ documentId, onAttachmentClick }: E
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-success/10 text-success text-xs font-medium rounded-full">
                     <Shield className="h-3 w-3" />
                     Archived
+                  </span>
+                )}
+                {/* ── Policy-driven governance badges ── */}
+                {emailDoc.htmlSanitized ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-success/10 text-success text-xs font-medium rounded-full"
+                        title="HTML body has been sanitized (dangerous elements removed)">
+                    <Shield className="h-3 w-3" />
+                    HTML Sanitized
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-warning/10 text-warning text-xs font-medium rounded-full"
+                        title="HTML body is unsanitized — may contain raw HTML">
+                    <ShieldAlert className="h-3 w-3" />
+                    Unsanitized HTML
+                  </span>
+                )}
+                {emailDoc.recordsDeclarationEligible && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-500/10 text-blue-600 text-xs font-medium rounded-full"
+                        title="This email can be declared as a formal record">
+                    <Archive className="h-3 w-3" />
+                    Records Eligible
                   </span>
                 )}
               </div>
@@ -174,6 +208,13 @@ export default function EmailDocumentViewer({ documentId, onAttachmentClick }: E
                 <span className="text-neutral-text-light w-16">Source:</span>
                 <span className="text-neutral-text">{emailDoc.sourceType?.replace(/_/g, ' ')}</span>
               </div>
+              {/* ── Preserve original indicator ── */}
+              <div className="flex items-center gap-2">
+                <span className="text-neutral-text-light w-16">Original:</span>
+                <span className="text-neutral-text">
+                  {emailDoc.preserveOriginal ? '✅ Preserved in storage' : '⚠ Not preserved'}
+                </span>
+              </div>
             </div>
           )}
         </div>
@@ -210,25 +251,43 @@ export default function EmailDocumentViewer({ documentId, onAttachmentClick }: E
       <div className="flex-shrink-0 px-5 py-1.5 border-b border-neutral-ui/20 flex items-center gap-2">
         <button
           onClick={() => setBodyView('html')}
-          className={`px-3 py-1 text-xs rounded-md transition-colors ${
-            bodyView === 'html'
+          className={`px-3 py-1 text-xs rounded-md transition-colors ${bodyView === 'html'
               ? 'bg-primary text-white'
               : 'text-neutral-text-light hover:bg-neutral-bg'
-          }`}
+            }`}
           disabled={!emailDoc.bodyHtml || emailDoc.bodyHtml.trim() === ''}
         >
           Rich Text
         </button>
         <button
           onClick={() => setBodyView('text')}
-          className={`px-3 py-1 text-xs rounded-md transition-colors ${
-            bodyView === 'text'
+          className={`px-3 py-1 text-xs rounded-md transition-colors ${bodyView === 'text'
               ? 'bg-primary text-white'
               : 'text-neutral-text-light hover:bg-neutral-bg'
-          }`}
+            }`}
         >
           Plain Text
         </button>
+
+        {/* ── Policy-gated: Download Original button ── */}
+        {emailDoc.preserveOriginal && (
+          <a
+            href={`/api/v1/email-capture/${emailDoc.documentId}/body`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="ml-auto inline-flex items-center gap-1 px-3 py-1 text-xs rounded-md
+              text-primary hover:bg-primary/10 transition-colors"
+            title="Download original email file"
+          >
+            <Download className="h-3 w-3" />
+            Download Original
+          </a>
+        )}
+        {!emailDoc.preserveOriginal && (
+          <span className="ml-auto text-xs text-neutral-text-light italic" title="Original file not preserved per policy">
+            Original not preserved
+          </span>
+        )}
       </div>
 
       {/* ──── EMAIL BODY ──── */}

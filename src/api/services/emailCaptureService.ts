@@ -79,6 +79,9 @@ export interface EmailDocumentResponse {
   sourceType: string;
   originalFormat: string;
   contentImmutable: boolean;
+  htmlSanitized: boolean;
+  preserveOriginal: boolean;
+  recordsDeclarationEligible: boolean;
   archivedAt: string;
   linkedAttachments: LinkedAttachment[];
 }
@@ -221,3 +224,260 @@ class EmailCaptureApiService {
 }
 
 export const emailCaptureService = new EmailCaptureApiService();
+
+// ==================== MAILBOX SYNC TYPES ====================
+
+export type MailboxProvider = 'MICROSOFT_365_IMAP' | 'GMAIL_IMAP' | 'GENERIC_IMAP';
+export type MailboxTransport = 'IMAP_IDLE' | 'IMAP_POLL';
+export type MailboxOwnerType = 'USER' | 'WORKSPACE' | 'SYSTEM_SHARED';
+export type MailboxConnectionStatus = 'PENDING' | 'CONNECTED' | 'DISCONNECTED' | 'AUTH_EXPIRED' | 'ERROR' | 'DISABLED' | 'AWAITING_APPROVAL';
+export type CaptureMode = 'INCOMING' | 'ALL';
+export type SyncType = 'AUTO' | 'MANUAL' | 'RANGE';
+export type SyncStatus = 'RUNNING' | 'COMPLETED' | 'PARTIAL' | 'FAILED';
+
+export interface WatchedFolderDto {
+  id: number;
+  folderName: string;
+  displayName: string;
+  active: boolean;
+  uidValidity: number | null;
+  lastSeenUid: number | null;
+  totalCaptured: number;
+  overrideDestinationFolderId: number | null;
+  overrideDestinationFolderPath: string | null;
+  overrideFilingCategoryId: number | null;
+  overrideFilingCategoryName: string | null;
+  lastFolderSyncAt: string | null;
+}
+
+export interface MailboxConnectionResponse {
+  id: number;
+  provider: MailboxProvider;
+  activeTransport: MailboxTransport | null;
+  emailAddress: string;
+  displayName: string | null;
+  ownerType: MailboxOwnerType;
+  userId: string;
+  workspaceId: string | null;
+  status: MailboxConnectionStatus;
+  captureMode: CaptureMode;
+  autoSyncEnabled: boolean;
+  autoExtractAttachments: boolean;
+  attachmentDestination: AttachmentDestination;
+  lookbackDays: number | null;
+  lookbackSinceDate: string | null;
+  lookbackUntilDate: string | null;
+  destinationFolderId: number | null;
+  destinationFolderPath: string | null;
+  filingCategoryId: number | null;
+  filingCategoryName: string | null;
+  lastSyncAt: string | null;
+  lastSyncMessageCount: number | null;
+  lastSyncError: string | null;
+  totalEmailsSynced: number;
+  watchedFolders: WatchedFolderDto[];
+  oauthConfigured: boolean;
+  tokenExpiresAt: string | null;
+  approvedByName: string | null;
+  approvedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MailboxConnectionRequest {
+  provider: MailboxProvider;
+  emailAddress: string;
+  displayName?: string;
+  ownerType?: MailboxOwnerType;
+  workspaceId?: string;
+  imapHost?: string;
+  imapPort?: number;
+  imapUsername?: string;
+  imapPassword?: string;
+  imapUseSsl?: boolean;
+  destinationFolderId?: number;
+  filingCategoryId?: number;
+  captureMode?: CaptureMode;
+  autoExtractAttachments?: boolean;
+  attachmentDestination?: AttachmentDestination;
+  lookbackDays?: number | null;
+  lookbackSinceDate?: string | null;
+  lookbackUntilDate?: string | null;
+}
+
+export interface MailboxSyncLogResponse {
+  id: number;
+  connectionId: number;
+  syncType: SyncType;
+  status: SyncStatus;
+  startedAt: string;
+  completedAt: string | null;
+  emailsFetched: number;
+  emailsCaptured: number;
+  emailsSkipped: number;
+  emailsFailed: number;
+  errorMessage: string | null;
+  triggeredBy: string | null;
+}
+
+export interface PaginatedResponse<T> {
+  content: T[];
+  totalElements: number;
+  totalPages: number;
+  number: number;
+}
+
+const SYNC_URL = '/api/v1/mailbox-sync';
+
+// ==================== MAILBOX SYNC SERVICE ====================
+
+class MailboxSyncApiService {
+
+  // ---- CONNECTIONS ----
+
+  async getConnections(): Promise<MailboxConnectionResponse[]> {
+    return apiClient.get<MailboxConnectionResponse[]>(`${SYNC_URL}/connections`);
+  }
+
+  async getConnection(id: number): Promise<MailboxConnectionResponse> {
+    return apiClient.get<MailboxConnectionResponse>(`${SYNC_URL}/connections/${id}`);
+  }
+
+  async createConnection(data: MailboxConnectionRequest): Promise<MailboxConnectionResponse> {
+    return apiClient.post<MailboxConnectionResponse>(`${SYNC_URL}/connections`, data);
+  }
+
+  async updateConnection(id: number, data: Partial<MailboxConnectionRequest>): Promise<MailboxConnectionResponse> {
+    return apiClient.put<MailboxConnectionResponse>(`${SYNC_URL}/connections/${id}`, data);
+  }
+
+  async deleteConnection(id: number): Promise<void> {
+    return apiClient.delete(`${SYNC_URL}/connections/${id}`);
+  }
+
+  // ---- SYNC CONTROL ----
+
+  async enableSync(id: number): Promise<MailboxConnectionResponse> {
+    return apiClient.post<MailboxConnectionResponse>(`${SYNC_URL}/connections/${id}/enable`, {});
+  }
+
+  async disableSync(id: number): Promise<MailboxConnectionResponse> {
+    return apiClient.post<MailboxConnectionResponse>(`${SYNC_URL}/connections/${id}/disable`, {});
+  }
+
+  /**
+   * Trigger a one-shot historical email fetch for a date range.
+   * INCOMING mode stays active — this runs alongside the IDLE watcher.
+   */
+  async triggerHistoricalFetch(connectionId: number, params: {
+    sinceDate?: string;
+    untilDate?: string;
+    lookbackDays?: number;
+  }): Promise<{ status: string; message: string }> {
+    return apiClient.post<{ status: string; message: string }>(
+      `${SYNC_URL}/connections/${connectionId}/fetch-historical`, params
+    );
+  }
+
+  // ---- OAUTH2 ----
+
+  async getAuthorizationUrl(id: number): Promise<{ authorizationUrl: string }> {
+    return apiClient.get<{ authorizationUrl: string }>(`${SYNC_URL}/connections/${id}/oauth2/authorize`);
+  }
+
+  // ---- WATCHED FOLDERS ----
+
+  async getWatchedFolders(connectionId: number): Promise<WatchedFolderDto[]> {
+    return apiClient.get<WatchedFolderDto[]>(`${SYNC_URL}/connections/${connectionId}/folders`);
+  }
+
+  async addWatchedFolder(connectionId: number, data: {
+    folderName: string;
+    displayName?: string;
+    overrideDestinationFolderId?: number;
+    overrideFilingCategoryId?: number;
+  }): Promise<WatchedFolderDto> {
+    return apiClient.post<WatchedFolderDto>(`${SYNC_URL}/connections/${connectionId}/folders`, data);
+  }
+
+  async toggleWatchedFolder(folderId: number, active: boolean): Promise<WatchedFolderDto> {
+    return apiClient.patch<WatchedFolderDto>(`${SYNC_URL}/folders/${folderId}/toggle?active=${active}`, {});
+  }
+
+  async removeWatchedFolder(folderId: number): Promise<void> {
+    return apiClient.delete(`${SYNC_URL}/folders/${folderId}`);
+  }
+
+  // ---- SYNC HISTORY ----
+
+  async getSyncHistory(
+    connectionId: number, page = 0, size = 10,
+    filters?: { status?: SyncStatus; from?: string; to?: string }
+  ): Promise<PaginatedResponse<MailboxSyncLogResponse>> {
+    const params = new URLSearchParams({ page: String(page), size: String(size) });
+    if (filters?.status) params.set('status', filters.status);
+    if (filters?.from) params.set('from', filters.from);
+    if (filters?.to) params.set('to', filters.to);
+    return apiClient.get<PaginatedResponse<MailboxSyncLogResponse>>(
+      `${SYNC_URL}/connections/${connectionId}/history?${params.toString()}`
+    );
+  }
+
+  // ---- IMAP FOLDER BROWSER ----
+
+  async listImapFolders(connectionId: number): Promise<ImapFolderDto[]> {
+    return apiClient.get<ImapFolderDto[]>(`${SYNC_URL}/connections/${connectionId}/imap-folders`);
+  }
+
+  // ---- STATUS ----
+
+  async getStatus(): Promise<{ activeConnections: number; timestamp: number }> {
+    return apiClient.get<{ activeConnections: number; timestamp: number }>(`${SYNC_URL}/status`);
+  }
+
+  // ---- REVIEW QUEUE ----
+
+  async getReviewQueue(page = 0, size = 20): Promise<ReviewQueueResponse> {
+    return apiClient.get<ReviewQueueResponse>(
+      `${SYNC_URL}/review-queue?page=${page}&size=${size}`
+    );
+  }
+
+  async completeClassification(emailDocId: number, metadata: { id: number; value: string }[]): Promise<void> {
+    return apiClient.patch(`${SYNC_URL}/review-queue/${emailDocId}/complete`, metadata);
+  }
+}
+
+export interface ImapFolderDto {
+  name: string;
+  displayName: string;
+  delimiter: string;
+  selectable: boolean;
+  hasChildren: boolean;
+  depth: number;
+  messageCount: number;
+}
+
+// ==================== REVIEW QUEUE ====================
+
+export interface ReviewQueueResponse {
+  content: ReviewQueueItem[];
+  totalElements: number;
+  totalPages: number;
+  number: number;
+  pendingCount: number;
+}
+
+export interface ReviewQueueItem {
+  id: number;
+  messageId: string;
+  subject: string;
+  fromAddress: string;
+  sentAt: string;
+  classificationStatus: 'PROVISIONAL' | 'COMPLETE' | 'UNCLASSIFIED';
+  archivedAt: string;
+  document: { id: number; name: string; filingCategory?: { id: number; name: string } };
+}
+
+export const mailboxSyncService = new MailboxSyncApiService();
+

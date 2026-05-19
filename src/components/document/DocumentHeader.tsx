@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeft, FileText, Clock, GitBranch, PlayCircle, CheckCircle2, XCircle } from 'lucide-react';
+import { ArrowLeft, FileText, Clock, GitBranch, PlayCircle, CheckCircle2, XCircle, Lock } from 'lucide-react';
 import { DocumentViewDto } from '../../types/documentView';
 import { formatFileSize, formatDate } from '../../utils/documentUtils';
 import DocumentActions from './DocumentActions';
@@ -24,6 +24,13 @@ interface DocumentHeaderProps {
   onUploadVersion?: () => void;
   workflowInstances?: { id: number; status: string; workflowName?: string }[];
   onShowWorkflows?: () => void;
+  // Checkout
+  isCheckedOut?: boolean;
+  checkedOutByName?: string | null;
+  isCheckedOutByMe?: boolean;
+  checkoutLoading?: boolean;
+  onCheckout?: () => void;
+  onCheckin?: () => void;
 }
 
 export default function DocumentHeader({
@@ -44,7 +51,13 @@ export default function DocumentHeader({
   onRename,
   onUploadVersion,
   workflowInstances,
-  onShowWorkflows
+  onShowWorkflows,
+  isCheckedOut,
+  checkedOutByName,
+  isCheckedOutByMe,
+  checkoutLoading,
+  onCheckout,
+  onCheckin
 }: DocumentHeaderProps) {
   const getFileNameWithoutExtension = (filename: string) => {
     const lastDotIndex = filename.lastIndexOf('.');
@@ -114,6 +127,12 @@ export default function DocumentHeader({
                 <div className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs font-medium">
                   v{document.versionNumber || (currentVersion ? versions.find(v => v.versionId === currentVersion)?.versionNumber || '?' : 'Latest')}
                 </div>
+                {isCheckedOut && (
+                  <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${isCheckedOutByMe ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
+                    <Lock className="h-3 w-3" />
+                    <span>{isCheckedOutByMe ? 'Checked out by you' : `Locked by ${checkedOutByName || 'another user'}`}</span>
+                  </div>
+                )}
               </div>
 
               {/* Version History Button */}
@@ -172,6 +191,12 @@ export default function DocumentHeader({
             onDelete={onDelete}
             onRename={onRename}
             onUploadVersion={onUploadVersion}
+            isCheckedOut={isCheckedOut}
+            checkedOutByName={checkedOutByName}
+            isCheckedOutByMe={isCheckedOutByMe}
+            checkoutLoading={checkoutLoading}
+            onCheckout={onCheckout}
+            onCheckin={onCheckin}
           />
         </div>
       </div>

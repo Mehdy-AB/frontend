@@ -1,8 +1,8 @@
 // components/document/MetadataTab.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Tag, FileText, Plus, X, Edit3, Save, ChevronDown, FolderOpen, Calendar, Hash, ToggleLeft, List, MoreHorizontal, User } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Tag, FileText, Plus, X, Edit3, Save, ChevronDown, FolderOpen, Calendar, Hash, ToggleLeft, List, MoreHorizontal, User, History, ArrowRight, Flame, Archive, ShieldCheck } from 'lucide-react';
 import { DocumentViewDto } from '../../types/documentView';
 import { documentService } from '../../api/services/documentService';
 import { filingCategoryService } from '../../api/services/filingCategoryService';
@@ -15,6 +15,7 @@ import { SearchSelect } from '../main/SearchSelect';
 import CreateTagModal from '../modals/CreateTagModal';
 import RelatedDocumentsSection from './RelatedDocumentsSection';
 import { formatFileSize, formatDate } from '../../utils/documentUtils';
+import { classificationService, ClassificationAuditDto } from '@/api/services/classificationService';
 
 interface MetadataTabProps {
   document: DocumentViewDto;
@@ -50,7 +51,27 @@ export default function MetadataTab({
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [customValueFields, setCustomValueFields] = useState<Set<number>>(new Set());
 
-  const [openSections, setOpenSections] = useState<Set<string>>(new Set(['model', 'tags']));
+  const [openSections, setOpenSections] = useState<Set<string>>(new Set(['model']));
+
+  // Classification Audit
+  const [classificationAudit, setClassificationAudit] = useState<ClassificationAuditDto[]>([]);
+  const [isLoadingAudit, setIsLoadingAudit] = useState(false);
+  const [auditLoaded, setAuditLoaded] = useState(false);
+
+  const loadClassificationAudit = useCallback(async () => {
+    if (auditLoaded || isLoadingAudit) return;
+    try {
+      setIsLoadingAudit(true);
+      const res = await classificationService.getDocumentHistory(document.documentId, 0, 50);
+      setClassificationAudit((res as any).content || []);
+      setAuditLoaded(true);
+    } catch (e) {
+      console.error('Error loading classification audit:', e);
+    } finally {
+      setIsLoadingAudit(false);
+    }
+  }, [document.documentId, auditLoaded, isLoadingAudit]);
+
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -1128,6 +1149,103 @@ export default function MetadataTab({
                 </div>
               )}
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* Classification History Section */}
+      <div className="border-b pb-4">
+        <div
+          className="flex items-center justify-between cursor-pointer mb-2"
+          onClick={() => {
+            toggleSection('classification');
+            if (!auditLoaded) loadClassificationAudit();
+          }}
+        >
+          <div className="flex items-center gap-2">
+            <History className="h-4 w-4 text-indigo-600" />
+            <span className="font-medium text-gray-900">Classification History</span>
+            {classificationAudit.length > 0 && (
+              <span className="text-sm text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                {classificationAudit.length}
+              </span>
+            )}
+          </div>
+          <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${openSections.has('classification') ? 'rotate-180' : ''}`} />
+        </div>
+
+        {openSections.has('classification') && (
+          <div className="ml-2 mt-2 space-y-2">
+            {isLoadingAudit ? (
+              <div className="space-y-2">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="h-12 bg-gray-100 rounded animate-pulse" />
+                ))}
+              </div>
+            ) : classificationAudit.length === 0 ? (
+              <div className="p-4 bg-gray-50 rounded border text-center text-sm text-gray-400">
+                No classification history for this document
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                {classificationAudit.map((entry) => (
+                  <div key={entry.id} className="p-3 bg-gray-50 rounded border border-gray-200 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {/* Action badge */}
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${entry.action === 'CLASSIFIED' ? 'bg-blue-100 text-blue-700' :
+                            entry.action === 'RECLASSIFIED' ? 'bg-purple-100 text-purple-700' :
+                              entry.action === 'ROUTED' ? 'bg-indigo-100 text-indigo-700' :
+                                entry.action === 'SUGGESTION_ACCEPTED' ? 'bg-green-100 text-green-700' :
+                                  entry.action === 'SUGGESTION_REJECTED' ? 'bg-red-100 text-red-700' :
+                                    'bg-gray-100 text-gray-600'
+                          }`}>
+                          {entry.action.replace(/_/g, ' ')}
+                        </span>
+                        {entry.classificationTypeName && (
+                          <span className="text-xs text-gray-600 font-medium">{entry.classificationTypeName}</span>
+                        )}
+                      </div>
+                      <span className="text-xs text-gray-400">
+                        {new Date(entry.createdAt).toLocaleString()}
+                      </span>
+                    </div>
+
+                    {/* Routing info */}
+                    {(entry.fromFolderName || entry.toFolderName) && (
+                      <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                        {entry.fromFolderName && (
+                          <span className="px-1.5 py-0.5 bg-white border rounded">{entry.fromFolderName}</span>
+                        )}
+                        {entry.fromFolderName && entry.toFolderName && (
+                          <ArrowRight className="h-3 w-3 text-gray-400" />
+                        )}
+                        {entry.toFolderName && (
+                          <span className="px-1.5 py-0.5 bg-indigo-50 border border-indigo-200 rounded text-indigo-700">{entry.toFolderName}</span>
+                        )}
+                        {entry.wasAutoMoved && (
+                          <span className="text-xs text-amber-600 font-medium">(auto)</span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Actor + notes */}
+                    <div className="flex items-center justify-between text-xs">
+                      {entry.actorName && (
+                        <span className="text-gray-500 flex items-center gap-1">
+                          <User className="h-3 w-3" /> {entry.actorName}
+                        </span>
+                      )}
+                      {entry.notes && (
+                        <span className="text-gray-400 italic truncate max-w-[200px]" title={entry.notes}>
+                          {entry.notes}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

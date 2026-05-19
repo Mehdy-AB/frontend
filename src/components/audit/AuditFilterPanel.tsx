@@ -55,7 +55,9 @@ function savePresetsToStorage(presets: FilterPreset[]) {
 
 function defaultFilter(): AuditLogFilterRequest {
     return {
-        actions: [], entityTypes: [], userId: '', userIds: [], username: '',
+        actions: [], entityTypes: [], actionCategories: [], actorTypes: [], channels: [],
+        workspaceIds: [], resultCodes: [],
+        userId: '', userIds: [], username: '',
         roleIds: [], groupIds: [], orgUnitIds: [],
         dateFrom: '', dateTo: '', success: null,
         httpMethod: '', httpMethods: [], ipAddress: '',
@@ -356,6 +358,14 @@ export default function AuditFilterPanel({ actionOptions, entityTypeOptions, onA
     const [orgUnitsExpanded, setOrgUnitsExpanded] = useState(false);
     const [httpMethodOptions, setHttpMethodOptions] = useState<string[]>([]);
 
+    // ECM-grade filter state
+    const [categoriesExpanded, setCategoriesExpanded] = useState(false);
+    const [channelsExpanded, setChannelsExpanded] = useState(false);
+    const [resultCodesExpanded, setResultCodesExpanded] = useState(false);
+    const [categoryOptions, setCategoryOptions] = useState<{ id: string; name: string }[]>([]);
+    const [channelOptions, setChannelOptions] = useState<string[]>([]);
+    const [resultCodeOptions, setResultCodeOptions] = useState<string[]>([]);
+
     // Typeahead token state
     const [roleTokens, setRoleTokens] = useState<Token[]>([]);
     const [groupTokens, setGroupTokens] = useState<Token[]>([]);
@@ -400,6 +410,27 @@ export default function AuditFilterPanel({ actionOptions, entityTypeOptions, onA
             auditLogService.getHttpMethodOptions().then(setHttpMethodOptions).catch(() => { });
         }
     }, [httpMethodsExpanded]);
+
+    // Lazy-load Action Categories
+    useEffect(() => {
+        if (categoriesExpanded && categoryOptions.length === 0) {
+            auditLogService.getActionCategoryOptions().then(setCategoryOptions).catch(() => { });
+        }
+    }, [categoriesExpanded]);
+
+    // Lazy-load Channels
+    useEffect(() => {
+        if (channelsExpanded && channelOptions.length === 0) {
+            auditLogService.getChannelOptions().then(setChannelOptions).catch(() => { });
+        }
+    }, [channelsExpanded]);
+
+    // Lazy-load Result Codes
+    useEffect(() => {
+        if (resultCodesExpanded && resultCodeOptions.length === 0) {
+            auditLogService.getResultCodeOptions().then(setResultCodeOptions).catch(() => { });
+        }
+    }, [resultCodesExpanded]);
 
     const handleApply = useCallback(() => {
         // Convert datetime-local ("2026-03-01T21:57") → ISO Instant ("2026-03-01T21:57:00.000Z")
@@ -446,10 +477,10 @@ export default function AuditFilterPanel({ actionOptions, entityTypeOptions, onA
         savePresetsToStorage(updated);
     };
 
-    const toggleMultiSelect = (field: 'actions' | 'entityTypes' | 'httpMethods', value: string) => {
+    const toggleMultiSelect = (field: 'actions' | 'entityTypes' | 'httpMethods' | 'actionCategories' | 'channels' | 'resultCodes' | 'actorTypes', value: string) => {
         setFilter(prev => {
-            const arr = prev[field] || [];
-            return { ...prev, [field]: arr.includes(value) ? arr.filter(v => v !== value) : [...arr, value] };
+            const arr = (prev as any)[field] || [];
+            return { ...prev, [field]: arr.includes(value) ? arr.filter((v: string) => v !== value) : [...arr, value] };
         });
     };
 
@@ -486,6 +517,9 @@ export default function AuditFilterPanel({ actionOptions, entityTypeOptions, onA
 
     const quickFilterCount = [
         (filter.actions?.length ?? 0) > 0,
+        (filter.actionCategories?.length ?? 0) > 0,
+        (filter.channels?.length ?? 0) > 0,
+        (filter.resultCodes?.length ?? 0) > 0,
         (filter.userIds?.length ?? 0) > 0,
         filter.success !== null && filter.success !== undefined,
         !!filter.search,
@@ -616,6 +650,66 @@ export default function AuditFilterPanel({ actionOptions, entityTypeOptions, onA
                                     <input type="checkbox" checked={filter.actions?.includes(a) || false}
                                         onChange={() => toggleMultiSelect('actions', a)} />
                                     <span>{formatActionLabel(a)}</span>
+                                </label>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                {/* Action Categories multi-select */}
+                <div className="audit-filter-panel__field">
+                    <button className="audit-label audit-label--collapsible" onClick={() => setCategoriesExpanded(!categoriesExpanded)} type="button">
+                        Category {filter.actionCategories?.length ? `(${filter.actionCategories.length})` : ''}
+                        {categoriesExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
+                    {categoriesExpanded && (
+                        <div className="audit-multiselect">
+                            {categoryOptions.length === 0 && <p className="audit-text--muted">Loading…</p>}
+                            {categoryOptions.map(c => (
+                                <label key={c.id} className="audit-multiselect__item">
+                                    <input type="checkbox" checked={filter.actionCategories?.includes(c.id) || false}
+                                        onChange={() => toggleMultiSelect('actionCategories', c.id)} />
+                                    <span>{c.name}</span>
+                                </label>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                {/* Channel multi-select */}
+                <div className="audit-filter-panel__field">
+                    <button className="audit-label audit-label--collapsible" onClick={() => setChannelsExpanded(!channelsExpanded)} type="button">
+                        Channel {filter.channels?.length ? `(${filter.channels.length})` : ''}
+                        {channelsExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
+                    {channelsExpanded && (
+                        <div className="audit-multiselect">
+                            {channelOptions.length === 0 && <p className="audit-text--muted">Loading…</p>}
+                            {channelOptions.map(ch => (
+                                <label key={ch} className="audit-multiselect__item">
+                                    <input type="checkbox" checked={filter.channels?.includes(ch) || false}
+                                        onChange={() => toggleMultiSelect('channels', ch)} />
+                                    <span className="audit-chip audit-chip--sm">{ch}</span>
+                                </label>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                {/* Result Code */}
+                <div className="audit-filter-panel__field">
+                    <button className="audit-label audit-label--collapsible" onClick={() => setResultCodesExpanded(!resultCodesExpanded)} type="button">
+                        Result Code {filter.resultCodes?.length ? `(${filter.resultCodes.length})` : ''}
+                        {resultCodesExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
+                    {resultCodesExpanded && (
+                        <div className="audit-multiselect">
+                            {resultCodeOptions.length === 0 && <p className="audit-text--muted">Loading…</p>}
+                            {resultCodeOptions.map(rc => (
+                                <label key={rc} className="audit-multiselect__item">
+                                    <input type="checkbox" checked={filter.resultCodes?.includes(rc) || false}
+                                        onChange={() => toggleMultiSelect('resultCodes', rc)} />
+                                    <span className={`audit-result-badge audit-result-badge--${rc === 'OK' ? 'ok' : 'fail'}`}>{rc}</span>
                                 </label>
                             ))}
                         </div>

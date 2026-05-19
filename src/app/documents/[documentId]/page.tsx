@@ -67,6 +67,12 @@ export default function DocumentViewPage() {
   const [showWorkflowPanel, setShowWorkflowPanel] = useState(false);
   const { showSuccess, showError } = useNotifications();
 
+  // Checkout state
+  const [isCheckedOut, setIsCheckedOut] = useState(false);
+  const [checkedOutByName, setCheckedOutByName] = useState<string | null>(null);
+  const [isCheckedOutByMe, setIsCheckedOutByMe] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+
   // Use custom hook for document operations
   const {
     auditLogs,
@@ -108,6 +114,15 @@ export default function DocumentViewPage() {
       workflowAdminService.getAllWorkflowInstancesForDocument(parseInt(documentId))
         .then(instances => setWorkflowInstances(instances))
         .catch(() => setWorkflowInstances([]));
+
+      // Fetch checkout status
+      documentService.getCheckoutStatus(parseInt(documentId))
+        .then(status => {
+          setIsCheckedOut(status.checkedOut);
+          setCheckedOutByName(status.checkedOutByName || null);
+          setIsCheckedOutByMe(status.isCheckedOutByMe || false);
+        })
+        .catch(() => { /* silently fail */ });
     }
   }, [documentId]);
 
@@ -389,6 +404,40 @@ export default function DocumentViewPage() {
     await toggleFavorite(document);
   };
 
+  // Handle checkout
+  const handleCheckout = async () => {
+    if (!document) return;
+    try {
+      setCheckoutLoading(true);
+      const result = await documentService.checkoutDocument(document.documentId);
+      setIsCheckedOut(true);
+      setCheckedOutByName(result.checkedOutByName);
+      setIsCheckedOutByMe(true);
+      showSuccess('Document Checked Out', 'You have locked this document for editing.');
+    } catch (error: any) {
+      showError('Checkout Failed', error?.message || 'Could not check out the document.');
+    } finally {
+      setCheckoutLoading(false);
+    }
+  };
+
+  // Handle checkin
+  const handleCheckin = async () => {
+    if (!document) return;
+    try {
+      setCheckoutLoading(true);
+      await documentService.checkinDocument(document.documentId);
+      setIsCheckedOut(false);
+      setCheckedOutByName(null);
+      setIsCheckedOutByMe(false);
+      showSuccess('Document Checked In', 'The document has been unlocked.');
+    } catch (error: any) {
+      showError('Check-in Failed', error?.message || 'Could not check in the document.');
+    } finally {
+      setCheckoutLoading(false);
+    }
+  };
+
   // Handle optimistic file update
   const handleOptimisticFileUpdate = (file: File) => {
     setOptimisticFile(file);
@@ -536,6 +585,12 @@ export default function DocumentViewPage() {
           onUploadVersion={handleUploadVersion}
           workflowInstances={workflowInstances}
           onShowWorkflows={() => setShowWorkflowPanel(true)}
+          isCheckedOut={isCheckedOut}
+          checkedOutByName={checkedOutByName}
+          isCheckedOutByMe={isCheckedOutByMe}
+          checkoutLoading={checkoutLoading}
+          onCheckout={handleCheckout}
+          onCheckin={handleCheckin}
         />
 
 

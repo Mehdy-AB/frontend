@@ -153,6 +153,11 @@ export const Permissions = {
 
   // Delegation Admin
   DELEGATION_ADMIN: 'delegation:admin',
+
+  // Email Capture Governance
+  EMAIL_GOVERNANCE_READ: 'email-governance:read',
+  EMAIL_GOVERNANCE_UPDATE: 'email-governance:update',
+  EMAIL_GOVERNANCE_DELETE: 'email-governance:delete',
 } as const;
 
 /**
@@ -191,6 +196,11 @@ export const AdminPagePermissions: Record<string, {
   },
   '/admin/system/logs': {
     view: Permissions.SERVER_MANAGE_LOGS,
+  },
+  '/admin/system/email-governance': {
+    view: Permissions.EMAIL_GOVERNANCE_READ,
+    update: Permissions.EMAIL_GOVERNANCE_UPDATE,
+    delete: Permissions.EMAIL_GOVERNANCE_DELETE,
   },
 
   // User management pages
